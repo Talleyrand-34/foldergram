@@ -104,7 +104,7 @@ async function serveOrGenerate(
     // File does not exist — fall through to generation.
   }
 
-  if (scannerService.isLibraryRebuildRequired()) {
+  if (await scannerService.isLibraryRebuildRequired()) {
     applyDerivativeErrorHeaders(response);
     response.status(409).json({ message: 'Library rebuild required before generating derivatives.' });
     return;
@@ -113,8 +113,8 @@ async function serveOrGenerate(
   // Look up the source row by derivative path.
   const imageRecord =
     kind === 'thumbnail'
-      ? imageRepository.getByThumbnailPath(requestedPath)
-      : imageRepository.getByPreviewPath(requestedPath);
+      ? await imageRepository.getByThumbnailPath(requestedPath)
+      : await imageRepository.getByPreviewPath(requestedPath);
 
   if (!imageRecord) {
     applyDerivativeErrorHeaders(response);

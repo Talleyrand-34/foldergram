@@ -70,8 +70,8 @@ interface FeedCapsuleDefinition {
   dateContext: string;
   momentDate?: MomentDateMetadata;
   minimumImageCount: number;
-  count: () => number;
-  list: (page: number, limit: number) => FeedImage[];
+  count: () => Promise<number>;
+  list: (page: number, limit: number) => Promise<FeedImage[]>;
 }
 
 interface CalendarDateParts {
@@ -157,7 +157,7 @@ interface PlaceRowFields {
 type IndexedFeedImage = FeedImage & PlaceRowFields & { playbackStrategy?: PlaybackStrategy | null };
 type IndexedImageDetail = ImageDetail & PlaceRowFields & { playbackStrategy?: PlaybackStrategy | null; exifJson?: string | null };
 type IndexedTrashImage = TrashImage & PlaceRowFields & { playbackStrategy?: PlaybackStrategy | null };
-type ScanSummaryRecord = ReturnType<typeof scanRunRepository.latestCompleted>;
+type ScanSummaryRecord = Awaited<ReturnType<typeof scanRunRepository.latestCompleted>>;
 
 function toViewerSafeScanSummary(scan: ScanSummaryRecord | null) {
   if (!scan) {
@@ -178,8 +178,8 @@ function parseFeedMode(value: string | null): FeedMode {
   return value === 'recent' || value === 'rediscover' || value === 'random' ? value : 'random';
 }
 
-function getDefaultHomeFeedMode(): FeedMode {
-  return parseFeedMode(appSettingsRepository.get(HOME_FEED_DEFAULT_MODE_SETTING_KEY));
+async function getDefaultHomeFeedMode(): Promise<FeedMode> {
+  return parseFeedMode(await appSettingsRepository.get(HOME_FEED_DEFAULT_MODE_SETTING_KEY));
 }
 
 function parseSupportedLocale(value: string | null): SupportedLocale | null {
@@ -190,41 +190,41 @@ function parseSupportedLocale(value: string | null): SupportedLocale | null {
   return (SUPPORTED_LOCALES as readonly string[]).includes(value) ? (value as SupportedLocale) : null;
 }
 
-function getDefaultLocale(): SupportedLocale | null {
-  return parseSupportedLocale(appSettingsRepository.get(APP_DEFAULT_LOCALE_SETTING_KEY));
+async function getDefaultLocale(): Promise<SupportedLocale | null> {
+  return parseSupportedLocale(await appSettingsRepository.get(APP_DEFAULT_LOCALE_SETTING_KEY));
 }
 
 function parseReelsFeedMode(value: string | null): ReelsFeedMode {
   return value === 'recommended' || value === 'recent' || value === 'random' ? value : 'random';
 }
 
-function getDefaultReelsFeedMode(): ReelsFeedMode {
-  return parseReelsFeedMode(appSettingsRepository.get(REELS_FEED_DEFAULT_MODE_SETTING_KEY));
+async function getDefaultReelsFeedMode(): Promise<ReelsFeedMode> {
+  return parseReelsFeedMode(await appSettingsRepository.get(REELS_FEED_DEFAULT_MODE_SETTING_KEY));
 }
 
 function parseFolderImageOrder(value: string | null): FolderImageOrder {
   return value === 'oldest' ? 'oldest' : 'newest';
 }
 
-function getDefaultFolderImageOrder(): FolderImageOrder {
-  return parseFolderImageOrder(appSettingsRepository.get(FOLDER_IMAGE_DEFAULT_ORDER_SETTING_KEY));
+async function getDefaultFolderImageOrder(): Promise<FolderImageOrder> {
+  return parseFolderImageOrder(await appSettingsRepository.get(FOLDER_IMAGE_DEFAULT_ORDER_SETTING_KEY));
 }
 
-function getNestedFolderTitleFormat(): NestedFolderTitleFormat {
-  return parseNestedFolderTitleFormatSetting(appSettingsRepository.get(NESTED_FOLDER_TITLE_FORMAT_SETTING_KEY));
+async function getNestedFolderTitleFormat(): Promise<NestedFolderTitleFormat> {
+  return parseNestedFolderTitleFormatSetting(await appSettingsRepository.get(NESTED_FOLDER_TITLE_FORMAT_SETTING_KEY));
 }
 
-function getTreatStoriesAsFolders(): boolean {
-  return parseTreatStoriesAsFoldersSetting(appSettingsRepository.get(TREAT_STORIES_AS_FOLDERS_SETTING_KEY));
+async function getTreatStoriesAsFolders(): Promise<boolean> {
+  return parseTreatStoriesAsFoldersSetting(await appSettingsRepository.get(TREAT_STORIES_AS_FOLDERS_SETTING_KEY));
 }
 
-function getCustomExcludedFolders(): string[] {
-  return parseExcludedFolderRulesFromSetting(appSettingsRepository.get(EXCLUDED_FOLDERS_SETTING_KEY));
+async function getCustomExcludedFolders(): Promise<string[]> {
+  return parseExcludedFolderRulesFromSetting(await appSettingsRepository.get(EXCLUDED_FOLDERS_SETTING_KEY));
 }
 
-function getExcludedFolderSettings() {
+async function getExcludedFolderSettings() {
   const envExcludedFolders = [...appConfig.galleryExcludedFolders];
-  const customExcludedFolders = getCustomExcludedFolders();
+  const customExcludedFolders = await getCustomExcludedFolders();
 
   return {
     envExcludedFolders,
@@ -236,15 +236,15 @@ function getExcludedFolderSettings() {
   };
 }
 
-function getStoriesMigrationStatus() {
+async function getStoriesMigrationStatus() {
   return {
-    hasLegacyStoriesCandidates: folderRepository.hasLegacyStoriesCandidates(),
-    decisionPending: appSettingsRepository.get(STORIES_MIGRATION_DECISION_SETTING_KEY) === null
+    hasLegacyStoriesCandidates: await folderRepository.hasLegacyStoriesCandidates(),
+    decisionPending: await appSettingsRepository.get(STORIES_MIGRATION_DECISION_SETTING_KEY) === null
   };
 }
 
-function getDerivativeAssetVersion(): string | null {
-  const lastCompletedScanId = scanRunRepository.latestCompleted()?.id ?? null;
+async function getDerivativeAssetVersion(): Promise<string | null> {
+  const lastCompletedScanId = (await scanRunRepository.latestCompleted())?.id ?? null;
   return lastCompletedScanId === null ? null : String(lastCompletedScanId);
 }
 
@@ -291,12 +291,12 @@ function mapPlaceSummaryFromRow(image: PlaceRowFields) {
   };
 }
 
-function resolveOriginalMediaFile(id: number): { path: string; filename: string } | null {
-  if (!storageService.getState().libraryAvailable || scannerService.isLibraryRebuildRequired()) {
+async function resolveOriginalMediaFile(id: number): Promise<{ path: string; filename: string } | null> {
+  if (!storageService.getState().libraryAvailable || await scannerService.isLibraryRebuildRequired()) {
     return null;
   }
 
-  const detail = imageRepository.getById(id);
+  const detail = await imageRepository.getById(id);
   if (!detail || detail.is_deleted || detail.is_trashed) {
     return null;
   }
@@ -450,13 +450,13 @@ function isSameOrDescendantFolderPath(rootFolderPath: string, candidateFolderPat
   return candidateFolderPath === rootFolderPath || candidateFolderPath.startsWith(`${rootFolderPath}/`);
 }
 
-function getParentFolderDisplayName(folderPath: string): string | null {
+async function getParentFolderDisplayName(folderPath: string): Promise<string | null> {
   const parentFolderPath = getParentRelativePath(folderPath);
   if (!parentFolderPath) {
     return null;
   }
 
-  const parentFolder = folderRepository.getByFolderPath(parentFolderPath);
+  const parentFolder = await folderRepository.getByFolderPath(parentFolderPath);
   if (parentFolder?.name.trim()) {
     return parentFolder.name.trim();
   }
@@ -464,13 +464,13 @@ function getParentFolderDisplayName(folderPath: string): string | null {
   return getLeafPathName(parentFolderPath);
 }
 
-function mapFeedImage(image: IndexedFeedImage, derivativeVersion = getDerivativeAssetVersion()): FeedImage {
+async function mapFeedImage(image: IndexedFeedImage, derivativeVersion: string | null): Promise<FeedImage> {
   const { playbackStrategy, placeId, placeSlug, placeName, placeKind, placeIsApproximate, isSaved, ...rest } = image;
   return {
     ...rest,
     isAnimated: Boolean(rest.isAnimated),
     isSaved: Boolean(isSaved),
-    folderParentName: getParentFolderDisplayName(rest.folderPath),
+    folderParentName: await getParentFolderDisplayName(rest.folderPath),
     folderBreadcrumb: getPathBreadcrumb(rest.folderPath),
     thumbnailUrl: toPublicMediaUrl('/thumbnails', rest.thumbnailUrl, derivativeVersion),
     previewUrl: buildPreviewUrl({
@@ -482,7 +482,7 @@ function mapFeedImage(image: IndexedFeedImage, derivativeVersion = getDerivative
   };
 }
 
-function mapImageDetail(image: IndexedImageDetail, derivativeVersion = getDerivativeAssetVersion()): ImageDetail {
+async function mapImageDetail(image: IndexedImageDetail, derivativeVersion: string | null): Promise<ImageDetail> {
   const { playbackStrategy, exifJson, placeId, placeSlug, placeName, placeKind, placeIsApproximate, isSaved, ...rest } = image;
   const useOriginalForImages = appConfig.imageDetailSource === 'original';
   return {
@@ -490,7 +490,7 @@ function mapImageDetail(image: IndexedImageDetail, derivativeVersion = getDeriva
     isAnimated: Boolean(rest.isAnimated),
     isSaved: Boolean(isSaved),
     exif: deserializeImageExifData(exifJson),
-    folderParentName: getParentFolderDisplayName(rest.folderPath),
+    folderParentName: await getParentFolderDisplayName(rest.folderPath),
     folderBreadcrumb: getPathBreadcrumb(rest.folderPath),
     thumbnailUrl: toPublicMediaUrl('/thumbnails', rest.thumbnailUrl, derivativeVersion),
     previewUrl: buildPreviewUrl({
@@ -504,13 +504,13 @@ function mapImageDetail(image: IndexedImageDetail, derivativeVersion = getDeriva
   };
 }
 
-function mapTrashImage(image: IndexedTrashImage, derivativeVersion = getDerivativeAssetVersion()): TrashImage {
+async function mapTrashImage(image: IndexedTrashImage, derivativeVersion: string | null): Promise<TrashImage> {
   const { playbackStrategy, placeId, placeSlug, placeName, placeKind, placeIsApproximate, isSaved, ...rest } = image;
   return {
     ...rest,
     isAnimated: Boolean(rest.isAnimated),
     isSaved: Boolean(isSaved),
-    folderParentName: getParentFolderDisplayName(rest.folderPath),
+    folderParentName: await getParentFolderDisplayName(rest.folderPath),
     folderBreadcrumb: getPathBreadcrumb(rest.folderPath),
     thumbnailUrl: toPublicMediaUrl('/thumbnails', rest.thumbnailUrl, derivativeVersion),
     previewUrl: buildPreviewUrl({
@@ -522,8 +522,8 @@ function mapTrashImage(image: IndexedTrashImage, derivativeVersion = getDerivati
   };
 }
 
-function buildFolderSummary(folder: FolderSummaryRecord) {
-  const derivativeVersion = getDerivativeAssetVersion();
+async function buildFolderSummary(folder: FolderSummaryRecord) {
+  const derivativeVersion = await getDerivativeAssetVersion();
   const hasPreloadedAvatarSummary =
     Object.hasOwn(folder, 'summary_avatar_image_id') || Object.hasOwn(folder, 'summary_avatar_thumbnail_path');
 
@@ -533,7 +533,7 @@ function buildFolderSummary(folder: FolderSummaryRecord) {
       slug: folder.slug,
       name: folder.name,
       description: folder.description,
-      parentFolderName: getParentFolderDisplayName(folder.folder_path),
+      parentFolderName: await getParentFolderDisplayName(folder.folder_path),
       folderPath: folder.folder_path,
       breadcrumb: getPathBreadcrumb(folder.folder_path),
       imageCount: folder.image_count,
@@ -547,12 +547,12 @@ function buildFolderSummary(folder: FolderSummaryRecord) {
     };
   }
 
-  const preferredAvatarImageId = folder.avatar_image_id ?? imageRepository.getLatestFolderImageId(folder.id);
-  let avatar = preferredAvatarImageId ? imageRepository.getImageDetail(preferredAvatarImageId, undefined, true) : undefined;
+  const preferredAvatarImageId = folder.avatar_image_id ?? await imageRepository.getLatestFolderImageId(folder.id);
+  let avatar = preferredAvatarImageId ? await imageRepository.getImageDetail(preferredAvatarImageId, undefined, true) : undefined;
 
   if (!avatar) {
-    const fallbackAvatarImageId = imageRepository.getLatestFolderImageId(folder.id);
-    avatar = fallbackAvatarImageId ? imageRepository.getImageDetail(fallbackAvatarImageId, undefined, true) : undefined;
+    const fallbackAvatarImageId = await imageRepository.getLatestFolderImageId(folder.id);
+    avatar = fallbackAvatarImageId ? await imageRepository.getImageDetail(fallbackAvatarImageId, undefined, true) : undefined;
   }
 
   return {
@@ -560,7 +560,7 @@ function buildFolderSummary(folder: FolderSummaryRecord) {
     slug: folder.slug,
     name: folder.name,
     description: folder.description,
-    parentFolderName: getParentFolderDisplayName(folder.folder_path),
+    parentFolderName: await getParentFolderDisplayName(folder.folder_path),
     folderPath: folder.folder_path,
     breadcrumb: getPathBreadcrumb(folder.folder_path),
     imageCount: folder.image_count,
@@ -568,17 +568,17 @@ function buildFolderSummary(folder: FolderSummaryRecord) {
     latestImageMtimeMs: folder.latest_image_mtime_ms,
     hasAvatarStory: Boolean(folder.has_avatar_story),
     avatarImageId: avatar?.id ?? null,
-    avatarUrl: avatar ? mapImageDetail(avatar, derivativeVersion).thumbnailUrl : null
+    avatarUrl: avatar ? (await mapImageDetail(avatar, derivativeVersion)).thumbnailUrl : null
   };
 }
 
-function mapFeedImageForOwnerFolder(
+async function mapFeedImageForOwnerFolder(
   image: IndexedFeedImage,
-  ownerFolder: ReturnType<typeof buildFolderSummary>,
-  derivativeVersion = getDerivativeAssetVersion()
-): FeedImage {
+  ownerFolder: Awaited<ReturnType<typeof buildFolderSummary>>,
+  derivativeVersion: string | null
+): Promise<FeedImage> {
   return {
-    ...mapFeedImage(image, derivativeVersion),
+    ...await mapFeedImage(image, derivativeVersion),
     folderId: ownerFolder.id,
     folderSlug: ownerFolder.slug,
     folderName: ownerFolder.name,
@@ -627,29 +627,29 @@ function formatMonthYear(date: Date): string {
   return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(date);
 }
 
-function mapFeedItems(items: IndexedFeedImage[], derivativeVersion = getDerivativeAssetVersion()): FeedImage[] {
-  return items.map((item) => mapFeedImage(item, derivativeVersion));
+async function mapFeedItems(items: IndexedFeedImage[], derivativeVersion: string | null): Promise<FeedImage[]> {
+  return Promise.all(items.map((item) => mapFeedImage(item, derivativeVersion)));
 }
 
-function mapCollectionSummary(collection: CollectionSummaryRecord, derivativeVersion = getDerivativeAssetVersion()) {
-  const previewImages = collection.preview_image_ids
-    ? collection.preview_image_ids
-      .split(',')
-      .map((value) => Number.parseInt(value, 10))
-      .filter((value, index, values) => Number.isInteger(value) && value > 0 && values.indexOf(value) === index)
-      .map((id) => {
-        const previewDetail = imageRepository.getImageDetail(id, undefined, false);
-        return previewDetail ? mapImageDetail(previewDetail, derivativeVersion) : null;
-      })
-      .filter((image): image is ImageDetail => image !== null)
+async function mapCollectionSummary(collection: CollectionSummaryRecord, derivativeVersion: string | null) {
+  const previewImages: ImageDetail[] = collection.preview_image_ids
+    ? (await Promise.all(
+        collection.preview_image_ids
+          .split(',')
+          .map((value) => Number.parseInt(value, 10))
+          .filter((value, index, values) => Number.isInteger(value) && value > 0 && values.indexOf(value) === index)
+          .map(async (id) => {
+            const previewDetail = await imageRepository.getImageDetail(id, undefined, false);
+            return previewDetail ? await mapImageDetail(previewDetail, derivativeVersion) : null;
+          })
+      )).filter((image): image is ImageDetail => image !== null)
     : [];
-  const coverImage = previewImages[0]
-    ?? (collection.cover_image_id
-      ? (() => {
-          const coverDetail = imageRepository.getImageDetail(collection.cover_image_id, undefined, false);
-          return coverDetail ? mapImageDetail(coverDetail, derivativeVersion) : null;
-        })()
-      : null);
+
+  let coverImage: ImageDetail | null = previewImages[0] ?? null;
+  if (!coverImage && collection.cover_image_id) {
+    const coverDetail = await imageRepository.getImageDetail(collection.cover_image_id, undefined, false);
+    coverImage = coverDetail ? await mapImageDetail(coverDetail, derivativeVersion) : null;
+  }
 
   return {
     id: collection.id,
@@ -664,9 +664,9 @@ function mapCollectionSummary(collection: CollectionSummaryRecord, derivativeVer
   };
 }
 
-function mapCollectionMembership(collection: CollectionMembershipRecord, derivativeVersion = getDerivativeAssetVersion()) {
+async function mapCollectionMembership(collection: CollectionMembershipRecord, derivativeVersion: string | null) {
   return {
-    ...mapCollectionSummary(collection, derivativeVersion),
+    ...await mapCollectionSummary(collection, derivativeVersion),
     containsImage: collection.contains_image === 1
   };
 }
@@ -722,17 +722,17 @@ function buildStaticCapsuleDefinition(
 
   return {
     ...capsule,
-    count: () => cappedItems.length,
-    list: (page, limit) => sliceItemsForPage(cappedItems, page, limit)
+    count: async () => cappedItems.length,
+    list: async (page, limit) => sliceItemsForPage(cappedItems, page, limit)
   };
 }
 
-function listDiversifiedModeItems(
+async function listDiversifiedModeItems(
   total: number,
   page: number,
   limit: number,
-  loadBatch: (offset: number, limit: number) => FeedImage[]
-): FeedImage[] {
+  loadBatch: (offset: number, limit: number) => Promise<FeedImage[]>
+): Promise<FeedImage[]> {
   if (total === 0) {
     return [];
   }
@@ -743,7 +743,7 @@ function listDiversifiedModeItems(
   let offset = 0;
 
   while (offset < candidateLimit) {
-    const batch = loadBatch(offset, Math.min(DIVERSIFIED_FETCH_BATCH_SIZE, candidateLimit - offset));
+    const batch = await loadBatch(offset, Math.min(DIVERSIFIED_FETCH_BATCH_SIZE, candidateLimit - offset));
     if (batch.length === 0) {
       break;
     }
@@ -772,14 +772,14 @@ function toCalendarDateParts(date: Date): CalendarDateParts {
   };
 }
 
-function getHighlightFeedOverlapImageIds(): Set<number> {
-  const recentFeedItems = imageRepository.listRecentCandidates(0, HIGHLIGHT_FEED_OVERLAP_WINDOW);
+async function getHighlightFeedOverlapImageIds(): Promise<Set<number>> {
+  const recentFeedItems = await imageRepository.listRecentCandidates(0, HIGHLIGHT_FEED_OVERLAP_WINDOW);
 
   return new Set(recentFeedItems.map((item) => item.id));
 }
 
-function getRecentBatchHighlightItems(excludedImageIds: Set<number>): FeedImage[] {
-  const candidates = imageRepository.listRecentCandidates(0, HIGHLIGHT_BATCH_CANDIDATE_LIMIT);
+async function getRecentBatchHighlightItems(excludedImageIds: Set<number>): Promise<FeedImage[]> {
+  const candidates = await imageRepository.listRecentCandidates(0, HIGHLIGHT_BATCH_CANDIDATE_LIMIT);
   const bursts = groupFeedBursts(candidates)
     .filter((burst) => burst.items.length >= 2)
     .slice(0, HIGHLIGHT_BATCH_COUNT * 2);
@@ -833,7 +833,7 @@ function buildMomentRailDefinition(now = new Date()): FeedRailDefinition {
         },
         minimumImageCount: 1,
         count: () => imageRepository.countByMonthDayKeys(onThisDayKeys, currentYear),
-        list: (page, limit) => imageRepository.listByMonthDayKeys(onThisDayKeys, currentYear, page, limit)
+        list: async (page, limit) => mapFeedItems(await imageRepository.listByMonthDayKeys(onThisDayKeys, currentYear, page, limit), await getDerivativeAssetVersion())
       },
       {
         id: 'this-week-previous-years',
@@ -847,7 +847,7 @@ function buildMomentRailDefinition(now = new Date()): FeedRailDefinition {
         },
         minimumImageCount: 2,
         count: () => imageRepository.countByMonthDayKeys(weekKeys, currentYear),
-        list: (page, limit) => imageRepository.listByMonthDayKeys(weekKeys, currentYear, page, limit)
+        list: async (page, limit) => mapFeedItems(await imageRepository.listByMonthDayKeys(weekKeys, currentYear, page, limit), await getDerivativeAssetVersion())
       },
       {
         id: 'from-last-year',
@@ -862,31 +862,36 @@ function buildMomentRailDefinition(now = new Date()): FeedRailDefinition {
         },
         minimumImageCount: 1,
         count: () => imageRepository.countByEffectiveTimeRange(lastYearStart.getTime(), lastYearEnd.getTime()),
-        list: (page, limit) => imageRepository.listByEffectiveTimeRange(lastYearStart.getTime(), lastYearEnd.getTime(), page, limit)
+        list: async (page, limit) => mapFeedItems(await imageRepository.listByEffectiveTimeRange(lastYearStart.getTime(), lastYearEnd.getTime(), page, limit), await getDerivativeAssetVersion())
       }
     ]
   };
 }
 
-function buildHighlightRailDefinition(now = new Date()): FeedRailDefinition {
-  const excludedImageIds = getHighlightFeedOverlapImageIds();
+async function buildHighlightRailDefinition(now = new Date()): Promise<FeedRailDefinition> {
+  const excludedImageIds = await getHighlightFeedOverlapImageIds();
   const rediscoverCutoff = now.getTime() - REDISCOVER_MIN_AGE_MS;
   const dailySeed = createDailySeed(now);
   const highlightFetchLimit = HIGHLIGHT_CAPSULE_MAX_ITEMS + HIGHLIGHT_FEED_OVERLAP_WINDOW;
-  const recentBatchItems = getRecentBatchHighlightItems(excludedImageIds);
+  const derivativeVersion = await getDerivativeAssetVersion();
+  const recentBatchItems = await getRecentBatchHighlightItems(excludedImageIds);
   const forgottenFavoriteItems = limitHighlightItems(
-    likeRepository.listLikedOlderThan(1, highlightFetchLimit, rediscoverCutoff),
+    await mapFeedItems(await likeRepository.listLikedOlderThan(1, highlightFetchLimit, rediscoverCutoff), derivativeVersion),
     1,
     excludedImageIds
   );
   const deepCutItems = limitHighlightItems(
-    listDiversifiedModeItems(imageRepository.countRediscover(rediscoverCutoff), 1, highlightFetchLimit, (offset, batchLimit) =>
-      imageRepository.listRediscoverCandidates(offset, batchLimit, rediscoverCutoff)
+    await listDiversifiedModeItems(await imageRepository.countRediscover(rediscoverCutoff), 1, highlightFetchLimit, async (offset, batchLimit) =>
+      mapFeedItems(await imageRepository.listRediscoverCandidates(offset, batchLimit, rediscoverCutoff), derivativeVersion)
     ),
     1,
     excludedImageIds
   );
-  const luckyDipItems = limitHighlightItems(imageRepository.listRandom(1, highlightFetchLimit, dailySeed), 1, excludedImageIds);
+  const luckyDipItems = limitHighlightItems(
+    await mapFeedItems(await imageRepository.listRandom(1, highlightFetchLimit, dailySeed), derivativeVersion),
+    1,
+    excludedImageIds
+  );
   const recentBatchCount = groupFeedBursts(recentBatchItems).length;
 
   return {
@@ -939,47 +944,53 @@ function buildHighlightRailDefinition(now = new Date()): FeedRailDefinition {
   };
 }
 
-function materializeRailDefinition(definition: FeedRailDefinition) {
+async function materializeRailDefinition(definition: FeedRailDefinition) {
   const usedCoverImageIds = new Set<number>();
-  const derivativeVersion = getDerivativeAssetVersion();
+  const derivativeVersion = await getDerivativeAssetVersion();
+
+  const materializedCapsules = await Promise.all(
+    definition.capsules.map(async (capsule) => {
+      const imageCount = await capsule.count();
+      if (imageCount < capsule.minimumImageCount) {
+        return null;
+      }
+
+      const coverCandidates = await capsule.list(1, RAIL_COVER_CANDIDATE_LIMIT);
+      const coverImage = coverCandidates.find((image) => !usedCoverImageIds.has(image.id)) ?? coverCandidates[0];
+      if (!coverImage) {
+        return null;
+      }
+
+      usedCoverImageIds.add(coverImage.id);
+
+      return {
+        id: capsule.id,
+        title: capsule.title,
+        subtitle: capsule.subtitle,
+        dateContext: capsule.dateContext,
+        momentDate: capsule.momentDate,
+        imageCount,
+        coverImage: await mapFeedImage(coverImage, derivativeVersion)
+      };
+    })
+  );
 
   return {
     ...definition,
-    capsules: definition.capsules
-      .map((capsule) => {
-        const imageCount = capsule.count();
-        if (imageCount < capsule.minimumImageCount) {
-          return null;
-        }
-
-        const coverCandidates = capsule.list(1, RAIL_COVER_CANDIDATE_LIMIT);
-        const coverImage = coverCandidates.find((image) => !usedCoverImageIds.has(image.id)) ?? coverCandidates[0];
-        if (!coverImage) {
-          return null;
-        }
-
-        usedCoverImageIds.add(coverImage.id);
-
-        return {
-          id: capsule.id,
-          title: capsule.title,
-          subtitle: capsule.subtitle,
-          dateContext: capsule.dateContext,
-          momentDate: capsule.momentDate,
-          imageCount,
-          coverImage: mapFeedImage(coverImage, derivativeVersion)
-        };
-      })
-      .filter((capsule): capsule is NonNullable<typeof capsule> => capsule !== null)
+    capsules: materializedCapsules.filter((capsule): capsule is NonNullable<typeof capsule> => capsule !== null)
   };
 }
 
-function getSelectedFeedRail(now = new Date()) {
-  const totalImages = imageRepository.countFeed();
-  const exifImages = imageRepository.countByTakenAtSource('exif');
+async function getSelectedFeedRail(now = new Date()) {
+  const [totalImages, exifImages] = await Promise.all([
+    imageRepository.countFeed(),
+    imageRepository.countByTakenAtSource('exif')
+  ]);
   const preferMoments = shouldPreferMomentRail(totalImages, exifImages);
-  const momentRail = materializeRailDefinition(buildMomentRailDefinition(now));
-  const highlightRail = materializeRailDefinition(buildHighlightRailDefinition(now));
+  const [momentRail, highlightRail] = await Promise.all([
+    materializeRailDefinition(buildMomentRailDefinition(now)),
+    materializeRailDefinition(await buildHighlightRailDefinition(now))
+  ]);
 
   if (preferMoments && momentRail.capsules.length > 0) {
     return momentRail;
@@ -992,16 +1003,17 @@ function getSelectedFeedRail(now = new Date()) {
   return momentRail.capsules.length > 0 ? momentRail : highlightRail;
 }
 
-function buildFolderStoryRail(folder: FolderSummaryRecord): StoryRailPayload {
-  const ownerFolder = buildFolderSummary(folder);
-  const derivativeVersion = getDerivativeAssetVersion();
-  const storyFolders = folderRepository.listOwnedStoryFolders(folder.id);
+async function buildFolderStoryRail(folder: FolderSummaryRecord): Promise<StoryRailPayload> {
+  const ownerFolder = await buildFolderSummary(folder);
+  const derivativeVersion = await getDerivativeAssetVersion();
+  const storyFolders = await folderRepository.listOwnedStoryFolders(folder.id);
   const rootStoryFolder = storyFolders.find((entry) => entry.role === 'story_root') ?? null;
   const highlightStoryFolders = storyFolders.filter((entry) => entry.role === 'story_capsule');
 
-  const rootStoryCapsule = rootStoryFolder ? buildStoryRailCapsule(rootStoryFolder, ownerFolder, derivativeVersion) : null;
-  const highlightCapsules = highlightStoryFolders
-    .map((storyFolder) => buildStoryRailCapsule(storyFolder, ownerFolder, derivativeVersion))
+  const rootStoryCapsule = rootStoryFolder ? await buildStoryRailCapsule(rootStoryFolder, ownerFolder, derivativeVersion) : null;
+  const highlightCapsules = (await Promise.all(
+    highlightStoryFolders.map((storyFolder) => buildStoryRailCapsule(storyFolder, ownerFolder, derivativeVersion))
+  ))
     .filter((capsule): capsule is StoryRailCapsule => capsule !== null)
     .sort((left, right) => {
       if (left.latestActivityTimestamp !== right.latestActivityTimestamp) {
@@ -1010,7 +1022,7 @@ function buildFolderStoryRail(folder: FolderSummaryRecord): StoryRailPayload {
 
       return left.title.localeCompare(right.title, undefined, { sensitivity: 'base' });
     });
-  const avatarStoryCapsule = rootStoryCapsule ?? buildFallbackAvatarStoryCapsule(ownerFolder, derivativeVersion);
+  const avatarStoryCapsule = rootStoryCapsule ?? await buildFallbackAvatarStoryCapsule(ownerFolder, derivativeVersion);
   const items = avatarStoryCapsule ? [avatarStoryCapsule, ...highlightCapsules] : highlightCapsules;
 
   return {
@@ -1025,22 +1037,23 @@ function buildFolderStoryRail(folder: FolderSummaryRecord): StoryRailPayload {
   };
 }
 
-function buildStoryRailCapsule(
+async function buildStoryRailCapsule(
   storyFolder: FolderRecord,
-  ownerFolder: ReturnType<typeof buildFolderSummary>,
+  ownerFolder: Awaited<ReturnType<typeof buildFolderSummary>>,
   derivativeVersion: string | null
-): StoryRailCapsule | null {
-  const imageCount = imageRepository.countStoryMediaByFolder(storyFolder.id);
+): Promise<StoryRailCapsule | null> {
+  const imageCount = await imageRepository.countStoryMediaByFolder(storyFolder.id);
   if (imageCount === 0) {
     return null;
   }
 
-  const coverImage = imageRepository.listStoryFolderImages(storyFolder.id, 1, 1)[0];
+  const coverImages = await imageRepository.listStoryFolderImages(storyFolder.id, 1, 1);
+  const coverImage = coverImages[0];
   if (!coverImage) {
     return null;
   }
 
-  const latestActivityTimestamp = imageRepository.getLatestEffectiveTimestampByFolder(storyFolder.id) ?? 0;
+  const latestActivityTimestamp = await imageRepository.getLatestEffectiveTimestampByFolder(storyFolder.id) ?? 0;
   const presentation = storyFolder.role === 'story_root' ? 'avatar' as const : 'highlight' as const;
 
   return {
@@ -1049,22 +1062,23 @@ function buildStoryRailCapsule(
     subtitle: presentation === 'avatar' ? `${ownerFolder.name} story set` : 'Profile highlight',
     dateContext: formatStoryDateContext(latestActivityTimestamp),
     imageCount,
-    coverImage: mapFeedImageForOwnerFolder(coverImage, ownerFolder, derivativeVersion),
+    coverImage: await mapFeedImageForOwnerFolder(coverImage, ownerFolder, derivativeVersion),
     presentation,
     latestActivityTimestamp
   };
 }
 
-function buildFallbackAvatarStoryCapsule(
-  ownerFolder: ReturnType<typeof buildFolderSummary>,
+async function buildFallbackAvatarStoryCapsule(
+  ownerFolder: Awaited<ReturnType<typeof buildFolderSummary>>,
   derivativeVersion: string | null
-): StoryRailCapsule | null {
-  const imageCount = Math.min(imageRepository.countStoryCapsuleMediaByOwnerFolder(ownerFolder.id), FALLBACK_AVATAR_STORY_LIMIT);
+): Promise<StoryRailCapsule | null> {
+  const imageCount = Math.min(await imageRepository.countStoryCapsuleMediaByOwnerFolder(ownerFolder.id), FALLBACK_AVATAR_STORY_LIMIT);
   if (imageCount === 0) {
     return null;
   }
 
-  const coverImage = imageRepository.listStoryCapsuleImagesByOwnerFolder(ownerFolder.id, 1, 1)[0];
+  const coverImages = await imageRepository.listStoryCapsuleImagesByOwnerFolder(ownerFolder.id, 1, 1);
+  const coverImage = coverImages[0];
   if (!coverImage) {
     return null;
   }
@@ -1077,26 +1091,27 @@ function buildFallbackAvatarStoryCapsule(
     subtitle: 'Latest from highlights',
     dateContext: formatStoryDateContext(latestActivityTimestamp),
     imageCount,
-    coverImage: mapFeedImageForOwnerFolder(coverImage, ownerFolder, derivativeVersion),
+    coverImage: await mapFeedImageForOwnerFolder(coverImage, ownerFolder, derivativeVersion),
     presentation: 'avatar',
     latestActivityTimestamp
   };
 }
 
-function listFallbackAvatarStoryItems(
-  ownerFolder: ReturnType<typeof buildFolderSummary>,
+async function listFallbackAvatarStoryItems(
+  ownerFolder: Awaited<ReturnType<typeof buildFolderSummary>>,
   page: number,
   limit: number,
-  derivativeVersion = getDerivativeAssetVersion()
+  derivativeVersion: string | null
 ) {
-  const total = Math.min(imageRepository.countStoryCapsuleMediaByOwnerFolder(ownerFolder.id), FALLBACK_AVATAR_STORY_LIMIT);
+  const total = Math.min(await imageRepository.countStoryCapsuleMediaByOwnerFolder(ownerFolder.id), FALLBACK_AVATAR_STORY_LIMIT);
   const offset = (page - 1) * limit;
   const remaining = Math.max(total - offset, 0);
   const items =
     remaining > 0
-      ? imageRepository
-          .listStoryCapsuleImagesByOwnerFolder(ownerFolder.id, page, Math.min(limit, remaining))
-          .map((image) => mapFeedImageForOwnerFolder(image, ownerFolder, derivativeVersion))
+      ? await Promise.all(
+          (await imageRepository.listStoryCapsuleImagesByOwnerFolder(ownerFolder.id, page, Math.min(limit, remaining)))
+            .map((image) => mapFeedImageForOwnerFolder(image, ownerFolder, derivativeVersion))
+        )
       : [];
 
   return {
@@ -1106,7 +1121,7 @@ function listFallbackAvatarStoryItems(
 }
 
 export const galleryService = {
-  getFeed(page: number, limit: number, mode: FeedMode = 'random', randomSeed?: number) {
+  async getFeed(page: number, limit: number, mode: FeedMode = 'random', randomSeed?: number) {
     if (!storageService.getState().libraryAvailable) {
       return {
         mode,
@@ -1118,42 +1133,44 @@ export const galleryService = {
       };
     }
 
+    const derivativeVersion = await getDerivativeAssetVersion();
+
     if (mode === 'random') {
-      const total = imageRepository.countFeed();
+      const total = await imageRepository.countFeed();
       const seed = Number.isFinite(randomSeed)
         ? Number(randomSeed)
         : Number(new Date().toISOString().slice(0, 10).replaceAll('-', ''));
 
       return {
         mode,
-        ...buildPaginatedPayload(mapFeedItems(imageRepository.listRandom(page, limit, seed)), page, limit, total)
+        ...buildPaginatedPayload(await mapFeedItems(await imageRepository.listRandom(page, limit, seed), derivativeVersion), page, limit, total)
       };
     }
 
     if (mode === 'rediscover') {
       const cutoffTimestamp = Date.now() - REDISCOVER_MIN_AGE_MS;
-      const total = imageRepository.countRediscover(cutoffTimestamp);
-      const items = listDiversifiedModeItems(total, page, limit, (offset, batchLimit) =>
-        imageRepository.listRediscoverCandidates(offset, batchLimit, cutoffTimestamp)
+      const total = await imageRepository.countRediscover(cutoffTimestamp);
+      const items = await listDiversifiedModeItems(total, page, limit, async (offset, batchLimit) =>
+        mapFeedItems(await imageRepository.listRediscoverCandidates(offset, batchLimit, cutoffTimestamp), derivativeVersion)
       );
 
       return {
         mode,
-        ...buildPaginatedPayload(mapFeedItems(items), page, limit, total)
+        ...buildPaginatedPayload(items, page, limit, total)
       };
     }
 
-    const total = imageRepository.countFeed();
+    const total = await imageRepository.countFeed();
     const offset = (page - 1) * limit;
-    const items = imageRepository.listRecentCandidates(offset, limit);
+    const items = await imageRepository.listRecentCandidates(offset, limit);
 
     return {
       mode,
-      ...buildPaginatedPayload(mapFeedItems(items), page, limit, total)
+      ...buildPaginatedPayload(await mapFeedItems(items, derivativeVersion), page, limit, total)
     };
   },
 
-  getReels(page: number, limit: number, mode: ReelsFeedMode = 'recommended', seed?: number, signals: ReelAffinitySignals = {}) {
+  async getReels(page: number, limit: number, mode: ReelsFeedMode = 'recommended', seed?: number, signals: ReelAffinitySignals = {}) {
     if (!storageService.getState().libraryAvailable) {
       return {
         mode,
@@ -1165,7 +1182,7 @@ export const galleryService = {
       };
     }
 
-    const candidates = imageRepository.listVisibleVideoCandidates();
+    const candidates = await imageRepository.listVisibleVideoCandidates();
     const total = candidates.length;
     if (total === 0) {
       return {
@@ -1189,11 +1206,12 @@ export const galleryService = {
             return mode === 'random' ? shuffleReelCandidates(candidates, sessionSeed) : buildReelQueue(candidates, sessionSeed, signals);
           })();
     const offset = (page - 1) * limit;
+    const derivativeVersion = await getDerivativeAssetVersion();
 
     return {
       mode,
       ...buildPaginatedPayload(
-        mapFeedItems(orderedCandidates.slice(offset, offset + limit)),
+        await mapFeedItems(orderedCandidates.slice(offset, offset + limit), derivativeVersion),
         page,
         limit,
         total
@@ -1201,7 +1219,7 @@ export const galleryService = {
     };
   },
 
-  searchMedia(query: string, page: number, limit: number) {
+  async searchMedia(query: string, page: number, limit: number) {
     if (!storageService.getState().libraryAvailable) {
       return {
         items: [],
@@ -1223,13 +1241,14 @@ export const galleryService = {
       };
     }
 
-    const total = imageRepository.countVisibleSearch(normalizedQuery);
-    const items = total > 0 ? imageRepository.listVisibleSearch(normalizedQuery, page, limit) : [];
+    const derivativeVersion = await getDerivativeAssetVersion();
+    const total = await imageRepository.countVisibleSearch(normalizedQuery);
+    const items = total > 0 ? await imageRepository.listVisibleSearch(normalizedQuery, page, limit) : [];
 
-    return buildPaginatedPayload(mapFeedItems(items), page, limit, total);
+    return buildPaginatedPayload(await mapFeedItems(items, derivativeVersion), page, limit, total);
   },
 
-  listMoments() {
+  async listMoments() {
     if (!storageService.getState().libraryAvailable) {
       return {
         railKind: 'moments' as FeedRailKind,
@@ -1240,7 +1259,7 @@ export const galleryService = {
       };
     }
 
-    const rail = getSelectedFeedRail(new Date());
+    const rail = await getSelectedFeedRail(new Date());
     return {
       railKind: rail.kind,
       railTitle: rail.title,
@@ -1250,27 +1269,27 @@ export const galleryService = {
     };
   },
 
-  getMomentFeed(id: string, page: number, limit: number) {
+  async getMomentFeed(id: string, page: number, limit: number) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
     const now = new Date();
-    const rail = getSelectedFeedRail(now);
+    const rail = await getSelectedFeedRail(now);
     const capsule = rail.capsules.find((entry) => entry.id === id);
 
     if (!capsule) {
       return null;
     }
 
-    const definition = (rail.kind === 'moments' ? buildMomentRailDefinition(now) : buildHighlightRailDefinition(now)).capsules.find(
+    const definition = (rail.kind === 'moments' ? buildMomentRailDefinition(now) : await buildHighlightRailDefinition(now)).capsules.find(
       (entry) => entry.id === id
     );
     if (!definition) {
       return null;
     }
 
-    const total = definition.count();
+    const total = await definition.count();
 
     return {
       railKind: rail.kind,
@@ -1278,57 +1297,57 @@ export const galleryService = {
       railDescription: rail.description,
       railSingularLabel: rail.singularLabel,
       moment: capsule,
-      ...buildPaginatedPayload(mapFeedItems(definition.list(page, limit)), page, limit, total)
+      ...buildPaginatedPayload(await definition.list(page, limit), page, limit, total)
     };
   },
 
-  listFolders() {
+  async listFolders() {
     if (!storageService.getState().libraryAvailable) {
       return [];
     }
 
-    return folderRepository.getAllSummaries().map(buildFolderSummary);
+    return Promise.all((await folderRepository.getAllSummaries()).map(buildFolderSummary));
   },
 
-  listPlaces() {
+  async listPlaces() {
     if (!storageService.getState().libraryAvailable) {
       return [];
     }
 
-    return placeRepository.list().map((place) => ({
+    return (await placeRepository.list()).map((place) => ({
       ...placeResolutionService.placeDetail(place, place.post_count)
     }));
   },
 
-  getPlaceBySlug(slug: string) {
+  async getPlaceBySlug(slug: string) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const place = placeRepository.getBySlug(slug);
+    const place = await placeRepository.getBySlug(slug);
     if (!place) {
       return null;
     }
 
-    return placeResolutionService.placeDetail(place, placeRepository.countVisibleImages(place.id));
+    return placeResolutionService.placeDetail(place, await placeRepository.countVisibleImages(place.id));
   },
 
-  getPlaceImages(slug: string, page: number, limit: number, mediaType?: MediaType) {
+  async getPlaceImages(slug: string, page: number, limit: number, mediaType?: MediaType) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const place = placeRepository.getBySlug(slug);
+    const place = await placeRepository.getBySlug(slug);
     if (!place) {
       return null;
     }
 
-    const total = placeRepository.countVisibleImages(place.id, mediaType);
-    const derivativeVersion = getDerivativeAssetVersion();
+    const total = await placeRepository.countVisibleImages(place.id, mediaType);
+    const derivativeVersion = await getDerivativeAssetVersion();
 
     return {
       place: placeResolutionService.placeDetail(place, total),
-      items: imageRepository.listPlaceImages(place.id, page, limit, mediaType).map((image) => mapFeedImage(image, derivativeVersion)),
+      items: await Promise.all((await imageRepository.listPlaceImages(place.id, page, limit, mediaType)).map((image) => mapFeedImage(image, derivativeVersion))),
       page,
       limit,
       total,
@@ -1336,12 +1355,12 @@ export const galleryService = {
     };
   },
 
-  getFolderBySlug(slug: string) {
+  async getFolderBySlug(slug: string) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const folder = folderRepository.getSummaryBySlug(slug);
+    const folder = await folderRepository.getSummaryBySlug(slug);
     if (!folder) {
       return null;
     }
@@ -1349,13 +1368,13 @@ export const galleryService = {
     return buildFolderSummary(folder);
   },
 
-  updateFolderMetadata(slug: string, name: string, description: string | null) {
+  async updateFolderMetadata(slug: string, name: string, description: string | null) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    folderRepository.updateMetadata(slug, name, description);
-    const folder = folderRepository.getSummaryBySlug(slug);
+    await folderRepository.updateMetadata(slug, name, description);
+    const folder = await folderRepository.getSummaryBySlug(slug);
     if (!folder) {
       return null;
     }
@@ -1363,48 +1382,48 @@ export const galleryService = {
     return buildFolderSummary(folder);
   },
 
-  updateImageCaption(id: number, caption: string | null) {
+  async updateImageCaption(id: number, caption: string | null) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const defaultFolderImageOrder = getDefaultFolderImageOrder();
-    const existing = imageRepository.getImageDetail(id, undefined, false, defaultFolderImageOrder);
+    const defaultFolderImageOrder = await getDefaultFolderImageOrder();
+    const existing = await imageRepository.getImageDetail(id, undefined, false, defaultFolderImageOrder);
     if (!existing) {
       return null;
     }
 
-    imageRepository.updateCaption(id, caption);
+    await imageRepository.updateCaption(id, caption);
 
-    const updated = imageRepository.getImageDetail(id, undefined, false, defaultFolderImageOrder);
-    return updated ? mapImageDetail(updated, getDerivativeAssetVersion()) : null;
+    const updated = await imageRepository.getImageDetail(id, undefined, false, defaultFolderImageOrder);
+    return updated ? mapImageDetail(updated, await getDerivativeAssetVersion()) : null;
   },
 
-  setFolderAvatar(slug: string, imageId: number) {
+  async setFolderAvatar(slug: string, imageId: number) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const folder = folderRepository.getNormalBySlug(slug);
+    const folder = await folderRepository.getNormalBySlug(slug);
     if (!folder) {
       return null;
     }
 
-    const image = imageRepository.getById(imageId);
+    const image = await imageRepository.getById(imageId);
     if (!image || image.folder_id !== folder.id || image.is_deleted !== 0 || image.is_trashed !== 0) {
       return null;
     }
 
-    folderRepository.setAvatar(folder.id, imageId, 'manual');
+    await folderRepository.setAvatar(folder.id, imageId, 'manual');
     return true;
   },
 
-  getFolderStories(slug: string) {
+  async getFolderStories(slug: string) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const folder = folderRepository.getSummaryBySlug(slug);
+    const folder = await folderRepository.getSummaryBySlug(slug);
     if (!folder) {
       return null;
     }
@@ -1412,25 +1431,26 @@ export const galleryService = {
     return buildFolderStoryRail(folder);
   },
 
-  getFolderStoryFeed(slug: string, storyId: string, page: number, limit: number) {
+  async getFolderStoryFeed(slug: string, storyId: string, page: number, limit: number) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const folder = folderRepository.getSummaryBySlug(slug);
+    const folder = await folderRepository.getSummaryBySlug(slug);
     if (!folder) {
       return null;
     }
 
-    const rail = buildFolderStoryRail(folder);
+    const rail = await buildFolderStoryRail(folder);
     const capsule = rail.items.find((entry) => entry.id === storyId);
     if (!capsule) {
       return null;
     }
 
-    const ownerFolder = buildFolderSummary(folder);
+    const ownerFolder = await buildFolderSummary(folder);
+    const derivativeVersion = await getDerivativeAssetVersion();
     if (storyId === FALLBACK_AVATAR_STORY_ID) {
-      const fallbackFeed = listFallbackAvatarStoryItems(ownerFolder, page, limit);
+      const fallbackFeed = await listFallbackAvatarStoryItems(ownerFolder, page, limit, derivativeVersion);
 
       return {
         railKind: 'stories' as const,
@@ -1442,16 +1462,16 @@ export const galleryService = {
       };
     }
 
-    const storyFolder = folderRepository.getOwnedStoryFolderBySlug(folder.id, storyId);
+    const storyFolder = await folderRepository.getOwnedStoryFolderBySlug(folder.id, storyId);
     if (!storyFolder) {
       return null;
     }
 
-    const derivativeVersion = getDerivativeAssetVersion();
-    const total = imageRepository.countStoryMediaByFolder(storyFolder.id);
-    const items = imageRepository
-      .listStoryFolderImages(storyFolder.id, page, limit)
-      .map((image) => mapFeedImageForOwnerFolder(image, ownerFolder, derivativeVersion));
+    const total = await imageRepository.countStoryMediaByFolder(storyFolder.id);
+    const items = await Promise.all(
+      (await imageRepository.listStoryFolderImages(storyFolder.id, page, limit))
+        .map((image) => mapFeedImageForOwnerFolder(image, ownerFolder, derivativeVersion))
+    );
 
     return {
       railKind: 'stories' as const,
@@ -1463,25 +1483,26 @@ export const galleryService = {
     };
   },
 
-  getFolderImages(slug: string, page: number, limit: number, mediaType?: MediaType) {
+  async getFolderImages(slug: string, page: number, limit: number, mediaType?: MediaType) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const folder = folderRepository.getSummaryBySlug(slug);
+    const folder = await folderRepository.getSummaryBySlug(slug);
     if (!folder) {
       return null;
     }
 
-    const total = mediaType ? imageRepository.countVisibleByFolder(folder.id, mediaType) : folder.image_count;
-    const derivativeVersion = getDerivativeAssetVersion();
-    const defaultFolderImageOrder = getDefaultFolderImageOrder();
+    const total = mediaType ? await imageRepository.countVisibleByFolder(folder.id, mediaType) : folder.image_count;
+    const derivativeVersion = await getDerivativeAssetVersion();
+    const defaultFolderImageOrder = await getDefaultFolderImageOrder();
 
     return {
-      folder: buildFolderSummary(folder),
-      items: imageRepository
-        .listFolderImages(folder.id, page, limit, mediaType, defaultFolderImageOrder)
-        .map((image) => mapFeedImage(image, derivativeVersion)),
+      folder: await buildFolderSummary(folder),
+      items: await Promise.all(
+        (await imageRepository.listFolderImages(folder.id, page, limit, mediaType, defaultFolderImageOrder))
+          .map((image) => mapFeedImage(image, derivativeVersion))
+      ),
       page,
       limit,
       total,
@@ -1489,15 +1510,15 @@ export const galleryService = {
     };
   },
 
-  getImageDetail(id: number, mediaType?: MediaType) {
+  async getImageDetail(id: number, mediaType?: MediaType) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const defaultFolderImageOrder = getDefaultFolderImageOrder();
-    let detail = imageRepository.getImageDetail(id, mediaType, false, defaultFolderImageOrder);
+    const defaultFolderImageOrder = await getDefaultFolderImageOrder();
+    let detail = await imageRepository.getImageDetail(id, mediaType, false, defaultFolderImageOrder);
     if (!detail) {
-      const avatarDetail = imageRepository.getImageDetail(id, mediaType, true, defaultFolderImageOrder);
+      const avatarDetail = await imageRepository.getImageDetail(id, mediaType, true, defaultFolderImageOrder);
       if (avatarDetail && avatarDetail.folderAvatarImageId === avatarDetail.id) {
         detail = avatarDetail;
       }
@@ -1507,7 +1528,7 @@ export const galleryService = {
       return null;
     }
 
-    return mapImageDetail(detail, getDerivativeAssetVersion());
+    return mapImageDetail(detail, await getDerivativeAssetVersion());
   },
 
   getPlacesStatus() {
@@ -1522,7 +1543,7 @@ export const galleryService = {
     return placeResolutionService.rebuildAssignments();
   },
 
-  getTrashImages(page: number, limit: number) {
+  async getTrashImages(page: number, limit: number) {
     if (!storageService.getState().libraryAvailable) {
       return {
         items: [],
@@ -1533,42 +1554,47 @@ export const galleryService = {
       };
     }
 
-    const total = imageRepository.countTrashed();
-    const derivativeVersion = getDerivativeAssetVersion();
-    const items = imageRepository.listTrashed(page, limit).map((image) => mapTrashImage(image as IndexedTrashImage, derivativeVersion));
+    const total = await imageRepository.countTrashed();
+    const derivativeVersion = await getDerivativeAssetVersion();
+    const items = await Promise.all(
+      (await imageRepository.listTrashed(page, limit)).map((image) => mapTrashImage(image as IndexedTrashImage, derivativeVersion))
+    );
 
     return buildTrashPaginatedPayload(items, page, limit, total);
   },
 
-  getCollections() {
+  async getCollections() {
     if (!storageService.getState().libraryAvailable) {
       return {
         items: []
       };
     }
 
-    const derivativeVersion = getDerivativeAssetVersion();
+    const derivativeVersion = await getDerivativeAssetVersion();
     return {
-      items: collectionRepository.listSummaries().map((collection) => mapCollectionSummary(collection, derivativeVersion))
+      items: await Promise.all(
+        (await collectionRepository.listSummaries()).map((collection) => mapCollectionSummary(collection, derivativeVersion))
+      )
     };
   },
 
-  getCollectionImages(slug: string, page: number, limit: number) {
+  async getCollectionImages(slug: string, page: number, limit: number) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const collection = collectionRepository.getBySlug(slug);
+    const collection = await collectionRepository.getBySlug(slug);
     if (!collection) {
       return null;
     }
 
-    const total = collectionRepository.countImages(slug);
-    const derivativeVersion = getDerivativeAssetVersion();
+    const total = await collectionRepository.countImages(slug);
+    const derivativeVersion = await getDerivativeAssetVersion();
+    const allSummaries = await collectionRepository.listSummaries();
 
     return {
-      collection: mapCollectionSummary(
-        collectionRepository.listSummaries().find((entry) => entry.slug === slug) ?? {
+      collection: await mapCollectionSummary(
+        allSummaries.find((entry) => entry.slug === slug) ?? {
           ...collection,
           item_count: total,
           cover_image_id: null,
@@ -1578,7 +1604,9 @@ export const galleryService = {
         derivativeVersion
       ),
       ...buildPaginatedPayload(
-        collectionRepository.listImages(slug, page, limit).map((image) => mapFeedImage(image, derivativeVersion)),
+        await Promise.all(
+          (await collectionRepository.listImages(slug, page, limit)).map((image) => mapFeedImage(image, derivativeVersion))
+        ),
         page,
         limit,
         total
@@ -1586,98 +1614,105 @@ export const galleryService = {
     };
   },
 
-  getImageCollections(id: number) {
+  async getImageCollections(id: number) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const image = imageRepository.getById(id);
+    const image = await imageRepository.getById(id);
     if (!image || image.is_deleted || image.is_trashed) {
       return null;
     }
 
-    const derivativeVersion = getDerivativeAssetVersion();
+    const derivativeVersion = await getDerivativeAssetVersion();
     return {
       imageId: id,
-      isSaved: collectionRepository.isImageSaved(id),
-      items: collectionRepository.listMembershipsForImage(id).map((collection) => mapCollectionMembership(collection, derivativeVersion))
+      isSaved: await collectionRepository.isImageSaved(id),
+      items: await Promise.all(
+        (await collectionRepository.listMembershipsForImage(id)).map((collection) => mapCollectionMembership(collection, derivativeVersion))
+      )
     };
   },
 
-  createCollection(name: string) {
+  async createCollection(name: string) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const collection = collectionRepository.create(name);
-    const summary = collectionRepository.listSummaries().find((entry) => entry.id === collection.id);
-    return summary ? mapCollectionSummary(summary) : null;
+    const collection = await collectionRepository.create(name);
+    const allSummaries = await collectionRepository.listSummaries();
+    const summary = allSummaries.find((entry) => entry.id === collection.id);
+    return summary ? mapCollectionSummary(summary, await getDerivativeAssetVersion()) : null;
   },
 
-  updateCollection(slug: string, name: string) {
+  async updateCollection(slug: string, name: string) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const collection = collectionRepository.updateName(slug, name);
+    const collection = await collectionRepository.updateName(slug, name);
     if (!collection) {
       return null;
     }
 
-    const summary = collectionRepository.listSummaries().find((entry) => entry.id === collection.id);
-    return summary ? mapCollectionSummary(summary) : null;
+    const allSummaries = await collectionRepository.listSummaries();
+    const summary = allSummaries.find((entry) => entry.id === collection.id);
+    return summary ? mapCollectionSummary(summary, await getDerivativeAssetVersion()) : null;
   },
 
-  deleteCollection(slug: string) {
+  async deleteCollection(slug: string) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const summary = collectionRepository.listSummaries().find((entry) => entry.slug === slug);
+    const allSummaries = await collectionRepository.listSummaries();
+    const summary = allSummaries.find((entry) => entry.slug === slug);
     if (!summary) {
       return null;
     }
 
-    const deleted = collectionRepository.delete(slug);
+    const deleted = await collectionRepository.delete(slug);
     if (!deleted) {
       return null;
     }
 
-    return mapCollectionSummary(summary);
+    return mapCollectionSummary(summary, await getDerivativeAssetVersion());
   },
 
-  saveImage(id: number) {
+  async saveImage(id: number) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const image = imageRepository.getById(id);
+    const image = await imageRepository.getById(id);
     if (!image || image.is_deleted || image.is_trashed) {
       return null;
     }
 
-    const collection = collectionRepository.saveToDefault(id);
-    const summary = collectionRepository.listSummaries().find((entry) => entry.id === collection.id);
+    const collection = await collectionRepository.saveToDefault(id);
+    const allSummaries = await collectionRepository.listSummaries();
+    const summary = allSummaries.find((entry) => entry.id === collection.id);
+    const derivativeVersion = await getDerivativeAssetVersion();
 
     return {
       id,
       imageId: id,
-      isSaved: collectionRepository.isImageSaved(id),
-      collection: summary ? mapCollectionSummary(summary) : undefined
+      isSaved: await collectionRepository.isImageSaved(id),
+      collection: summary ? await mapCollectionSummary(summary, derivativeVersion) : undefined
     };
   },
 
-  unsaveImage(id: number) {
+  async unsaveImage(id: number) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const image = imageRepository.getById(id);
+    const image = await imageRepository.getById(id);
     if (!image || image.is_deleted || image.is_trashed) {
       return null;
     }
 
-    collectionRepository.unsaveEverywhere(id);
+    await collectionRepository.unsaveEverywhere(id);
 
     return {
       id,
@@ -1686,50 +1721,52 @@ export const galleryService = {
     };
   },
 
-  addImageToCollection(slug: string, id: number) {
+  async addImageToCollection(slug: string, id: number) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const image = imageRepository.getById(id);
+    const image = await imageRepository.getById(id);
     if (!image || image.is_deleted || image.is_trashed) {
       return null;
     }
 
     const collection = slug === collectionConstants.defaultCollectionSlug
-      ? collectionRepository.saveToDefault(id)
-      : collectionRepository.addImage(slug, id);
+      ? await collectionRepository.saveToDefault(id)
+      : await collectionRepository.addImage(slug, id);
     if (!collection) {
       return null;
     }
 
-    const summary = collectionRepository.listSummaries().find((entry) => entry.id === collection.id);
+    const allSummaries = await collectionRepository.listSummaries();
+    const summary = allSummaries.find((entry) => entry.id === collection.id);
+    const derivativeVersion = await getDerivativeAssetVersion();
 
     return {
       id,
       imageId: id,
       isSaved: true,
-      collection: summary ? mapCollectionSummary(summary) : undefined
+      collection: summary ? await mapCollectionSummary(summary, derivativeVersion) : undefined
     };
   },
 
-  removeImageFromCollection(slug: string, id: number) {
+  async removeImageFromCollection(slug: string, id: number) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const image = imageRepository.getById(id);
+    const image = await imageRepository.getById(id);
     if (!image || image.is_deleted || image.is_trashed) {
       return null;
     }
 
-    const collection = collectionRepository.getBySlug(slug);
+    const collection = await collectionRepository.getBySlug(slug);
     if (!collection) {
       return null;
     }
 
     if (collection.is_default === 1) {
-      collectionRepository.unsaveEverywhere(id);
+      await collectionRepository.unsaveEverywhere(id);
       return {
         id,
         imageId: id,
@@ -1737,18 +1774,20 @@ export const galleryService = {
       };
     }
 
-    collectionRepository.removeImage(slug, id);
-    const summary = collectionRepository.listSummaries().find((entry) => entry.id === collection.id);
+    await collectionRepository.removeImage(slug, id);
+    const allSummaries = await collectionRepository.listSummaries();
+    const summary = allSummaries.find((entry) => entry.id === collection.id);
+    const derivativeVersion = await getDerivativeAssetVersion();
 
     return {
       id,
       imageId: id,
-      isSaved: collectionRepository.isImageSaved(id),
-      collection: summary ? mapCollectionSummary(summary) : undefined
+      isSaved: await collectionRepository.isImageSaved(id),
+      collection: summary ? await mapCollectionSummary(summary, derivativeVersion) : undefined
     };
   },
 
-  getLikes() {
+  async getLikes() {
     if (!storageService.getState().libraryAvailable) {
       return {
         items: []
@@ -1756,21 +1795,21 @@ export const galleryService = {
     }
 
     return {
-      items: mapFeedItems(likeRepository.listLikedImages())
+      items: await mapFeedItems(await likeRepository.listLikedImages(), await getDerivativeAssetVersion())
     };
   },
 
-  likeImage(id: number) {
+  async likeImage(id: number) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const image = imageRepository.getById(id);
+    const image = await imageRepository.getById(id);
     if (!image || image.is_deleted || image.is_trashed) {
       return null;
     }
 
-    likeRepository.upsert(id);
+    await likeRepository.upsert(id);
 
     return {
       id,
@@ -1778,17 +1817,17 @@ export const galleryService = {
     };
   },
 
-  unlikeImage(id: number) {
+  async unlikeImage(id: number) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const image = imageRepository.getById(id);
+    const image = await imageRepository.getById(id);
     if (!image || image.is_deleted || image.is_trashed) {
       return null;
     }
 
-    likeRepository.remove(id);
+    await likeRepository.remove(id);
 
     return {
       id,
@@ -1796,24 +1835,24 @@ export const galleryService = {
     };
   },
 
-  trashImage(id: number) {
+  async trashImage(id: number) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const imageRecord = imageRepository.getById(id);
+    const imageRecord = await imageRepository.getById(id);
     if (!imageRecord || imageRecord.is_deleted) {
       return null;
     }
 
-    const folder = folderRepository.getById(imageRecord.folder_id);
+    const folder = await folderRepository.getById(imageRecord.folder_id);
     if (!folder) {
       return null;
     }
 
     if (imageRecord.is_trashed === 0) {
-      imageRepository.moveToTrash(id);
-      folderRepository.syncAvatarSelection(imageRecord.folder_id);
+      await imageRepository.moveToTrash(id);
+      await folderRepository.syncAvatarSelection(imageRecord.folder_id);
     }
 
     return {
@@ -1822,23 +1861,23 @@ export const galleryService = {
     };
   },
 
-  restoreImage(id: number) {
+  async restoreImage(id: number) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
 
-    const imageRecord = imageRepository.getById(id);
+    const imageRecord = await imageRepository.getById(id);
     if (!imageRecord || imageRecord.is_deleted || imageRecord.is_trashed === 0) {
       return null;
     }
 
-    const folder = folderRepository.getById(imageRecord.folder_id);
+    const folder = await folderRepository.getById(imageRecord.folder_id);
     if (!folder) {
       return null;
     }
 
-    imageRepository.restoreFromTrash(id);
-    folderRepository.syncAvatarSelection(imageRecord.folder_id);
+    await imageRepository.restoreFromTrash(id);
+    await folderRepository.syncAvatarSelection(imageRecord.folder_id);
 
     return {
       id: imageRecord.id,
@@ -1846,22 +1885,39 @@ export const galleryService = {
     };
   },
 
-  getStatus() {
+  async getStatus() {
     const storageState = storageService.getState();
-    const rebuildRequired = appSettingsRepository.get(LIBRARY_REBUILD_REQUIRED_SETTING_KEY) === '1';
-    const defaultHomeFeedMode = getDefaultHomeFeedMode();
-    const defaultLocale = getDefaultLocale();
-    const defaultReelsFeedMode = getDefaultReelsFeedMode();
-    const defaultFolderImageOrder = getDefaultFolderImageOrder();
-    const nestedFolderTitleFormat = getNestedFolderTitleFormat();
-    const treatStoriesAsFolders = getTreatStoriesAsFolders();
-    const storiesMigration = getStoriesMigrationStatus();
+    const [
+      rebuildRequired,
+      defaultHomeFeedMode,
+      defaultLocale,
+      defaultReelsFeedMode,
+      defaultFolderImageOrder,
+      nestedFolderTitleFormat,
+      treatStoriesAsFolders,
+      storiesMigration,
+      folderCount,
+      indexedImages,
+      indexedVideos
+    ] = await Promise.all([
+      appSettingsRepository.get(LIBRARY_REBUILD_REQUIRED_SETTING_KEY).then(v => v === '1'),
+      getDefaultHomeFeedMode(),
+      getDefaultLocale(),
+      getDefaultReelsFeedMode(),
+      getDefaultFolderImageOrder(),
+      getNestedFolderTitleFormat(),
+      getTreatStoriesAsFolders(),
+      getStoriesMigrationStatus(),
+      storageState.libraryAvailable ? folderRepository.count() : Promise.resolve(0),
+      storageState.libraryAvailable ? imageRepository.countFeed() : Promise.resolve(0),
+      storageState.libraryAvailable ? imageRepository.countByMediaType('video') : Promise.resolve(0)
+    ]);
 
     return {
-      folders: storageState.libraryAvailable ? folderRepository.count() : 0,
-      indexedImages: storageState.libraryAvailable ? imageRepository.countFeed() : 0,
-      indexedVideos: storageState.libraryAvailable ? imageRepository.countByMediaType('video') : 0,
-      scan: this.getScanProgress(),
+      folders: folderCount,
+      indexedImages,
+      indexedVideos,
+      scan: await this.getScanProgress(),
       storage: {
         available: storageState.libraryAvailable,
         reason: buildViewerSafeStorageReason(storageState.libraryAvailable)
@@ -1883,8 +1939,8 @@ export const galleryService = {
     };
   },
 
-  getScanProgress() {
-    const lastCompletedScan = scanRunRepository.latestCompleted() ?? null;
+  async getScanProgress() {
+    const lastCompletedScan = await scanRunRepository.latestCompleted() ?? null;
     const scanProgress = scannerService.getProgress();
 
     return {
@@ -1895,8 +1951,8 @@ export const galleryService = {
     };
   },
 
-  getAdminScanProgress() {
-    const lastCompletedScan = scanRunRepository.latestCompleted() ?? null;
+  async getAdminScanProgress() {
+    const lastCompletedScan = await scanRunRepository.latestCompleted() ?? null;
     const scanProgress = scannerService.getProgress();
 
     return {
@@ -1905,32 +1961,55 @@ export const galleryService = {
     };
   },
 
-  getStats() {
-    const lastCompletedScan = scanRunRepository.latestCompleted() ?? null;
+  async getStats() {
+    const lastCompletedScan = await scanRunRepository.latestCompleted() ?? null;
     const storageState = storageService.getState();
     const currentGalleryRoot = appConfig.galleryRoot;
-    const previousGalleryRoot = appSettingsRepository.get(PREVIOUS_GALLERY_ROOT_SETTING_KEY);
-    const rebuildRequired = appSettingsRepository.get(LIBRARY_REBUILD_REQUIRED_SETTING_KEY) === '1';
-    const lastSuccessfulGalleryRoot = appSettingsRepository.get(LAST_SUCCESSFUL_GALLERY_ROOT_SETTING_KEY);
-    const pendingDerivativeMigrationRows = storageState.libraryAvailable ? imageRepository.countPendingDerivativeMigrationRows() : 0;
-    const defaultHomeFeedMode = getDefaultHomeFeedMode();
-    const defaultLocale = getDefaultLocale();
-    const defaultReelsFeedMode = getDefaultReelsFeedMode();
-    const defaultFolderImageOrder = getDefaultFolderImageOrder();
-    const nestedFolderTitleFormat = getNestedFolderTitleFormat();
-    const treatStoriesAsFolders = getTreatStoriesAsFolders();
-    const storiesMigration = getStoriesMigrationStatus();
-    const excludedFolders = getExcludedFolderSettings();
+    const [
+      previousGalleryRoot,
+      rebuildRequired,
+      lastSuccessfulGalleryRoot,
+      pendingDerivativeMigrationRows,
+      defaultHomeFeedMode,
+      defaultLocale,
+      defaultReelsFeedMode,
+      defaultFolderImageOrder,
+      nestedFolderTitleFormat,
+      treatStoriesAsFolders,
+      storiesMigration,
+      excludedFolders,
+      folderCount,
+      indexedImages,
+      indexedVideos,
+      deletedImages
+    ] = await Promise.all([
+      appSettingsRepository.get(PREVIOUS_GALLERY_ROOT_SETTING_KEY),
+      appSettingsRepository.get(LIBRARY_REBUILD_REQUIRED_SETTING_KEY).then(v => v === '1'),
+      appSettingsRepository.get(LAST_SUCCESSFUL_GALLERY_ROOT_SETTING_KEY),
+      storageState.libraryAvailable ? imageRepository.countPendingDerivativeMigrationRows() : Promise.resolve(0),
+      getDefaultHomeFeedMode(),
+      getDefaultLocale(),
+      getDefaultReelsFeedMode(),
+      getDefaultFolderImageOrder(),
+      getNestedFolderTitleFormat(),
+      getTreatStoriesAsFolders(),
+      getStoriesMigrationStatus(),
+      getExcludedFolderSettings(),
+      storageState.libraryAvailable ? folderRepository.count() : Promise.resolve(0),
+      storageState.libraryAvailable ? imageRepository.countFeed() : Promise.resolve(0),
+      storageState.libraryAvailable ? imageRepository.countByMediaType('video') : Promise.resolve(0),
+      storageState.libraryAvailable ? imageRepository.countDeleted() : Promise.resolve(0)
+    ]);
 
     return {
-      folders: storageState.libraryAvailable ? folderRepository.count() : 0,
-      indexedImages: storageState.libraryAvailable ? imageRepository.countFeed() : 0,
-      indexedVideos: storageState.libraryAvailable ? imageRepository.countByMediaType('video') : 0,
-      deletedImages: storageState.libraryAvailable ? imageRepository.countDeleted() : 0,
+      folders: folderCount,
+      indexedImages,
+      indexedVideos,
+      deletedImages,
       thumbnailCount: storageState.libraryAvailable ? countDerivativeFilesOnDisk(appConfig.thumbnailsDir) : 0,
       previewCount: storageState.libraryAvailable ? countDerivativeFilesOnDisk(appConfig.previewsDir) : 0,
       lastScan: lastCompletedScan,
-      scan: this.getAdminScanProgress(),
+      scan: await this.getAdminScanProgress(),
       storage: {
         available: storageState.libraryAvailable,
         reason: storageState.reason,
@@ -1959,40 +2038,40 @@ export const galleryService = {
     };
   },
 
-  setDefaultHomeFeedMode(mode: FeedMode) {
-    appSettingsRepository.set(HOME_FEED_DEFAULT_MODE_SETTING_KEY, mode);
+  async setDefaultHomeFeedMode(mode: FeedMode) {
+    await appSettingsRepository.set(HOME_FEED_DEFAULT_MODE_SETTING_KEY, mode);
 
     return {
       defaultMode: mode
     };
   },
 
-  setDefaultLocale(defaultLocale: SupportedLocale) {
-    appSettingsRepository.set(APP_DEFAULT_LOCALE_SETTING_KEY, defaultLocale);
+  async setDefaultLocale(defaultLocale: SupportedLocale) {
+    await appSettingsRepository.set(APP_DEFAULT_LOCALE_SETTING_KEY, defaultLocale);
 
     return {
       defaultLocale
     };
   },
 
-  setDefaultReelsFeedMode(mode: ReelsFeedMode) {
-    appSettingsRepository.set(REELS_FEED_DEFAULT_MODE_SETTING_KEY, mode);
+  async setDefaultReelsFeedMode(mode: ReelsFeedMode) {
+    await appSettingsRepository.set(REELS_FEED_DEFAULT_MODE_SETTING_KEY, mode);
 
     return {
       defaultMode: mode
     };
   },
 
-  setDefaultFolderImageOrder(order: FolderImageOrder) {
-    appSettingsRepository.set(FOLDER_IMAGE_DEFAULT_ORDER_SETTING_KEY, order);
+  async setDefaultFolderImageOrder(order: FolderImageOrder) {
+    await appSettingsRepository.set(FOLDER_IMAGE_DEFAULT_ORDER_SETTING_KEY, order);
 
     return {
       defaultOrder: order
     };
   },
 
-  setNestedFolderTitleFormat(titleFormat: NestedFolderTitleFormat) {
-    appSettingsRepository.set(
+  async setNestedFolderTitleFormat(titleFormat: NestedFolderTitleFormat) {
+    await appSettingsRepository.set(
       NESTED_FOLDER_TITLE_FORMAT_SETTING_KEY,
       serializeNestedFolderTitleFormatSetting(titleFormat)
     );
@@ -2002,49 +2081,49 @@ export const galleryService = {
     };
   },
 
-  setTreatStoriesAsFolders(treatStoriesAsFolders: boolean) {
-    appSettingsRepository.set(TREAT_STORIES_AS_FOLDERS_SETTING_KEY, serializeTreatStoriesAsFoldersSetting(treatStoriesAsFolders));
-    appSettingsRepository.set(STORIES_MIGRATION_DECISION_SETTING_KEY, treatStoriesAsFolders ? 'legacy' : 'stories');
+  async setTreatStoriesAsFolders(treatStoriesAsFolders: boolean) {
+    await appSettingsRepository.set(TREAT_STORIES_AS_FOLDERS_SETTING_KEY, serializeTreatStoriesAsFoldersSetting(treatStoriesAsFolders));
+    await appSettingsRepository.set(STORIES_MIGRATION_DECISION_SETTING_KEY, treatStoriesAsFolders ? 'legacy' : 'stories');
 
     return {
       treatStoriesAsFolders
     };
   },
 
-  setExcludedFolders(rules: string[]) {
+  async setExcludedFolders(rules: string[]) {
     const serializedRules = serializeExcludedFolderRulesForSetting(rules);
 
     if (serializedRules.length > 0) {
-      appSettingsRepository.set(EXCLUDED_FOLDERS_SETTING_KEY, serializedRules);
+      await appSettingsRepository.set(EXCLUDED_FOLDERS_SETTING_KEY, serializedRules);
     } else {
-      appSettingsRepository.remove(EXCLUDED_FOLDERS_SETTING_KEY);
+      await appSettingsRepository.remove(EXCLUDED_FOLDERS_SETTING_KEY);
     }
 
     return {
-      ...getExcludedFolderSettings(),
+      ...await getExcludedFolderSettings(),
       requiresScan: true
     };
   },
 
-  getOriginalMediaFile(id: number): { path: string; filename: string } | null {
+  async getOriginalMediaFile(id: number): Promise<{ path: string; filename: string } | null> {
     return resolveOriginalMediaFile(id);
   },
 
-  getOriginalImagePath(id: number): string | null {
-    return resolveOriginalMediaFile(id)?.path ?? null;
+  async getOriginalImagePath(id: number): Promise<string | null> {
+    return (await resolveOriginalMediaFile(id))?.path ?? null;
   },
 
   async deleteImage(id: number) {
-    if (!storageService.getState().libraryAvailable || scannerService.isLibraryRebuildRequired()) {
+    if (!storageService.getState().libraryAvailable || await scannerService.isLibraryRebuildRequired()) {
       return null;
     }
 
-    const imageRecord = imageRepository.getById(id);
+    const imageRecord = await imageRepository.getById(id);
     if (!imageRecord) {
       return null;
     }
 
-    const folder = folderRepository.getById(imageRecord.folder_id);
+    const folder = await folderRepository.getById(imageRecord.folder_id);
     if (!folder) {
       return null;
     }
@@ -2064,11 +2143,11 @@ export const galleryService = {
     ]);
 
     if (folder.avatar_image_id === imageRecord.id) {
-      folderRepository.setAvatar(imageRecord.folder_id, null, 'auto');
+      await folderRepository.setAvatar(imageRecord.folder_id, null, 'auto');
     }
 
-    imageRepository.deleteById(imageRecord.id);
-    folderRepository.syncAvatarSelection(imageRecord.folder_id);
+    await imageRepository.deleteById(imageRecord.id);
+    await folderRepository.syncAvatarSelection(imageRecord.folder_id);
 
     return {
       id: imageRecord.id,
@@ -2077,24 +2156,23 @@ export const galleryService = {
   },
 
   async deleteFolder(slug: string, options: DeleteFolderOptions = {}) {
-    if (!storageService.getState().libraryAvailable || scannerService.isLibraryRebuildRequired()) {
+    if (!storageService.getState().libraryAvailable || await scannerService.isLibraryRebuildRequired()) {
       return null;
     }
 
-    const folder = folderRepository.getSummaryBySlug(slug);
+    const folder = await folderRepository.getSummaryBySlug(slug);
     if (!folder) {
       return null;
     }
 
     const deleteSourceFolder = options.deleteSourceFolder === true;
     const normalizedFolderPath = folder.folder_path;
-    const images = imageRepository.listActiveByFolder(folder.id);
+    const images = await imageRepository.listActiveByFolder(folder.id);
 
     if (deleteSourceFolder) {
-      const affectedFolders = folderRepository
-        .getAll()
-        .filter((entry) => isSameOrDescendantFolderPath(normalizedFolderPath, entry.folder_path));
-      const affectedImages = affectedFolders.flatMap((entry) => imageRepository.listActiveByFolder(entry.id));
+      const allFolders = await folderRepository.getAll();
+      const affectedFolders = allFolders.filter((entry) => isSameOrDescendantFolderPath(normalizedFolderPath, entry.folder_path));
+      const affectedImages = (await Promise.all(affectedFolders.map((entry) => imageRepository.listActiveByFolder(entry.id)))).flat();
       const deletedImageCount = affectedImages.length;
 
       await removeDirectoryTree(resolveWithinRoot(appConfig.galleryRoot, path.join(appConfig.galleryRoot, normalizedFolderPath)));
@@ -2110,11 +2188,11 @@ export const galleryService = {
         })
       );
 
-      folderScanStateRepository.deleteTree(normalizedFolderPath);
+      await folderScanStateRepository.deleteTree(normalizedFolderPath);
 
       for (const affectedFolder of affectedFolders) {
-        folderRepository.setAvatar(affectedFolder.id, null, 'auto');
-        folderRepository.delete(affectedFolder.id);
+        await folderRepository.setAvatar(affectedFolder.id, null, 'auto');
+        await folderRepository.delete(affectedFolder.id);
       }
 
       return {
@@ -2143,9 +2221,9 @@ export const galleryService = {
       })
     );
 
-    folderRepository.setAvatar(folder.id, null, 'auto');
-    folderScanStateRepository.delete(normalizedFolderPath);
-    folderRepository.delete(folder.id);
+    await folderRepository.setAvatar(folder.id, null, 'auto');
+    await folderScanStateRepository.delete(normalizedFolderPath);
+    await folderRepository.delete(folder.id);
 
     await Promise.all([
       removeDirectoryIfEmpty(resolveWithinRoot(appConfig.galleryRoot, path.join(appConfig.galleryRoot, normalizedFolderPath))),

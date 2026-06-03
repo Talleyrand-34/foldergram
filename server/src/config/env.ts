@@ -31,10 +31,16 @@ const envSchema = z.object({
   GALLERY_EXCLUDED_FOLDERS: z.string().optional(),
   IMAGE_DETAIL_SOURCE: z.enum(['preview', 'original']).default('preview'),
   DERIVATIVE_MODE: z.enum(['eager', 'lazy']).default('eager'),
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development')
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  DB_DRIVER: z.enum(['sqlite', 'postgres']).default('sqlite'),
+  DATABASE_URL: z.string().optional()
 });
 
 const parsed = envSchema.parse(process.env);
+
+if (parsed.DB_DRIVER === 'postgres' && !parsed.DATABASE_URL) {
+  throw new Error('DATABASE_URL is required when DB_DRIVER=postgres');
+}
 const isProduction = parsed.NODE_ENV === 'production';
 const devClientPort = parsed.DEV_CLIENT_PORT ?? 4141;
 const serverPort = isProduction
@@ -161,5 +167,7 @@ export const appConfig = {
   geodataPath: path.join(geodataDir, 'geonames-cities500.sqlite'),
   geodataMetadataPath: path.join(geodataDir, 'geonames-cities500.meta.json'),
   imageDetailSource: parsed.IMAGE_DETAIL_SOURCE,
-  derivativeMode: parsed.DERIVATIVE_MODE
+  derivativeMode: parsed.DERIVATIVE_MODE,
+  dbDriver: parsed.DB_DRIVER,
+  databaseUrl: parsed.DATABASE_URL
 };
