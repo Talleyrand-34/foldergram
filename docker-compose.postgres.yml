@@ -24,7 +24,7 @@ services:
       IMAGE_DETAIL_SOURCE: preview
       DERIVATIVE_MODE: eager
       DB_DRIVER: postgres
-      DATABASE_URL: postgresql://foldergram:foldergram@postgres:5432/foldergram
+      DATABASE_URL: postgresql://foldergram:foldergram@postgres:5432/foldergram?sslmode=disable
     volumes:
       - ./data/gallery:/app/data/gallery
       - ./data/thumbnails:/app/data/thumbnails
