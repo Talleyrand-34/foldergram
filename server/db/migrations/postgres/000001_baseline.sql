@@ -1,5 +1,30 @@
 -- migrate:up
 
+CREATE TABLE IF NOT EXISTS places (
+  id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  slug TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  source TEXT NOT NULL,
+  source_confidence DOUBLE PRECISION NULL,
+  provider TEXT NULL,
+  provider_place_id TEXT NULL,
+  latitude DOUBLE PRECISION NULL,
+  longitude DOUBLE PRECISION NULL,
+  city_name TEXT NULL,
+  admin1_name TEXT NULL,
+  country_name TEXT NULL,
+  country_code TEXT NULL,
+  geonames_id INTEGER NULL,
+  is_approximate BOOLEAN NOT NULL DEFAULT TRUE,
+  name_override TEXT NULL,
+  description TEXT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- folders is created without the avatar_image_id FK (circular: images → folders → images).
+-- The constraint is added below after images is created.
 CREATE TABLE IF NOT EXISTS folders (
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   slug TEXT NOT NULL UNIQUE,
@@ -12,7 +37,6 @@ CREATE TABLE IF NOT EXISTS folders (
   avatar_source TEXT NOT NULL DEFAULT 'auto',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (avatar_image_id) REFERENCES images(id),
   FOREIGN KEY (story_owner_folder_id) REFERENCES folders(id) ON DELETE SET NULL
 );
 
@@ -53,28 +77,9 @@ CREATE TABLE IF NOT EXISTS images (
   FOREIGN KEY (place_id) REFERENCES places(id) ON DELETE SET NULL
 );
 
-CREATE TABLE IF NOT EXISTS places (
-  id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  slug TEXT NOT NULL UNIQUE,
-  display_name TEXT NOT NULL,
-  kind TEXT NOT NULL,
-  source TEXT NOT NULL,
-  source_confidence DOUBLE PRECISION NULL,
-  provider TEXT NULL,
-  provider_place_id TEXT NULL,
-  latitude DOUBLE PRECISION NULL,
-  longitude DOUBLE PRECISION NULL,
-  city_name TEXT NULL,
-  admin1_name TEXT NULL,
-  country_name TEXT NULL,
-  country_code TEXT NULL,
-  geonames_id INTEGER NULL,
-  is_approximate BOOLEAN NOT NULL DEFAULT TRUE,
-  name_override TEXT NULL,
-  description TEXT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+-- Resolve the circular FK: folders.avatar_image_id → images.id
+ALTER TABLE folders ADD CONSTRAINT fk_folders_avatar_image_id
+  FOREIGN KEY (avatar_image_id) REFERENCES images(id);
 
 CREATE TABLE IF NOT EXISTS scan_runs (
   id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
