@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS images (
   extension TEXT NOT NULL,
   relative_path TEXT NOT NULL UNIQUE,
   absolute_path TEXT NOT NULL,
-  file_size INTEGER NOT NULL,
+  file_size BIGINT NOT NULL,
   width INTEGER NOT NULL,
   height INTEGER NOT NULL,
   display_orientation INTEGER NULL,
@@ -60,8 +60,8 @@ CREATE TABLE IF NOT EXISTS images (
   checksum_or_fingerprint TEXT NOT NULL,
   mtime_ms DOUBLE PRECISION NOT NULL,
   first_seen_at TEXT NOT NULL,
-  sort_timestamp INTEGER NOT NULL,
-  taken_at INTEGER NULL,
+  sort_timestamp BIGINT NOT NULL,
+  taken_at BIGINT NULL,
   taken_at_source TEXT NULL,
   exif_json TEXT NULL,
   thumbnail_path TEXT NOT NULL,
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS folder_scan_state (
   signature TEXT NOT NULL,
   file_count INTEGER NOT NULL,
   max_mtime_ms DOUBLE PRECISION NOT NULL,
-  total_size INTEGER NOT NULL,
+  total_size BIGINT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

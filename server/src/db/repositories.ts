@@ -71,8 +71,8 @@ function initDialectFragments(dialect: 'sqlite' | 'postgres'): void {
     INSERT_OR_IGNORE = 'INSERT OR IGNORE';
     INSERT_OR_IGNORE_SUFFIX = '';
   } else {
-    BOOL_TRUE = '1';
-    BOOL_FALSE = '0';
+    BOOL_TRUE = 'true';
+    BOOL_FALSE = 'false';
     COLLATE_NOCASE = '';
     GROUP_CONCAT_FN = (e) => `STRING_AGG(${e}::text, ',')`;
     STRFTIME_MONTH_DAY = (e) => `to_char(to_timestamp(${e}/1000.0), 'MM-DD')`;
@@ -263,7 +263,8 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function serializeAnimatedFlag(isAnimated: boolean | null | undefined): number {
+function serializeAnimatedFlag(isAnimated: boolean | null | undefined): number | boolean {
+  if (getDriver().dialect === 'postgres') return !!isAnimated;
   return isAnimated ? 1 : 0;
 }
 
@@ -609,8 +610,10 @@ export const folderRepository = {
   },
 
   async setAvatar(folderId: number, imageId: number | null, source: FolderAvatarSource = 'auto'): Promise<void> {
-    await getDriver().execute(
-      'UPDATE folders SET avatar_image_id = ?, avatar_source = ?, updated_at = ? WHERE id = ? AND (avatar_image_id IS NOT ? OR avatar_source != ?)',
+    const driver = getDriver();
+    const isNotSql = driver.dialect === 'postgres' ? 'IS DISTINCT FROM' : 'IS NOT';
+    await driver.execute(
+      `UPDATE folders SET avatar_image_id = ?, avatar_source = ?, updated_at = ? WHERE id = ? AND (avatar_image_id ${isNotSql} ? OR avatar_source != ?)`,
       [imageId, source, nowIso(), folderId, imageId, source]
     );
   },
@@ -839,7 +842,7 @@ export const imageRepository = {
           media_type, mime_type, duration_ms, is_animated, checksum_or_fingerprint, mtime_ms, first_seen_at, sort_timestamp, taken_at, taken_at_source, exif_json,
           thumbnail_path, preview_path, playback_strategy, is_deleted, deleted_at, is_trashed, trashed_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, 0, NULL, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, false, NULL, false, NULL, ?)
         ON CONFLICT(relative_path) DO UPDATE SET
           folder_id = excluded.folder_id,
           asset_key = COALESCE(images.asset_key, excluded.asset_key),
