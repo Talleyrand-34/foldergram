@@ -242,6 +242,7 @@ export interface ScanProgressSnapshot {
   lastCompletedScan: ScanRunRecord | null;
 }
 
+const folderLimit = pLimit(appConfig.scanFolderConcurrency);
 const discoveryLimit = pLimit(appConfig.scanDiscoveryConcurrency);
 const derivativeLimit = pLimit(appConfig.scanDerivativeConcurrency);
 const HEARTBEAT_INTERVAL_MS = 5000;
@@ -1763,6 +1764,7 @@ class ScannerService {
         appConfig.managedGalleryRelativeIgnores.length > 0
           ? formatStep('ignored-managed-paths', appConfig.managedGalleryRelativeIgnores.join(','))
           : null,
+        formatStep('folder-concurrency', appConfig.scanFolderConcurrency),
         formatStep('discovery-concurrency', appConfig.scanDiscoveryConcurrency),
         formatStep('derivative-concurrency', appConfig.scanDerivativeConcurrency)
       ])
@@ -1906,8 +1908,15 @@ class ScannerService {
         }
       };
 
+      // Phase 1: Discover all source folders (filesystem traversal only, no DB)
+      const sourceFolderCandidates: SourceFolderCandidate[] = [];
       await this.walkMediaSourceFolders(appConfig.galleryRoot, async (sourceFolder) => {
         discoveredSourceFolders += 1;
+        sourceFolderCandidates.push(sourceFolder);
+      }, null, treatStoriesAsFolders, excludedFolderRules);
+
+      // Phase 2: Process folders with bounded concurrency
+      await Promise.all(sourceFolderCandidates.map((sourceFolder) => folderLimit(async () => {
         const result = await this.scanSourceFolder(
           sourceFolder,
           existingFolders,
@@ -1944,7 +1953,7 @@ class ScannerService {
           processedFolders: this.progress.processedFolders + 1
         });
         this.logProgress('folder');
-      }, null, treatStoriesAsFolders, excludedFolderRules);
+      })));
 
       for (const folder of existingFolders) {
         if (!discoveredFolderIds.has(folder.id)) {
