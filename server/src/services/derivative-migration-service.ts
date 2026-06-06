@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import pLimit from 'p-limit';
+
 import {
   DERIVATIVE_STORAGE_LAYOUT_VERSION_SETTING_KEY,
   DERIVATIVE_STORAGE_MIGRATION_COMPLETE_AT_SETTING_KEY,
@@ -516,10 +518,13 @@ class DerivativeMigrationService {
     let repairedRows = 0;
     let missingFiles = 0;
     let repairErrors = 0;
+    const fatalErrors: string[] = [];
 
-    for (const row of await imageRepository.listActive()) {
+    const limit = pLimit(appConfig.scanDerivativeConcurrency);
+    const rows = await imageRepository.listActive();
+
+    await Promise.all(rows.map((row) => limit(async () => {
       const currentFile = normalizePath(row.relative_path);
-      let fatalRepairError: string | null = null;
 
       try {
         const repairSummary = await this.repairRow(row, {
@@ -529,8 +534,8 @@ class DerivativeMigrationService {
           onRepairingPreview: () => {
             callbacks.onRepairingPreview?.(currentFile);
           },
-          onRegeneratingDerivatives: (repairedFiles) => {
-            callbacks.onRegeneratingDerivatives?.(currentFile, repairedFiles);
+          onRegeneratingDerivatives: (repairedFilesCount) => {
+            callbacks.onRegeneratingDerivatives?.(currentFile, repairedFilesCount);
           }
         });
 
@@ -549,7 +554,7 @@ class DerivativeMigrationService {
           );
 
           if (appConfig.scanMediaErrorMode === 'fail') {
-            fatalRepairError = `${currentFile}: ${repairSummary.regenerationError.message}`;
+            fatalErrors.push(`${currentFile}: ${repairSummary.regenerationError.message}`);
           }
         }
 
@@ -565,13 +570,13 @@ class DerivativeMigrationService {
         logDerivativeRepairFailure(currentFile, null, message, error);
 
         if (appConfig.scanMediaErrorMode === 'fail') {
-          throw new Error(`${currentFile}: ${message}`);
+          fatalErrors.push(`${currentFile}: ${message}`);
         }
       }
+    })));
 
-      if (fatalRepairError) {
-        throw new Error(fatalRepairError);
-      }
+    if (fatalErrors.length > 0) {
+      throw new Error(fatalErrors[0]);
     }
 
     return {
