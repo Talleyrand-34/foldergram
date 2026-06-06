@@ -84,18 +84,20 @@ function normalizeBooleanParams(sql: string, params: unknown[]): unknown[] {
   return result;
 }
 
+function quoteAliases(sql: string): string {
+  return sql.replace(/\bAS (?!")([a-zA-Z_][a-zA-Z0-9_]*)/g, (match, alias) =>
+    /[A-Z]/.test(alias) ? `AS "${alias}"` : match
+  );
+}
+
 function prepSql(sql: string): string {
-  return rewritePlaceholders(normalizeBooleanLiterals(sql));
+  return rewritePlaceholders(normalizeBooleanLiterals(quoteAliases(sql)));
 }
 
 function normalizeRow<T>(row: Record<string, unknown>): T {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(row)) {
-    if (BOOLEAN_COLUMNS.has(key) && typeof value === 'boolean') {
-      result[key] = value ? 1 : 0;
-    } else {
-      result[key] = value;
-    }
+    result[key] = typeof value === 'boolean' ? (value ? 1 : 0) : value;
   }
   return result as T;
 }
