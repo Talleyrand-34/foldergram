@@ -252,16 +252,42 @@ function handleGlobalWheel(event: WheelEvent) {
   deckElement.value?.navigateByWheel(event.deltaY);
 }
 
+function handleKeydown(event: KeyboardEvent) {
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+    return;
+  }
+
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+    return;
+  }
+
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    goToPrevious();
+  } else if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    goToNext();
+  } else if (event.key === '=') {
+    event.preventDefault();
+    toggleSpeed();
+  } else if (event.key === ' ') {
+    event.preventDefault();
+    deckElement.value?.toggleActivePlayback();
+  }
+}
+
 onMounted(async () => {
   updateViewportMode();
   window.addEventListener('resize', updateViewportMode);
   window.addEventListener('wheel', handleGlobalWheel, { passive: false });
+  window.addEventListener('keydown', handleKeydown);
   await reelsStore.loadInitial();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateViewportMode);
   window.removeEventListener('wheel', handleGlobalWheel);
+  window.removeEventListener('keydown', handleKeydown);
 });
 
 watch(activeItem, (item) => {

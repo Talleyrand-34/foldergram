@@ -413,6 +413,8 @@ onBeforeUnmount(() => {
     // Ignore pause rejections before the provider is ready.
   });
 });
+
+defineExpose({ togglePlayback: handleSurfaceClick });
 </script>
 
 <style scoped>
