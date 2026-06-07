@@ -20,7 +20,7 @@
       >
         <div class="text-center">
           <p class="m-0 text-[1.35rem] font-bold tracking-tight">
-            {{ formatCount(foldersStore.items.length) }}
+            {{ formatCount(appStore.stats?.folders ?? foldersStore.items.length) }}
           </p>
           <p class="m-0 text-muted text-[0.72rem] uppercase tracking-[0.08em]">
             {{ t('libraryPage.stats.folders') }}
@@ -29,7 +29,7 @@
         <div class="w-px h-8 bg-border"></div>
         <div class="text-center">
           <p class="m-0 text-[1.35rem] font-bold tracking-tight">
-            {{ formatCount(totalIndexedImages) }}
+            {{ formatCount(appStore.stats?.indexedImages ?? totalIndexedImages) }}
           </p>
           <p class="m-0 text-muted text-[0.72rem] uppercase tracking-[0.08em]">
             {{ t('libraryPage.stats.posts') }}

@@ -1249,7 +1249,7 @@ export const imageRepository = {
 
   async countFeed(): Promise<number> {
     const row = await getDriver().queryOne<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM images WHERE ${VISIBLE_IMAGE_WHERE_UNSCOPED_SQL}`
+      `SELECT COALESCE(SUM(image_count), 0) AS count FROM folders WHERE role = 'normal'`
     );
     return Number(row?.count ?? 0);
   },
@@ -1953,9 +1953,9 @@ export const imageRepository = {
   },
 
   async countByMediaType(mediaType: MediaType): Promise<number> {
+    const col = mediaType === 'video' ? 'video_count' : 'image_count';
     const row = await getDriver().queryOne<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM images WHERE ${VISIBLE_IMAGE_WHERE_UNSCOPED_SQL} AND media_type = ?`,
-      [mediaType]
+      `SELECT COALESCE(SUM(${col}), 0) AS count FROM folders WHERE role = 'normal'`
     );
     return Number(row?.count ?? 0);
   },
