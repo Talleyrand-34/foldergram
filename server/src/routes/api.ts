@@ -1,13 +1,17 @@
 import express from 'express';
 import { z } from 'zod';
 
+import { performance } from 'node:perf_hooks';
+
 import { AUTH_PASSWORD_MAX_LENGTH, AUTH_PASSWORD_MIN_LENGTH, authService } from '../services/auth-service.js';
 import { galleryService } from '../services/gallery-service.js';
 import { requireCapability } from '../middleware/auth-protection.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
+import { metricsService } from '../services/metrics-service.js';
 import { LIBRARY_REBUILD_REQUIRED_MESSAGE, scannerService } from '../services/scanner-service.js';
 import { storageService } from '../services/storage-service.js';
 import { watcherService } from '../services/watcher-service.js';
+import { databaseManager } from '../db/database.js';
 
 const router = express.Router();
 
@@ -207,6 +211,33 @@ router.get('/health', (_request, response) => {
       usingInMemoryDatabase: storageState.usingInMemoryDatabase
     }
   });
+});
+
+router.get('/db', requireCapability('canAccessSettings', 'Admin access required'), async (_request, response) => {
+  const driver = await databaseManager.getConnection();
+  const t = performance.now();
+  let ok = false;
+  let error: string | null = null;
+  try {
+    await driver.queryOne('SELECT 1');
+    ok = true;
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+  }
+  const latency_ms = Math.round(performance.now() - t);
+  const stats = metricsService.getAllQueryStats();
+  response.json({
+    ok,
+    dialect: driver.dialect,
+    latency_ms,
+    error,
+    total_queries: stats.reduce((sum, s) => sum + s.count, 0),
+    distinct_queries: stats.length
+  });
+});
+
+router.get('/db/time', requireCapability('canAccessSettings', 'Admin access required'), (_request, response) => {
+  response.json(metricsService.getAllQueryStats());
 });
 
 router.get('/auth/status', (request, response) => {

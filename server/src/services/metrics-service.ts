@@ -16,6 +16,15 @@ interface QueryStat {
   totalMs: number;
   maxMs: number;
   slowSamples: SlowSample[];
+  caller: string;
+}
+
+export interface QueryTimeStat {
+  fn: string;
+  sql: string;
+  count: number;
+  avg_ms: number;
+  max_ms: number;
 }
 
 export interface MetricsSummary {
@@ -66,7 +75,7 @@ class MetricsService {
     }
   }
 
-  recordQuery(sql: string, elapsedMs: number, slowThresholdMs: number): void {
+  recordQuery(sql: string, elapsedMs: number, slowThresholdMs: number, getCaller?: () => string): void {
     const key = sqlKey(sql);
     const existing = this.queries.get(key);
     if (existing) {
@@ -84,11 +93,24 @@ class MetricsService {
         count: 1,
         totalMs: elapsedMs,
         maxMs: elapsedMs,
+        caller: getCaller?.() ?? 'unknown',
         slowSamples: elapsedMs >= slowThresholdMs
           ? [{ elapsed_ms: elapsedMs, sql: key, timestamp: new Date().toISOString() }]
           : []
       });
     }
+  }
+
+  getAllQueryStats(): QueryTimeStat[] {
+    return [...this.queries.entries()]
+      .map(([key, s]) => ({
+        fn: s.caller,
+        sql: key,
+        count: s.count,
+        avg_ms: Math.round(s.totalMs / s.count),
+        max_ms: s.maxMs
+      }))
+      .sort((a, b) => b.avg_ms - a.avg_ms);
   }
 
   getSummary(): MetricsSummary {

@@ -7,8 +7,19 @@ import { log } from '../../services/log-service.js';
 import { metricsService } from '../../services/metrics-service.js';
 import type { IDbDriver, QueryResult } from './types.js';
 
-function recordQuery(sql: string, elapsedMs: number): void {
-  metricsService.recordQuery(sql, elapsedMs, appConfig.logSlowQueryMs);
+function extractCaller(): string {
+  const stack = new Error().stack ?? '';
+  for (const line of stack.split('\n')) {
+    if (line.includes('repositories.')) {
+      const match = line.match(/at (?:async )?(?:Object\.)?(\w+)\s/);
+      if (match?.[1]) return match[1];
+    }
+  }
+  return 'unknown';
+}
+
+function recordQuery(sql: string, elapsedMs: number, getCaller?: () => string): void {
+  metricsService.recordQuery(sql, elapsedMs, appConfig.logSlowQueryMs, getCaller);
   if (elapsedMs >= appConfig.logSlowQueryMs) {
     log.info('Slow query', { elapsed: `${elapsedMs}ms`, sql: sql.replace(/\s+/g, ' ').trim().slice(0, 200) });
   }
@@ -113,7 +124,7 @@ export class PostgresDriver implements IDbDriver {
   async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<QueryResult<T>> {
     const t = performance.now();
     const result = await this.pool.query(prepSql(sql), normalizeBooleanParams(sql, params));
-    recordQuery(sql, Math.round(performance.now() - t));
+    recordQuery(sql, Math.round(performance.now() - t), extractCaller);
     const rows = result.rows.map((row: Record<string, unknown>) => normalizeRow<T>(row));
     return { rows, rowCount: result.rowCount ?? rows.length };
   }
@@ -121,7 +132,7 @@ export class PostgresDriver implements IDbDriver {
   async queryOne<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T | undefined> {
     const t = performance.now();
     const result = await this.pool.query(prepSql(sql), normalizeBooleanParams(sql, params));
-    recordQuery(sql, Math.round(performance.now() - t));
+    recordQuery(sql, Math.round(performance.now() - t), extractCaller);
     if (result.rows.length === 0) {
       return undefined;
     }
@@ -131,7 +142,7 @@ export class PostgresDriver implements IDbDriver {
   async execute(sql: string, params: unknown[] = []): Promise<QueryResult> {
     const t = performance.now();
     const result = await this.pool.query(prepSql(sql), normalizeBooleanParams(sql, params));
-    recordQuery(sql, Math.round(performance.now() - t));
+    recordQuery(sql, Math.round(performance.now() - t), extractCaller);
     const lastInsertId = result.rows.length > 0 && result.rows[0].id != null
       ? Number(result.rows[0].id)
       : undefined;
@@ -175,7 +186,7 @@ class PostgresClientDriver implements IDbDriver {
   async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<QueryResult<T>> {
     const t = performance.now();
     const result = await this.client.query(prepSql(sql), normalizeBooleanParams(sql, params));
-    recordQuery(sql, Math.round(performance.now() - t));
+    recordQuery(sql, Math.round(performance.now() - t), extractCaller);
     const rows = result.rows.map((row: Record<string, unknown>) => normalizeRow<T>(row));
     return { rows, rowCount: result.rowCount ?? rows.length };
   }
@@ -183,7 +194,7 @@ class PostgresClientDriver implements IDbDriver {
   async queryOne<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T | undefined> {
     const t = performance.now();
     const result = await this.client.query(prepSql(sql), normalizeBooleanParams(sql, params));
-    recordQuery(sql, Math.round(performance.now() - t));
+    recordQuery(sql, Math.round(performance.now() - t), extractCaller);
     if (result.rows.length === 0) {
       return undefined;
     }
@@ -193,7 +204,7 @@ class PostgresClientDriver implements IDbDriver {
   async execute(sql: string, params: unknown[] = []): Promise<QueryResult> {
     const t = performance.now();
     const result = await this.client.query(prepSql(sql), normalizeBooleanParams(sql, params));
-    recordQuery(sql, Math.round(performance.now() - t));
+    recordQuery(sql, Math.round(performance.now() - t), extractCaller);
     const lastInsertId = result.rows.length > 0 && result.rows[0].id != null
       ? Number(result.rows[0].id)
       : undefined;
