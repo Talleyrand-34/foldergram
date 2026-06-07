@@ -21,7 +21,8 @@ import {
   folderScanStateRepository,
   imageRepository,
   maintenanceRepository,
-  scanRunRepository
+  scanRunRepository,
+  statsRepository
 } from '../db/repositories.js';
 import { generateDerivatives, generateThumbnailDerivative, readMediaMetadata } from './derivative-service.js';
 import {
@@ -808,6 +809,7 @@ class ScannerService {
       ...summary,
       finished_at: new Date().toISOString()
     });
+    await statsRepository.refresh();
   }
 
   private async applyScanErrors(summary: ScanSummary, errors: ScanErrorCollector): Promise<void> {

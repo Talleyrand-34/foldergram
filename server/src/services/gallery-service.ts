@@ -25,7 +25,8 @@ import {
   imageRepository,
   likeRepository,
   placeRepository,
-  scanRunRepository
+  scanRunRepository,
+  statsRepository
 } from '../db/repositories.js';
 import type {
   CollectionMembershipRecord,
@@ -1845,6 +1846,7 @@ export const galleryService = {
       await imageRepository.moveToTrash(id);
       await folderRepository.syncAvatarSelection(imageRecord.folder_id);
       await folderRepository.updateCounts(imageRecord.folder_id);
+      await statsRepository.refresh();
     }
 
     return {
@@ -1871,6 +1873,7 @@ export const galleryService = {
     await imageRepository.restoreFromTrash(id);
     await folderRepository.syncAvatarSelection(imageRecord.folder_id);
     await folderRepository.updateCounts(imageRecord.folder_id);
+    await statsRepository.refresh();
 
     return {
       id: imageRecord.id,
@@ -2142,6 +2145,7 @@ export const galleryService = {
     await imageRepository.deleteById(imageRecord.id);
     await folderRepository.syncAvatarSelection(imageRecord.folder_id);
     await folderRepository.updateCounts(imageRecord.folder_id);
+    await statsRepository.refresh();
 
     return {
       id: imageRecord.id,
@@ -2189,6 +2193,8 @@ export const galleryService = {
         await folderRepository.delete(affectedFolder.id);
       }
 
+      await statsRepository.refresh();
+
       return {
         slug: folder.slug,
         deletedImageCount,
@@ -2218,6 +2224,7 @@ export const galleryService = {
     await folderRepository.setAvatar(folder.id, null, 'auto');
     await folderScanStateRepository.delete(normalizedFolderPath);
     await folderRepository.delete(folder.id);
+    await statsRepository.refresh();
 
     await Promise.all([
       removeDirectoryIfEmpty(resolveWithinRoot(appConfig.galleryRoot, path.join(appConfig.galleryRoot, normalizedFolderPath))),

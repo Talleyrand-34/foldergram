@@ -671,17 +671,7 @@ export const folderRepository = {
   },
 
   async count(): Promise<number> {
-    const row = await getDriver().queryOne<{ count: number }>(
-      `SELECT COUNT(*) AS count
-      FROM folders
-      WHERE folders.role = 'normal'
-        AND EXISTS (
-          SELECT 1
-          FROM images
-          WHERE images.folder_id = folders.id AND ${VISIBLE_IMAGE_WHERE_UNSCOPED_SQL}
-        )`
-    );
-    return Number(row?.count ?? 0);
+    return statsRepository.getFolderCount();
   },
 
   async setAvatar(folderId: number, imageId: number | null, source: FolderAvatarSource = 'auto'): Promise<void> {
@@ -1248,10 +1238,7 @@ export const imageRepository = {
   },
 
   async countFeed(): Promise<number> {
-    const row = await getDriver().queryOne<{ count: number }>(
-      `SELECT COALESCE(SUM(image_count), 0) AS count FROM folders WHERE role = 'normal'`
-    );
-    return Number(row?.count ?? 0);
+    return statsRepository.getMediaCount();
   },
 
   async countVisibleSearch(query: string): Promise<number> {
@@ -1953,11 +1940,9 @@ export const imageRepository = {
   },
 
   async countByMediaType(mediaType: MediaType): Promise<number> {
-    const col = mediaType === 'video' ? 'video_count' : 'image_count';
-    const row = await getDriver().queryOne<{ count: number }>(
-      `SELECT COALESCE(SUM(${col}), 0) AS count FROM folders WHERE role = 'normal'`
-    );
-    return Number(row?.count ?? 0);
+    return mediaType === 'video'
+      ? statsRepository.getVideoCount()
+      : statsRepository.getMediaCount();
   },
 
   async countWithThumbnail(): Promise<number> {
@@ -2466,6 +2451,43 @@ export const collectionConstants = {
 // ---------------------------------------------------------------------------
 // appSettingsRepository
 // ---------------------------------------------------------------------------
+
+export const statsRepository = {
+  async refresh(): Promise<void> {
+    const driver = getDriver();
+    const isPostgres = driver.dialect === 'postgres';
+    const cast = isPostgres ? '::text' : '';
+    await driver.execute(
+      `INSERT INTO app_settings (key, value)
+      VALUES
+        ('stat.media_count', (SELECT COALESCE(SUM(image_count), 0)${cast} FROM folders WHERE role = 'normal')),
+        ('stat.video_count', (SELECT COALESCE(SUM(video_count), 0)${cast} FROM folders WHERE role = 'normal')),
+        ('stat.folder_count', (SELECT COUNT(*)${cast} FROM folders WHERE role = 'normal'))
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    );
+  },
+
+  async getMediaCount(): Promise<number> {
+    const row = await getDriver().queryOne<{ value: string }>(
+      `SELECT value FROM app_settings WHERE key = 'stat.media_count'`
+    );
+    return row ? Number(row.value) : 0;
+  },
+
+  async getVideoCount(): Promise<number> {
+    const row = await getDriver().queryOne<{ value: string }>(
+      `SELECT value FROM app_settings WHERE key = 'stat.video_count'`
+    );
+    return row ? Number(row.value) : 0;
+  },
+
+  async getFolderCount(): Promise<number> {
+    const row = await getDriver().queryOne<{ value: string }>(
+      `SELECT value FROM app_settings WHERE key = 'stat.folder_count'`
+    );
+    return row ? Number(row.value) : 0;
+  }
+};
 
 export const appSettingsRepository = {
   async get(key: string): Promise<string | null> {
