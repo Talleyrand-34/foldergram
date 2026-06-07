@@ -184,8 +184,8 @@ WITH
 _metrics AS (
   SELECT
     images.folder_id,
-    COUNT(images.id) AS image_count,
-    SUM(CASE WHEN images.media_type = 'video' THEN 1 ELSE 0 END) AS video_count,
+    COUNT(images.id)::int AS image_count,
+    SUM(CASE WHEN images.media_type = 'video' THEN 1 ELSE 0 END)::int AS video_count,
     MAX(images.mtime_ms) AS latest_image_mtime_ms
   FROM images
   INNER JOIN folders AS _mf ON _mf.id = images.folder_id AND _mf.role = 'normal'
@@ -820,7 +820,7 @@ export const placeRepository = {
   async list(): Promise<Array<PlaceRecord & { post_count: number }>> {
     const nameOrder = COLLATE_NOCASE ? `places.display_name ${COLLATE_NOCASE} ASC` : 'places.display_name ASC';
     const { rows } = await getDriver().query<PlaceRecord & { post_count: number }>(
-      `SELECT places.*, COUNT(images.id) AS post_count
+      `SELECT places.*, COUNT(images.id)::int AS post_count
       FROM places
       INNER JOIN images ON images.place_id = places.id
       INNER JOIN folders ON folders.id = images.folder_id
