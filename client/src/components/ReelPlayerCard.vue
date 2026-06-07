@@ -223,6 +223,7 @@ async function syncPlayback() {
     return;
   }
 
+  applyPlaybackRate(player);
   syncMuted(player, appStore.videoMuted);
 
   try {
