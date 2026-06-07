@@ -597,6 +597,10 @@ router.get('/folders/:slug/stories/:id', async (request, response) => {
   response.json(payload);
 });
 
+router.get('/likes/ids', requireCapability('canUseSharedLikes', 'Authentication required.'), async (_request, response) => {
+  response.json(await galleryService.getLikeIds());
+});
+
 router.get('/likes', requireCapability('canUseSharedLikes', 'Authentication required.'), async (request, response) => {
   const query = paginationQuerySchema.parse(request.query);
   response.json(await galleryService.getLikes(query.page, query.limit));

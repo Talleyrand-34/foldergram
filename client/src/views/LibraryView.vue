@@ -204,6 +204,13 @@
           </button>
         </div>
       </section>
+
+      <InfiniteLoader
+        v-if="foldersStore.items.length > 0"
+        :loading="foldersStore.loadingList"
+        :has-more="foldersStore.listHasMore"
+        @load-more="foldersStore.loadMore()"
+      />
     </template>
 
     <!-- Context menu modal -->
@@ -334,6 +341,7 @@
   import ConfirmDialog from "../components/ConfirmDialog.vue"
   import EmptyState from "../components/EmptyState.vue"
   import ErrorState from "../components/ErrorState.vue"
+  import InfiniteLoader from "../components/InfiniteLoader.vue"
   import { deleteFolder } from "../api/gallery"
   import { useAppStore } from "../stores/app"
   import { useAuthStore } from "../stores/auth"

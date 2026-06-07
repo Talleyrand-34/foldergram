@@ -2009,6 +2009,13 @@ export const likeRepository = {
     return getDriver().queryOne<LikeRecord>('SELECT * FROM likes WHERE image_id = ?', [imageId]);
   },
 
+  async listLikedIds(): Promise<number[]> {
+    const { rows } = await getDriver().query<{ image_id: number }>(
+      'SELECT image_id FROM likes ORDER BY created_at DESC'
+    );
+    return rows.map((r) => r.image_id);
+  },
+
   async countLiked(): Promise<number> {
     const row = await getDriver().queryOne<{ count: number }>(
       `SELECT COUNT(*) AS count

@@ -1815,6 +1815,11 @@ export const galleryService = {
     };
   },
 
+  async getLikeIds() {
+    if (!storageService.getState().libraryAvailable) return { ids: [] };
+    return { ids: await likeRepository.listLikedIds() };
+  },
+
   async getLikes(page: number, limit: number) {
     if (!storageService.getState().libraryAvailable) {
       return { items: [], page, limit, total: 0, hasMore: false };
