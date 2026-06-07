@@ -168,7 +168,7 @@ const desktopInfoSidebarAnchor = computed<'left' | 'right'>(() =>
   desktopInfoPanelSide.value === 'right' ? 'left' : 'right'
 );
 
-const speedLabel = computed(() => appStore.videoPlaybackRate === 1 ? '×1' : '×2');
+const speedLabel = computed(() => `×${appStore.videoPlaybackRate}`);
 
 const activeItem = computed(() => reelsStore.activeItem);
 const activeFolder = computed(() =>
