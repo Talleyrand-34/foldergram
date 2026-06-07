@@ -83,9 +83,10 @@ async function serveOrGenerate(
     return;
   }
 
-  // Fast path: file already exists.
+  // Fast path: file already exists and is non-empty.
   try {
-    await fs.access(absoluteOutputPath);
+    const stat = await fs.stat(absoluteOutputPath);
+    if (stat.size === 0) throw new Error('empty');
     try {
       const result = await sendDerivativeFile(response, absoluteOutputPath);
       if (result === 'aborted') {
@@ -119,6 +120,12 @@ async function serveOrGenerate(
   if (!imageRecord) {
     applyDerivativeErrorHeaders(response);
     response.status(404).json({ message: 'Derivative not found.' });
+    return;
+  }
+
+  // Video previews are never served — always redirect to the original file.
+  if (kind === 'preview' && imageRecord.media_type === 'video') {
+    response.redirect(302, `/api/originals/${imageRecord.id}`);
     return;
   }
 

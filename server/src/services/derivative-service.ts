@@ -634,22 +634,17 @@ function requireAnimatedAvifVideoStreamIndex(descriptor: AvifSourceDescriptor): 
 async function generateVideoDerivatives(
   sourcePath: string,
   thumbnailAbsolutePath: string,
-  previewAbsolutePath: string,
   force: boolean
 ): Promise<Pick<DerivativeResult, 'generatedThumbnail' | 'generatedPreview'>> {
-  const [shouldWriteThumbnail, shouldWritePreview] = await Promise.all([
-    force ? Promise.resolve(true) : fileExists(thumbnailAbsolutePath).then((exists) => !exists),
-    force ? Promise.resolve(true) : fileExists(previewAbsolutePath).then((exists) => !exists)
-  ]);
+  const shouldWriteThumbnail = force || !(await fileExists(thumbnailAbsolutePath));
 
-  await Promise.all([
-    shouldWriteThumbnail ? writeVideoThumbnail(sourcePath, thumbnailAbsolutePath) : Promise.resolve(),
-    shouldWritePreview ? writeVideoPreview(sourcePath, previewAbsolutePath) : Promise.resolve()
-  ]);
+  if (shouldWriteThumbnail) {
+    await writeVideoThumbnail(sourcePath, thumbnailAbsolutePath);
+  }
 
   return {
     generatedThumbnail: shouldWriteThumbnail,
-    generatedPreview: shouldWritePreview
+    generatedPreview: false
   };
 }
 
@@ -750,7 +745,7 @@ export async function generateDerivatives(
 
   if (mediaType === 'video') {
     metadata = await readVideoMetadata(sourcePath);
-    generated = await generateVideoDerivatives(sourcePath, thumbnailAbsolutePath, previewAbsolutePath, force);
+    generated = await generateVideoDerivatives(sourcePath, thumbnailAbsolutePath, force);
   } else if (isAvif) {
     const avifSource = await inspectAvifSource(sourcePath, {
       requireAnimatedVideoStreamIndex: true
