@@ -35,7 +35,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DB_DRIVER: z.enum(['sqlite', 'postgres']).default('sqlite'),
   DATABASE_URL: z.string().optional(),
-  LOG_SLOW_QUERY_MS: z.coerce.number().int().min(0).default(200)
+  LOG_SLOW_QUERY_MS: z.coerce.number().int().min(0).default(200),
+  REELS_CANDIDATE_LIMIT: z.coerce.number().int().min(100).default(2000)
 });
 
 const parsed = envSchema.parse(process.env);
@@ -173,5 +174,6 @@ export const appConfig = {
   derivativeMode: parsed.DERIVATIVE_MODE,
   dbDriver: parsed.DB_DRIVER,
   databaseUrl: parsed.DATABASE_URL,
-  logSlowQueryMs: parsed.LOG_SLOW_QUERY_MS
+  logSlowQueryMs: parsed.LOG_SLOW_QUERY_MS,
+  reelsCandidateLimit: parsed.REELS_CANDIDATE_LIMIT
 };

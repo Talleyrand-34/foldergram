@@ -569,6 +569,13 @@ export const folderRepository = {
     return getDriver().queryOne<FolderRecord>("SELECT * FROM folders WHERE slug = ? AND role = 'normal'", [slug]);
   },
 
+  async countNormal(): Promise<number> {
+    const row = await getDriver().queryOne<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM folders WHERE role = 'normal'"
+    );
+    return Number(row?.count ?? 0);
+  },
+
   async getAllSummaries(): Promise<FolderSummaryRecord[]> {
     const driver = getDriver();
     const nameOrder = COLLATE_NOCASE
@@ -586,6 +593,26 @@ export const folderRepository = {
     return rows;
   },
 
+  async getSummaryPage(page: number, limit: number): Promise<FolderSummaryRecord[]> {
+    const offset = (page - 1) * limit;
+    const driver = getDriver();
+    const nameOrder = COLLATE_NOCASE
+      ? `folders.name ${COLLATE_NOCASE} ASC`
+      : 'folders.name ASC';
+    const pathOrder = COLLATE_NOCASE
+      ? `folders.folder_path ${COLLATE_NOCASE} ASC`
+      : 'folders.folder_path ASC';
+    const { rows } = await driver.query<FolderSummaryRecord>(
+      `${getFolderSummarySql()}
+      WHERE folders.role = 'normal'
+      GROUP BY folders.id
+      ORDER BY latest_image_mtime_ms DESC, ${nameOrder}, ${pathOrder}
+      LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+    return rows;
+  },
+
   async getBySlug(slug: string): Promise<FolderRecord | undefined> {
     return getDriver().queryOne<FolderRecord>('SELECT * FROM folders WHERE slug = ?', [slug]);
   },
@@ -599,6 +626,17 @@ export const folderRepository = {
       'SELECT * FROM folders WHERE folder_path = ?',
       [normalizePath(folderPath)]
     );
+  },
+
+  async getByFolderPaths(folderPaths: string[]): Promise<FolderRecord[]> {
+    if (folderPaths.length === 0) return [];
+    const normalized = folderPaths.map(normalizePath);
+    const placeholders = normalized.map(() => '?').join(', ');
+    const { rows } = await getDriver().query<FolderRecord>(
+      `SELECT * FROM folders WHERE folder_path IN (${placeholders})`,
+      normalized
+    );
+    return rows;
   },
 
   async getSummaryBySlug(slug: string): Promise<FolderSummaryRecord | undefined> {
@@ -1280,7 +1318,16 @@ export const imageRepository = {
     return rows;
   },
 
-  async listVisibleVideoCandidates(): Promise<ReelCandidate[]> {
+  async countVisibleVideos(): Promise<number> {
+    const row = await getDriver().queryOne<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM images
+       INNER JOIN folders ON folders.id = images.folder_id
+       WHERE ${VISIBLE_IMAGE_WHERE_SQL} AND images.media_type = 'video'`
+    );
+    return Number(row?.count ?? 0);
+  },
+
+  async listVisibleVideoCandidates(limit: number): Promise<ReelCandidate[]> {
     const { rows } = await getDriver().query<ReelCandidate>(
       `SELECT
         images.id,
@@ -1312,7 +1359,9 @@ export const imageRepository = {
       LEFT JOIN places ON places.id = images.place_id
       LEFT JOIN likes ON likes.image_id = images.id
       WHERE ${VISIBLE_IMAGE_WHERE_SQL} AND images.media_type = 'video'
-      ORDER BY images.sort_timestamp DESC, images.id DESC`
+      ORDER BY images.sort_timestamp DESC, images.id DESC
+      LIMIT ?`,
+      [limit]
     );
     return rows;
   },
@@ -1960,7 +2009,19 @@ export const likeRepository = {
     return getDriver().queryOne<LikeRecord>('SELECT * FROM likes WHERE image_id = ?', [imageId]);
   },
 
-  async listLikedImages(): Promise<FeedImage[]> {
+  async countLiked(): Promise<number> {
+    const row = await getDriver().queryOne<{ count: number }>(
+      `SELECT COUNT(*) AS count
+       FROM likes
+       INNER JOIN images ON images.id = likes.image_id
+       INNER JOIN folders ON folders.id = images.folder_id
+       WHERE ${VISIBLE_IMAGE_WHERE_SQL}`
+    );
+    return Number(row?.count ?? 0);
+  },
+
+  async listLikedImages(page: number, limit: number): Promise<FeedImage[]> {
+    const offset = (page - 1) * limit;
     const { rows } = await getDriver().query<FeedImage>(
       `SELECT
         images.id,
@@ -1985,7 +2046,9 @@ export const likeRepository = {
       INNER JOIN images ON images.id = likes.image_id
       INNER JOIN folders ON folders.id = images.folder_id
       WHERE ${VISIBLE_IMAGE_WHERE_SQL}
-      ORDER BY likes.created_at DESC, likes.image_id DESC`
+      ORDER BY likes.created_at DESC, likes.image_id DESC
+      LIMIT ? OFFSET ?`,
+      [limit, offset]
     );
     return rows;
   },

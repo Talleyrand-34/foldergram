@@ -464,13 +464,19 @@ async function getParentFolderDisplayName(folderPath: string): Promise<string | 
   return getLeafPathName(parentFolderPath);
 }
 
-async function mapFeedImage(image: IndexedFeedImage, derivativeVersion: string | null): Promise<FeedImage> {
+async function mapFeedImage(
+  image: IndexedFeedImage,
+  derivativeVersion: string | null,
+  parentNames?: Map<string, string | null>
+): Promise<FeedImage> {
   const { playbackStrategy, placeId, placeSlug, placeName, placeKind, placeIsApproximate, isSaved, ...rest } = image;
   return {
     ...rest,
     isAnimated: Boolean(rest.isAnimated),
     isSaved: Boolean(isSaved),
-    folderParentName: await getParentFolderDisplayName(rest.folderPath),
+    folderParentName: parentNames
+      ? (parentNames.get(rest.folderPath) ?? null)
+      : await getParentFolderDisplayName(rest.folderPath),
     folderBreadcrumb: getPathBreadcrumb(rest.folderPath),
     thumbnailUrl: toPublicMediaUrl('/thumbnails', rest.thumbnailUrl, derivativeVersion),
     previewUrl: buildPreviewUrl({
@@ -627,8 +633,22 @@ function formatMonthYear(date: Date): string {
   return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(date);
 }
 
+async function resolveParentFolderNames(folderPaths: string[]): Promise<Map<string, string | null>> {
+  const parentPaths = [...new Set(
+    folderPaths.map(getParentRelativePath).filter((p): p is string => p !== null)
+  )];
+  if (parentPaths.length === 0) return new Map(folderPaths.map((fp) => [fp, null]));
+  const parentFolders = await folderRepository.getByFolderPaths(parentPaths);
+  const nameByPath = new Map(parentFolders.map((f) => [f.folder_path, f.name.trim() || getLeafPathName(f.folder_path)]));
+  return new Map(folderPaths.map((fp) => {
+    const pp = getParentRelativePath(fp);
+    return [fp, pp ? (nameByPath.get(pp) ?? getLeafPathName(pp)) : null];
+  }));
+}
+
 async function mapFeedItems(items: IndexedFeedImage[], derivativeVersion: string | null): Promise<FeedImage[]> {
-  return Promise.all(items.map((item) => mapFeedImage(item, derivativeVersion)));
+  const parentNames = await resolveParentFolderNames(items.map((item) => item.folderPath));
+  return Promise.all(items.map((item) => mapFeedImage(item, derivativeVersion, parentNames)));
 }
 
 async function mapCollectionSummary(collection: CollectionSummaryRecord, derivativeVersion: string | null) {
@@ -1182,8 +1202,11 @@ export const galleryService = {
       };
     }
 
-    const candidates = await imageRepository.listVisibleVideoCandidates();
-    const total = candidates.length;
+    const candidateLimit = appConfig.reelsCandidateLimit;
+    const [candidates, total] = await Promise.all([
+      imageRepository.listVisibleVideoCandidates(candidateLimit),
+      imageRepository.countVisibleVideos()
+    ]);
     if (total === 0) {
       return {
         mode,
@@ -1301,12 +1324,17 @@ export const galleryService = {
     };
   },
 
-  async listFolders() {
+  async listFolders(page: number, limit: number) {
     if (!storageService.getState().libraryAvailable) {
-      return [];
+      return { items: [], page, limit, total: 0, hasMore: false };
     }
 
-    return Promise.all((await folderRepository.getAllSummaries()).map(buildFolderSummary));
+    const [total, summaries] = await Promise.all([
+      folderRepository.countNormal(),
+      folderRepository.getSummaryPage(page, limit)
+    ]);
+    const items = await Promise.all(summaries.map(buildFolderSummary));
+    return { items, page, limit, total, hasMore: page * limit < total };
   },
 
   async listPlaces() {
@@ -1787,16 +1815,17 @@ export const galleryService = {
     };
   },
 
-  async getLikes() {
+  async getLikes(page: number, limit: number) {
     if (!storageService.getState().libraryAvailable) {
-      return {
-        items: []
-      };
+      return { items: [], page, limit, total: 0, hasMore: false };
     }
 
-    return {
-      items: await mapFeedItems(await likeRepository.listLikedImages(), await getDerivativeAssetVersion())
-    };
+    const [total, images] = await Promise.all([
+      likeRepository.countLiked(),
+      likeRepository.listLikedImages(page, limit)
+    ]);
+    const items = await mapFeedItems(images, await getDerivativeAssetVersion());
+    return buildPaginatedPayload(items, page, limit, total);
   },
 
   async likeImage(id: number) {

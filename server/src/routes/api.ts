@@ -467,10 +467,9 @@ router.get('/feed/moments/:id', async (request, response) => {
   response.json(payload);
 });
 
-router.get('/folders', async (_request, response) => {
-  response.json({
-    items: await galleryService.listFolders()
-  });
+router.get('/folders', async (request, response) => {
+  const query = paginationQuerySchema.parse(request.query);
+  response.json(await galleryService.listFolders(query.page, query.limit));
 });
 
 router.get('/folders/:slug', async (request, response) => {
@@ -598,8 +597,9 @@ router.get('/folders/:slug/stories/:id', async (request, response) => {
   response.json(payload);
 });
 
-router.get('/likes', requireCapability('canUseSharedLikes', 'Authentication required.'), async (_request, response) => {
-  response.json(await galleryService.getLikes());
+router.get('/likes', requireCapability('canUseSharedLikes', 'Authentication required.'), async (request, response) => {
+  const query = paginationQuerySchema.parse(request.query);
+  response.json(await galleryService.getLikes(query.page, query.limit));
 });
 
 router.get('/collections', requireCapability('canUseSharedCollections', 'Authentication required.'), async (_request, response) => {
