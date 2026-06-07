@@ -1545,6 +1545,7 @@ class ScannerService {
 
     const removedFiles = await imageRepository.markFolderImagesDeleted(folder.id, activeRelativePaths);
     await folderRepository.syncAvatarSelection(folder.id);
+    await folderRepository.updateCounts(folder.id);
 
     if (!folderHadErrors) {
       await folderScanStateRepository.upsert({

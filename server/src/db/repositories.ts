@@ -175,25 +175,8 @@ const FOLDER_SUMMARY_AVATAR_THUMBNAIL_PATH_SQL = `
 
 function getFolderSummarySql(): string {
   if (IS_POSTGRES) {
-    // Replace 5 correlated subplans (28,002 index scans at 14k folders) with:
-    // - _metrics: single aggregation pass for counts/mtime
-    // - _fallback_av: DISTINCT ON for best avatar per folder in one scan
-    // - explicit avatar and story check via LEFT JOINs (batch operations)
     return `
 WITH
-_metrics AS (
-  SELECT
-    images.folder_id,
-    COUNT(images.id)::int AS image_count,
-    SUM(CASE WHEN images.media_type = 'video' THEN 1 ELSE 0 END)::int AS video_count,
-    MAX(images.mtime_ms) AS latest_image_mtime_ms
-  FROM images
-  INNER JOIN folders AS _mf ON _mf.id = images.folder_id AND _mf.role = 'normal'
-  WHERE images.is_deleted = 0
-    AND images.is_trashed = 0
-    AND LOWER(images.filename) NOT IN (${COVER_FILENAME_SQL})
-  GROUP BY images.folder_id
-),
 _fallback_av AS (
   SELECT DISTINCT ON (images.folder_id)
     images.folder_id,
@@ -208,14 +191,10 @@ _fallback_av AS (
 )
 SELECT
   folders.*,
-  MAX(_m.image_count) AS image_count,
-  MAX(_m.video_count) AS video_count,
-  MAX(_m.latest_image_mtime_ms) AS latest_image_mtime_ms,
   MAX(CASE WHEN _sc.story_owner_folder_id IS NOT NULL THEN 1 ELSE 0 END) AS has_avatar_story,
   MAX(COALESCE(_eav.id, _fav.id)) AS summary_avatar_image_id,
   MAX(COALESCE(_eav.thumbnail_path, _fav.thumbnail_path)) AS summary_avatar_thumbnail_path
 FROM folders
-INNER JOIN _metrics _m ON _m.folder_id = folders.id
 LEFT JOIN images AS _eav ON _eav.id = folders.avatar_image_id
   AND _eav.folder_id = folders.id
   AND _eav.is_deleted = 0
@@ -232,14 +211,10 @@ LEFT JOIN (
   return `
   SELECT
     folders.*,
-    COUNT(images.id) AS image_count,
-    SUM(CASE WHEN images.media_type = 'video' THEN 1 ELSE 0 END) AS video_count,
-    MAX(images.mtime_ms) AS latest_image_mtime_ms,
     CASE WHEN ${HAS_AVATAR_STORY_SQL} THEN 1 ELSE 0 END AS has_avatar_story,
     ${FOLDER_SUMMARY_AVATAR_IMAGE_ID_SQL} AS summary_avatar_image_id,
     ${FOLDER_SUMMARY_AVATAR_THUMBNAIL_PATH_SQL} AS summary_avatar_thumbnail_path
   FROM folders
-  INNER JOIN images ON images.folder_id = folders.id AND ${VISIBLE_IMAGE_WHERE_SQL}
 `;
 }
 
@@ -588,7 +563,7 @@ export const folderRepository = {
       `${getFolderSummarySql()}
       WHERE folders.role = 'normal'
       GROUP BY folders.id
-      ORDER BY latest_image_mtime_ms DESC, ${nameOrder}, ${pathOrder}`
+      ORDER BY folders.latest_image_mtime_ms DESC, ${nameOrder}, ${pathOrder}`
     );
     return rows;
   },
@@ -605,7 +580,7 @@ export const folderRepository = {
       `${getFolderSummarySql()}
       WHERE folders.role = 'normal'
       GROUP BY folders.id
-      ORDER BY latest_image_mtime_ms DESC, ${nameOrder}, ${pathOrder}
+      ORDER BY folders.latest_image_mtime_ms DESC, ${nameOrder}, ${pathOrder}
       LIMIT ? OFFSET ?`,
       [limit, offset]
     );
@@ -642,7 +617,8 @@ export const folderRepository = {
     return getDriver().queryOne<FolderSummaryRecord>(
       `${getFolderSummarySql()}
       WHERE folders.slug = ? AND folders.role = 'normal'
-      GROUP BY folders.id`,
+      GROUP BY folders.id
+      LIMIT 1`,
       [slug]
     );
   },
@@ -764,6 +740,30 @@ export const folderRepository = {
       return;
     }
     await this.setAvatar(folderId, nextSelection.imageId, nextSelection.source);
+  },
+
+  async updateCounts(folderId: number): Promise<void> {
+    await getDriver().execute(
+      `UPDATE folders
+      SET
+        image_count = (
+          SELECT COUNT(*) FROM images
+          WHERE folder_id = ? AND is_deleted = 0 AND is_trashed = 0
+          AND LOWER(filename) NOT IN (${COVER_FILENAME_SQL})
+        ),
+        video_count = (
+          SELECT COUNT(*) FROM images
+          WHERE folder_id = ? AND media_type = 'video' AND is_deleted = 0 AND is_trashed = 0
+          AND LOWER(filename) NOT IN (${COVER_FILENAME_SQL})
+        ),
+        latest_image_mtime_ms = (
+          SELECT MAX(mtime_ms) FROM images
+          WHERE folder_id = ? AND is_deleted = 0 AND is_trashed = 0
+          AND LOWER(filename) NOT IN (${COVER_FILENAME_SQL})
+        )
+      WHERE id = ?`,
+      [folderId, folderId, folderId, folderId]
+    );
   },
 
   async listOwnedStoryFolders(ownerFolderId: number): Promise<FolderRecord[]> {

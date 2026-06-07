@@ -1844,6 +1844,7 @@ export const galleryService = {
     if (imageRecord.is_trashed === 0) {
       await imageRepository.moveToTrash(id);
       await folderRepository.syncAvatarSelection(imageRecord.folder_id);
+      await folderRepository.updateCounts(imageRecord.folder_id);
     }
 
     return {
@@ -1869,6 +1870,7 @@ export const galleryService = {
 
     await imageRepository.restoreFromTrash(id);
     await folderRepository.syncAvatarSelection(imageRecord.folder_id);
+    await folderRepository.updateCounts(imageRecord.folder_id);
 
     return {
       id: imageRecord.id,
@@ -2139,6 +2141,7 @@ export const galleryService = {
 
     await imageRepository.deleteById(imageRecord.id);
     await folderRepository.syncAvatarSelection(imageRecord.folder_id);
+    await folderRepository.updateCounts(imageRecord.folder_id);
 
     return {
       id: imageRecord.id,
