@@ -593,8 +593,7 @@ export const folderRepository = {
     return rows;
   },
 
-  async getSummaryPage(page: number, limit: number): Promise<FolderSummaryRecord[]> {
-    const offset = (page - 1) * limit;
+  async getSummaryPage(offset: number, limit: number): Promise<FolderSummaryRecord[]> {
     const driver = getDriver();
     const nameOrder = COLLATE_NOCASE
       ? `folders.name ${COLLATE_NOCASE} ASC`
@@ -1237,8 +1236,7 @@ export const imageRepository = {
     return result.rowCount > 0;
   },
 
-  async listFeed(page: number, limit: number): Promise<FeedImage[]> {
-    const offset = (page - 1) * limit;
+  async listFeed(offset: number, limit: number): Promise<FeedImage[]> {
     const { rows } = await getDriver().query<FeedImage>(
       `${getFeedImageSelectSql()}
       WHERE ${VISIBLE_IMAGE_WHERE_SQL}
@@ -1306,8 +1304,7 @@ export const imageRepository = {
     return rows;
   },
 
-  async listRandom(page: number, limit: number, seed: number): Promise<FeedImage[]> {
-    const offset = (page - 1) * limit;
+  async listRandom(offset: number, limit: number, seed: number): Promise<FeedImage[]> {
     const { rows } = await getDriver().query<FeedImage>(
       `${getFeedImageSelectSql()}
       WHERE ${VISIBLE_IMAGE_WHERE_SQL}
@@ -1366,12 +1363,11 @@ export const imageRepository = {
     return rows;
   },
 
-  async listVisibleSearch(query: string, page: number, limit: number): Promise<FeedImage[]> {
+  async listVisibleSearch(query: string, offset: number, limit: number): Promise<FeedImage[]> {
     const mediaSearch = buildMediaSearchSql(query);
     if (!mediaSearch) {
       return [];
     }
-    const offset = (page - 1) * limit;
     const { rows } = await getDriver().query<FeedImage>(
       `SELECT
         search_results.id,
@@ -1451,11 +1447,10 @@ export const imageRepository = {
     return Number(row?.count ?? 0);
   },
 
-  async listByMonthDayKeys(monthDayKeys: string[], maxYearExclusive: number, page: number, limit: number): Promise<FeedImage[]> {
+  async listByMonthDayKeys(monthDayKeys: string[], maxYearExclusive: number, offset: number, limit: number): Promise<FeedImage[]> {
     if (monthDayKeys.length === 0) {
       return [];
     }
-    const offset = (page - 1) * limit;
     const placeholders = monthDayKeys.map(() => '?').join(', ');
     const { rows } = await getDriver().query<FeedImage>(
       `${getFeedImageSelectSql()}
@@ -1480,8 +1475,7 @@ export const imageRepository = {
     return Number(row?.count ?? 0);
   },
 
-  async listByEffectiveTimeRange(startTimestamp: number, endTimestamp: number, page: number, limit: number): Promise<FeedImage[]> {
-    const offset = (page - 1) * limit;
+  async listByEffectiveTimeRange(startTimestamp: number, endTimestamp: number, offset: number, limit: number): Promise<FeedImage[]> {
     const { rows } = await getDriver().query<FeedImage>(
       `${getFeedImageSelectSql()}
       WHERE ${VISIBLE_IMAGE_WHERE_SQL}
@@ -1495,12 +1489,11 @@ export const imageRepository = {
 
   async listFolderImages(
     folderId: number,
-    page: number,
+    offset: number,
     limit: number,
     mediaType?: MediaType,
     order: FolderImageOrder = 'newest'
   ): Promise<FeedImage[]> {
-    const offset = (page - 1) * limit;
     const mediaTypeClause = mediaType ? ' AND images.media_type = ?' : '';
     const orderBySql = getQualifiedFolderImageOrderSql(order);
     const params = mediaType ? [folderId, mediaType, limit, offset] : [folderId, limit, offset];
@@ -1514,8 +1507,7 @@ export const imageRepository = {
     return rows;
   },
 
-  async listPlaceImages(placeId: number, page: number, limit: number, mediaType?: MediaType): Promise<FeedImage[]> {
-    const offset = (page - 1) * limit;
+  async listPlaceImages(placeId: number, offset: number, limit: number, mediaType?: MediaType): Promise<FeedImage[]> {
     const mediaTypeClause = mediaType ? ' AND images.media_type = ?' : '';
     const params = mediaType ? [placeId, mediaType, limit, offset] : [placeId, limit, offset];
     const { rows } = await getDriver().query<FeedImage>(
@@ -1528,8 +1520,7 @@ export const imageRepository = {
     return rows;
   },
 
-  async listStoryFolderImages(folderId: number, page: number, limit: number, mediaType?: MediaType): Promise<FeedImage[]> {
-    const offset = (page - 1) * limit;
+  async listStoryFolderImages(folderId: number, offset: number, limit: number, mediaType?: MediaType): Promise<FeedImage[]> {
     const mediaTypeClause = mediaType ? ' AND images.media_type = ?' : '';
     const params = mediaType ? [folderId, mediaType, limit, offset] : [folderId, limit, offset];
     const { rows } = await getDriver().query<FeedImage>(
@@ -1542,8 +1533,7 @@ export const imageRepository = {
     return rows;
   },
 
-  async listStoryCapsuleImagesByOwnerFolder(ownerFolderId: number, page: number, limit: number, mediaType?: MediaType): Promise<FeedImage[]> {
-    const offset = (page - 1) * limit;
+  async listStoryCapsuleImagesByOwnerFolder(ownerFolderId: number, offset: number, limit: number, mediaType?: MediaType): Promise<FeedImage[]> {
     const mediaTypeClause = mediaType ? ' AND images.media_type = ?' : '';
     const params = mediaType ? [ownerFolderId, mediaType, limit, offset] : [ownerFolderId, limit, offset];
     const { rows } = await getDriver().query<FeedImage>(
@@ -1558,8 +1548,7 @@ export const imageRepository = {
     return rows;
   },
 
-  async listTrashed(page: number, limit: number): Promise<TrashImage[]> {
-    const offset = (page - 1) * limit;
+  async listTrashed(offset: number, limit: number): Promise<TrashImage[]> {
     const { rows } = await getDriver().query<TrashImage>(
       `SELECT
         images.id,
@@ -2027,8 +2016,7 @@ export const likeRepository = {
     return Number(row?.count ?? 0);
   },
 
-  async listLikedImages(page: number, limit: number): Promise<FeedImage[]> {
-    const offset = (page - 1) * limit;
+  async listLikedImages(offset: number, limit: number): Promise<FeedImage[]> {
     const { rows } = await getDriver().query<FeedImage>(
       `SELECT
         images.id,
@@ -2072,8 +2060,7 @@ export const likeRepository = {
     return Number(row?.count ?? 0);
   },
 
-  async listLikedOlderThan(page: number, limit: number, cutoffTimestamp: number): Promise<FeedImage[]> {
-    const offset = (page - 1) * limit;
+  async listLikedOlderThan(offset: number, limit: number, cutoffTimestamp: number): Promise<FeedImage[]> {
     const { rows } = await getDriver().query<FeedImage>(
       `SELECT
         images.id,
@@ -2331,9 +2318,8 @@ export const collectionRepository = {
     return rows;
   },
 
-  async listImages(slug: string, page: number, limit: number): Promise<FeedImage[]> {
+  async listImages(slug: string, offset: number, limit: number): Promise<FeedImage[]> {
     await this.ensureDefaultCollection();
-    const offset = (page - 1) * limit;
     const { rows } = await getDriver().query<FeedImage>(
       `${getFeedImageSelectSql()}
       INNER JOIN collection_items ON collection_items.image_id = images.id

@@ -691,24 +691,9 @@ async function mapCollectionMembership(collection: CollectionMembershipRecord, d
   };
 }
 
-function buildPaginatedPayload(items: FeedImage[], page: number, limit: number, total: number) {
-  return {
-    items,
-    page,
-    limit,
-    total,
-    hasMore: page * limit < total
-  };
-}
-
-function buildTrashPaginatedPayload(items: TrashImage[], page: number, limit: number, total: number) {
-  return {
-    items,
-    page,
-    limit,
-    total,
-    hasMore: page * limit < total
-  };
+function paginate<T>(rawItems: T[], limit: number): { items: T[]; hasMore: boolean } {
+  const hasMore = rawItems.length > limit;
+  return { items: hasMore ? rawItems.slice(0, limit) : rawItems, hasMore };
 }
 
 function sliceItemsForPage(items: FeedImage[], page: number, limit: number): FeedImage[] {
@@ -748,17 +733,12 @@ function buildStaticCapsuleDefinition(
 }
 
 async function listDiversifiedModeItems(
-  total: number,
   page: number,
   limit: number,
-  loadBatch: (offset: number, limit: number) => Promise<FeedImage[]>
-): Promise<FeedImage[]> {
-  if (total === 0) {
-    return [];
-  }
-
-  const targetCount = Math.min(total, page * limit);
-  const candidateLimit = Math.min(total, Math.max(targetCount * 12, 720), MAX_DIVERSIFIED_CANDIDATES);
+  loadBatch: (offset: number, batchLimit: number) => Promise<FeedImage[]>
+): Promise<{ items: FeedImage[]; hasMore: boolean }> {
+  const targetCount = page * limit;
+  const candidateLimit = Math.min(Math.max(targetCount * 12, 720), MAX_DIVERSIFIED_CANDIDATES);
   const candidates: FeedImage[] = [];
   let offset = 0;
 
@@ -777,7 +757,10 @@ async function listDiversifiedModeItems(
   }
 
   const diversified = diversifyFeedCandidates(candidates);
-  return diversified.slice((page - 1) * limit, page * limit);
+  const pageStart = (page - 1) * limit;
+  const items = diversified.slice(pageStart, pageStart + limit);
+  const hasMore = diversified.length > pageStart + limit || candidates.length >= candidateLimit;
+  return { items, hasMore };
 }
 
 function createDailySeed(now = new Date()): number {
@@ -853,7 +836,7 @@ function buildMomentRailDefinition(now = new Date()): FeedRailDefinition {
         },
         minimumImageCount: 1,
         count: () => imageRepository.countByMonthDayKeys(onThisDayKeys, currentYear),
-        list: async (page, limit) => mapFeedItems(await imageRepository.listByMonthDayKeys(onThisDayKeys, currentYear, page, limit), await getDerivativeAssetVersion())
+        list: async (page, limit) => mapFeedItems(await imageRepository.listByMonthDayKeys(onThisDayKeys, currentYear, (page - 1) * limit, limit), await getDerivativeAssetVersion())
       },
       {
         id: 'this-week-previous-years',
@@ -867,7 +850,7 @@ function buildMomentRailDefinition(now = new Date()): FeedRailDefinition {
         },
         minimumImageCount: 2,
         count: () => imageRepository.countByMonthDayKeys(weekKeys, currentYear),
-        list: async (page, limit) => mapFeedItems(await imageRepository.listByMonthDayKeys(weekKeys, currentYear, page, limit), await getDerivativeAssetVersion())
+        list: async (page, limit) => mapFeedItems(await imageRepository.listByMonthDayKeys(weekKeys, currentYear, (page - 1) * limit, limit), await getDerivativeAssetVersion())
       },
       {
         id: 'from-last-year',
@@ -882,7 +865,7 @@ function buildMomentRailDefinition(now = new Date()): FeedRailDefinition {
         },
         minimumImageCount: 1,
         count: () => imageRepository.countByEffectiveTimeRange(lastYearStart.getTime(), lastYearEnd.getTime()),
-        list: async (page, limit) => mapFeedItems(await imageRepository.listByEffectiveTimeRange(lastYearStart.getTime(), lastYearEnd.getTime(), page, limit), await getDerivativeAssetVersion())
+        list: async (page, limit) => mapFeedItems(await imageRepository.listByEffectiveTimeRange(lastYearStart.getTime(), lastYearEnd.getTime(), (page - 1) * limit, limit), await getDerivativeAssetVersion())
       }
     ]
   };
@@ -896,19 +879,19 @@ async function buildHighlightRailDefinition(now = new Date()): Promise<FeedRailD
   const derivativeVersion = await getDerivativeAssetVersion();
   const recentBatchItems = await getRecentBatchHighlightItems(excludedImageIds);
   const forgottenFavoriteItems = limitHighlightItems(
-    await mapFeedItems(await likeRepository.listLikedOlderThan(1, highlightFetchLimit, rediscoverCutoff), derivativeVersion),
+    await mapFeedItems(await likeRepository.listLikedOlderThan(0, highlightFetchLimit, rediscoverCutoff), derivativeVersion),
     1,
     excludedImageIds
   );
   const deepCutItems = limitHighlightItems(
-    await listDiversifiedModeItems(await imageRepository.countRediscover(rediscoverCutoff), 1, highlightFetchLimit, async (offset, batchLimit) =>
+    (await listDiversifiedModeItems(1, highlightFetchLimit, async (offset, batchLimit) =>
       mapFeedItems(await imageRepository.listRediscoverCandidates(offset, batchLimit, rediscoverCutoff), derivativeVersion)
-    ),
+    )).items,
     1,
     excludedImageIds
   );
   const luckyDipItems = limitHighlightItems(
-    await mapFeedItems(await imageRepository.listRandom(1, highlightFetchLimit, dailySeed), derivativeVersion),
+    await mapFeedItems(await imageRepository.listRandom(0, highlightFetchLimit, dailySeed), derivativeVersion),
     1,
     excludedImageIds
   );
@@ -1067,7 +1050,7 @@ async function buildStoryRailCapsule(
     return null;
   }
 
-  const coverImages = await imageRepository.listStoryFolderImages(storyFolder.id, 1, 1);
+  const coverImages = await imageRepository.listStoryFolderImages(storyFolder.id, 0, 1);
   const coverImage = coverImages[0];
   if (!coverImage) {
     return null;
@@ -1097,7 +1080,7 @@ async function buildFallbackAvatarStoryCapsule(
     return null;
   }
 
-  const coverImages = await imageRepository.listStoryCapsuleImagesByOwnerFolder(ownerFolder.id, 1, 1);
+  const coverImages = await imageRepository.listStoryCapsuleImagesByOwnerFolder(ownerFolder.id, 0, 1);
   const coverImage = coverImages[0];
   if (!coverImage) {
     return null;
@@ -1122,22 +1105,16 @@ async function listFallbackAvatarStoryItems(
   page: number,
   limit: number,
   derivativeVersion: string | null
-) {
-  const total = Math.min(await imageRepository.countStoryCapsuleMediaByOwnerFolder(ownerFolder.id), FALLBACK_AVATAR_STORY_LIMIT);
+): Promise<{ items: FeedImage[]; hasMore: boolean }> {
   const offset = (page - 1) * limit;
-  const remaining = Math.max(total - offset, 0);
-  const items =
-    remaining > 0
-      ? await Promise.all(
-          (await imageRepository.listStoryCapsuleImagesByOwnerFolder(ownerFolder.id, page, Math.min(limit, remaining)))
-            .map((image) => mapFeedImageForOwnerFolder(image, ownerFolder, derivativeVersion))
-        )
-      : [];
-
-  return {
-    total,
-    items
-  };
+  if (offset >= FALLBACK_AVATAR_STORY_LIMIT) {
+    return { items: [], hasMore: false };
+  }
+  const maxFetch = Math.min(limit + 1, FALLBACK_AVATAR_STORY_LIMIT - offset);
+  const raw = await imageRepository.listStoryCapsuleImagesByOwnerFolder(ownerFolder.id, offset, maxFetch);
+  const { items: rawPage, hasMore } = paginate(raw, limit);
+  const items = await Promise.all(rawPage.map((image) => mapFeedImageForOwnerFolder(image, ownerFolder, derivativeVersion)));
+  return { items, hasMore };
 }
 
 export const galleryService = {
@@ -1156,37 +1133,37 @@ export const galleryService = {
     const derivativeVersion = await getDerivativeAssetVersion();
 
     if (mode === 'random') {
-      const total = await imageRepository.countFeed();
       const seed = Number.isFinite(randomSeed)
         ? Number(randomSeed)
         : Number(new Date().toISOString().slice(0, 10).replaceAll('-', ''));
+      const offset = (page - 1) * limit;
+      const raw = await imageRepository.listRandom(offset, limit + 1, seed);
+      const { items: rawPage, hasMore } = paginate(raw, limit);
 
       return {
         mode,
-        ...buildPaginatedPayload(await mapFeedItems(await imageRepository.listRandom(page, limit, seed), derivativeVersion), page, limit, total)
+        items: await mapFeedItems(rawPage, derivativeVersion),
+        page, limit, total: 0, hasMore
       };
     }
 
     if (mode === 'rediscover') {
       const cutoffTimestamp = Date.now() - REDISCOVER_MIN_AGE_MS;
-      const total = await imageRepository.countRediscover(cutoffTimestamp);
-      const items = await listDiversifiedModeItems(total, page, limit, async (offset, batchLimit) =>
+      const { items, hasMore } = await listDiversifiedModeItems(page, limit, async (offset, batchLimit) =>
         mapFeedItems(await imageRepository.listRediscoverCandidates(offset, batchLimit, cutoffTimestamp), derivativeVersion)
       );
 
-      return {
-        mode,
-        ...buildPaginatedPayload(items, page, limit, total)
-      };
+      return { mode, items, page, limit, total: 0, hasMore };
     }
 
-    const total = await imageRepository.countFeed();
     const offset = (page - 1) * limit;
-    const items = await imageRepository.listRecentCandidates(offset, limit);
+    const raw = await imageRepository.listRecentCandidates(offset, limit + 1);
+    const { items: rawPage, hasMore } = paginate(raw, limit);
 
     return {
       mode,
-      ...buildPaginatedPayload(await mapFeedItems(items, derivativeVersion), page, limit, total)
+      items: await mapFeedItems(rawPage, derivativeVersion),
+      page, limit, total: 0, hasMore
     };
   },
 
@@ -1203,19 +1180,9 @@ export const galleryService = {
     }
 
     const candidateLimit = appConfig.reelsCandidateLimit;
-    const [candidates, total] = await Promise.all([
-      imageRepository.listVisibleVideoCandidates(candidateLimit),
-      imageRepository.countVisibleVideos()
-    ]);
-    if (total === 0) {
-      return {
-        mode,
-        items: [],
-        page,
-        limit,
-        total: 0,
-        hasMore: false
-      };
+    const candidates = await imageRepository.listVisibleVideoCandidates(candidateLimit);
+    if (candidates.length === 0) {
+      return { mode, items: [], page, limit, total: 0, hasMore: false };
     }
 
     const orderedCandidates =
@@ -1230,15 +1197,12 @@ export const galleryService = {
           })();
     const offset = (page - 1) * limit;
     const derivativeVersion = await getDerivativeAssetVersion();
+    const { items: rawPage, hasMore } = paginate(orderedCandidates.slice(offset, offset + limit + 1), limit);
 
     return {
       mode,
-      ...buildPaginatedPayload(
-        await mapFeedItems(orderedCandidates.slice(offset, offset + limit), derivativeVersion),
-        page,
-        limit,
-        total
-      )
+      items: await mapFeedItems(rawPage, derivativeVersion),
+      page, limit, total: 0, hasMore
     };
   },
 
@@ -1265,10 +1229,11 @@ export const galleryService = {
     }
 
     const derivativeVersion = await getDerivativeAssetVersion();
-    const total = await imageRepository.countVisibleSearch(normalizedQuery);
-    const items = total > 0 ? await imageRepository.listVisibleSearch(normalizedQuery, page, limit) : [];
+    const offset = (page - 1) * limit;
+    const raw = await imageRepository.listVisibleSearch(normalizedQuery, offset, limit + 1);
+    const { items: rawPage, hasMore } = paginate(raw, limit);
 
-    return buildPaginatedPayload(await mapFeedItems(items, derivativeVersion), page, limit, total);
+    return { items: await mapFeedItems(rawPage, derivativeVersion), page, limit, total: 0, hasMore };
   },
 
   async listMoments() {
@@ -1312,7 +1277,8 @@ export const galleryService = {
       return null;
     }
 
-    const total = await definition.count();
+    const rawItems = await definition.list(page, limit + 1);
+    const { items, hasMore } = paginate(rawItems, limit);
 
     return {
       railKind: rail.kind,
@@ -1320,7 +1286,7 @@ export const galleryService = {
       railDescription: rail.description,
       railSingularLabel: rail.singularLabel,
       moment: capsule,
-      ...buildPaginatedPayload(await definition.list(page, limit), page, limit, total)
+      items, page, limit, total: 0, hasMore
     };
   },
 
@@ -1329,12 +1295,11 @@ export const galleryService = {
       return { items: [], page, limit, total: 0, hasMore: false };
     }
 
-    const [total, summaries] = await Promise.all([
-      folderRepository.countNormal(),
-      folderRepository.getSummaryPage(page, limit)
-    ]);
-    const items = await Promise.all(summaries.map(buildFolderSummary));
-    return { items, page, limit, total, hasMore: page * limit < total };
+    const offset = (page - 1) * limit;
+    const summaries = await folderRepository.getSummaryPage(offset, limit + 1);
+    const { items: summaryPage, hasMore } = paginate(summaries, limit);
+    const items = await Promise.all(summaryPage.map(buildFolderSummary));
+    return { items, page, limit, total: 0, hasMore };
   },
 
   async listPlaces() {
@@ -1370,16 +1335,18 @@ export const galleryService = {
       return null;
     }
 
-    const total = await placeRepository.countVisibleImages(place.id, mediaType);
     const derivativeVersion = await getDerivativeAssetVersion();
+    const offset = (page - 1) * limit;
+    const [raw, placePostCount] = await Promise.all([
+      imageRepository.listPlaceImages(place.id, offset, limit + 1, mediaType),
+      placeRepository.countVisibleImages(place.id)
+    ]);
+    const { items: rawPage, hasMore } = paginate(raw, limit);
 
     return {
-      place: placeResolutionService.placeDetail(place, total),
-      items: await Promise.all((await imageRepository.listPlaceImages(place.id, page, limit, mediaType)).map((image) => mapFeedImage(image, derivativeVersion))),
-      page,
-      limit,
-      total,
-      hasMore: page * limit < total
+      place: placeResolutionService.placeDetail(place, placePostCount),
+      items: await Promise.all(rawPage.map((image) => mapFeedImage(image, derivativeVersion))),
+      page, limit, total: 0, hasMore
     };
   },
 
@@ -1478,7 +1445,7 @@ export const galleryService = {
     const ownerFolder = await buildFolderSummary(folder);
     const derivativeVersion = await getDerivativeAssetVersion();
     if (storyId === FALLBACK_AVATAR_STORY_ID) {
-      const fallbackFeed = await listFallbackAvatarStoryItems(ownerFolder, page, limit, derivativeVersion);
+      const { items, hasMore } = await listFallbackAvatarStoryItems(ownerFolder, page, limit, derivativeVersion);
 
       return {
         railKind: 'stories' as const,
@@ -1486,7 +1453,7 @@ export const galleryService = {
         railDescription: rail.railDescription,
         railSingularLabel: rail.railSingularLabel,
         story: capsule,
-        ...buildPaginatedPayload(fallbackFeed.items, page, limit, fallbackFeed.total)
+        items, page, limit, total: 0, hasMore
       };
     }
 
@@ -1495,11 +1462,10 @@ export const galleryService = {
       return null;
     }
 
-    const total = await imageRepository.countStoryMediaByFolder(storyFolder.id);
-    const items = await Promise.all(
-      (await imageRepository.listStoryFolderImages(storyFolder.id, page, limit))
-        .map((image) => mapFeedImageForOwnerFolder(image, ownerFolder, derivativeVersion))
-    );
+    const offset = (page - 1) * limit;
+    const raw = await imageRepository.listStoryFolderImages(storyFolder.id, offset, limit + 1);
+    const { items: rawPage, hasMore } = paginate(raw, limit);
+    const items = await Promise.all(rawPage.map((image) => mapFeedImageForOwnerFolder(image, ownerFolder, derivativeVersion)));
 
     return {
       railKind: 'stories' as const,
@@ -1507,7 +1473,7 @@ export const galleryService = {
       railDescription: rail.railDescription,
       railSingularLabel: rail.railSingularLabel,
       story: capsule,
-      ...buildPaginatedPayload(items, page, limit, total)
+      items, page, limit, total: 0, hasMore
     };
   },
 
@@ -1521,20 +1487,16 @@ export const galleryService = {
       return null;
     }
 
-    const total = mediaType ? await imageRepository.countVisibleByFolder(folder.id, mediaType) : folder.image_count;
     const derivativeVersion = await getDerivativeAssetVersion();
     const defaultFolderImageOrder = await getDefaultFolderImageOrder();
+    const offset = (page - 1) * limit;
+    const raw = await imageRepository.listFolderImages(folder.id, offset, limit + 1, mediaType, defaultFolderImageOrder);
+    const { items: rawPage, hasMore } = paginate(raw, limit);
 
     return {
       folder: await buildFolderSummary(folder),
-      items: await Promise.all(
-        (await imageRepository.listFolderImages(folder.id, page, limit, mediaType, defaultFolderImageOrder))
-          .map((image) => mapFeedImage(image, derivativeVersion))
-      ),
-      page,
-      limit,
-      total,
-      hasMore: page * limit < total
+      items: await Promise.all(rawPage.map((image) => mapFeedImage(image, derivativeVersion))),
+      page, limit, total: 0, hasMore
     };
   },
 
@@ -1582,13 +1544,13 @@ export const galleryService = {
       };
     }
 
-    const total = await imageRepository.countTrashed();
     const derivativeVersion = await getDerivativeAssetVersion();
-    const items = await Promise.all(
-      (await imageRepository.listTrashed(page, limit)).map((image) => mapTrashImage(image as IndexedTrashImage, derivativeVersion))
-    );
+    const offset = (page - 1) * limit;
+    const raw = await imageRepository.listTrashed(offset, limit + 1);
+    const { items: rawPage, hasMore } = paginate(raw, limit);
+    const items = await Promise.all(rawPage.map((image) => mapTrashImage(image as IndexedTrashImage, derivativeVersion)));
 
-    return buildTrashPaginatedPayload(items, page, limit, total);
+    return { items, page, limit, total: 0, hasMore };
   },
 
   async getCollections() {
@@ -1616,29 +1578,25 @@ export const galleryService = {
       return null;
     }
 
-    const total = await collectionRepository.countImages(slug);
     const derivativeVersion = await getDerivativeAssetVersion();
-    const allSummaries = await collectionRepository.listSummaries();
+    const offset = (page - 1) * limit;
+    const [raw, allSummaries] = await Promise.all([
+      collectionRepository.listImages(slug, offset, limit + 1),
+      collectionRepository.listSummaries()
+    ]);
+    const { items: rawPage, hasMore } = paginate(raw, limit);
+    const collectionSummary = allSummaries.find((entry) => entry.slug === slug) ?? {
+      ...collection,
+      item_count: 0,
+      cover_image_id: null,
+      cover_thumbnail_path: null,
+      preview_image_ids: null
+    };
 
     return {
-      collection: await mapCollectionSummary(
-        allSummaries.find((entry) => entry.slug === slug) ?? {
-          ...collection,
-          item_count: total,
-          cover_image_id: null,
-          cover_thumbnail_path: null,
-          preview_image_ids: null
-        },
-        derivativeVersion
-      ),
-      ...buildPaginatedPayload(
-        await Promise.all(
-          (await collectionRepository.listImages(slug, page, limit)).map((image) => mapFeedImage(image, derivativeVersion))
-        ),
-        page,
-        limit,
-        total
-      )
+      collection: await mapCollectionSummary(collectionSummary, derivativeVersion),
+      items: await Promise.all(rawPage.map((image) => mapFeedImage(image, derivativeVersion))),
+      page, limit, total: 0, hasMore
     };
   },
 
@@ -1825,12 +1783,11 @@ export const galleryService = {
       return { items: [], page, limit, total: 0, hasMore: false };
     }
 
-    const [total, images] = await Promise.all([
-      likeRepository.countLiked(),
-      likeRepository.listLikedImages(page, limit)
-    ]);
-    const items = await mapFeedItems(images, await getDerivativeAssetVersion());
-    return buildPaginatedPayload(items, page, limit, total);
+    const offset = (page - 1) * limit;
+    const raw = await likeRepository.listLikedImages(offset, limit + 1);
+    const { items: rawPage, hasMore } = paginate(raw, limit);
+    const items = await mapFeedItems(rawPage, await getDerivativeAssetVersion());
+    return { items, page, limit, total: 0, hasMore };
   },
 
   async likeImage(id: number) {
