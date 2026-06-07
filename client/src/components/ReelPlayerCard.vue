@@ -267,17 +267,29 @@ function bindPlayerEventListeners(player: MediaPlayerElement | null) {
   const handlePause = () => {
     isPaused.value = props.active;
   };
+  const handleRateChange = () => {
+    if (props.active && player.playbackRate !== appStore.videoPlaybackRate) {
+      player.playbackRate = appStore.videoPlaybackRate;
+    }
+  };
+  const handleProviderSetup = () => {
+    applyPlaybackRate(player);
+  };
 
   player.addEventListener('loaded-metadata', handleReady);
   player.addEventListener('can-play', handleReady);
   player.addEventListener('play', handlePlay);
   player.addEventListener('pause', handlePause);
+  player.addEventListener('rate-change', handleRateChange);
+  player.addEventListener('provider-setup', handleProviderSetup);
 
   removePlayerEventListeners = () => {
     player.removeEventListener('loaded-metadata', handleReady);
     player.removeEventListener('can-play', handleReady);
     player.removeEventListener('play', handlePlay);
     player.removeEventListener('pause', handlePause);
+    player.removeEventListener('rate-change', handleRateChange);
+    player.removeEventListener('provider-setup', handleProviderSetup);
   };
 
   if (player.hasAttribute('data-can-play')) {
