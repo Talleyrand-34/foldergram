@@ -3,6 +3,7 @@ import { defineConfig } from 'vitepress';
 const guideItems = [
   { text: 'Quick Start', link: '/quick-start' },
   { text: 'Installation', link: '/installation' },
+  { text: 'Deployment', link: '/deployment' },
   { text: 'Configuration', link: '/configuration' }
 ];
 
@@ -40,6 +41,7 @@ export default defineConfig({
     nav: [
       { text: 'Quick Start', link: '/quick-start' },
       { text: 'Installation', link: '/installation' },
+      { text: 'Deployment', link: '/deployment' },
       { text: 'Configuration', link: '/configuration' },
       { text: 'How It Works', link: '/how-it-works' },
       { text: 'API', link: '/api' },
