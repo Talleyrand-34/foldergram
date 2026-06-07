@@ -43,6 +43,16 @@
               :info-open="isInfoSidebarOpen"
               @toggle-info="handleInfoToggle"
             >
+              <template #prepend>
+                <button
+                  class="reels-view__speed-button reels-view__speed-button--mobile"
+                  type="button"
+                  aria-label="Toggle playback speed"
+                  @click="toggleSpeed"
+                >
+                  {{ speedLabel }}
+                </button>
+              </template>
               <template #info-panel>
                 <Transition name="reels-info-popup">
                   <div v-if="isInfoSidebarOpen" data-test="info-shell" class="reels-view__info-shell">
@@ -440,6 +450,13 @@ watch(activeItem, (item) => {
 .reels-view__speed-button:hover {
   transform: translateY(-1px);
   background: color-mix(in srgb, var(--surface) 64%, var(--text) 36%);
+}
+
+.reels-view__speed-button--mobile {
+  width: 2.3rem;
+  height: 2.3rem;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--surface) 60%, var(--text) 40%);
 }
 
 .reels-view__message-card {

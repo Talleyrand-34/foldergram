@@ -1,5 +1,6 @@
 <template>
   <div class="reel-action-rail" @click.stop>
+    <slot name="prepend" />
     <button
       class="reel-action-rail__button"
       :class="{ 'reel-action-rail__button--liked': isLiked }"
