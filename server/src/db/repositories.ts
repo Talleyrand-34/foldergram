@@ -59,6 +59,7 @@ let JSON_EXTRACT_FN: (col: string, path: string) => string;
 let INSERT_OR_IGNORE: string;
 let INSERT_OR_IGNORE_SUFFIX: string;
 let IS_POSTGRES = false;
+let RANDOM_HASH_ORDER_SQL: string;
 
 function initDialectFragments(dialect: 'sqlite' | 'postgres'): void {
   IS_POSTGRES = dialect === 'postgres';
@@ -72,6 +73,8 @@ function initDialectFragments(dialect: 'sqlite' | 'postgres'): void {
     JSON_EXTRACT_FN = (col, p) => `CASE WHEN json_valid(${col}) THEN json_extract(${col}, '${p}') END`;
     INSERT_OR_IGNORE = 'INSERT OR IGNORE';
     INSERT_OR_IGNORE_SUFFIX = '';
+    // SQLite integers are 64-bit; no overflow risk
+    RANDOM_HASH_ORDER_SQL = 'ABS(((images.id * 1103515245) + (? * 1013904223)) % 2147483647)';
   } else {
     BOOL_TRUE = 'true';
     BOOL_FALSE = 'false';
@@ -82,6 +85,8 @@ function initDialectFragments(dialect: 'sqlite' | 'postgres'): void {
     JSON_EXTRACT_FN = (col, p) => `(${col}::jsonb->>'${p.replace('$.', '')}')`;
     INSERT_OR_IGNORE = 'INSERT';
     INSERT_OR_IGNORE_SUFFIX = ' ON CONFLICT DO NOTHING';
+    // Cast to bigint before multiplication to avoid INT4 overflow in PostgreSQL
+    RANDOM_HASH_ORDER_SQL = 'ABS(((images.id::bigint * 1103515245) + (?::bigint * 1013904223)) % 2147483647)';
   }
 }
 
@@ -1268,7 +1273,7 @@ export const imageRepository = {
     const { rows } = await getDriver().query<FeedImage>(
       `${getFeedImageSelectSql()}
       WHERE ${VISIBLE_IMAGE_WHERE_SQL}
-      ORDER BY ABS(((images.id * 1103515245) + (? * 1013904223)) % 2147483647), images.id DESC
+      ORDER BY ${RANDOM_HASH_ORDER_SQL}, images.id DESC
       LIMIT ? OFFSET ?`,
       [seed, limit, offset]
     );
