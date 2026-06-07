@@ -99,6 +99,14 @@
               />
             </svg>
           </button>
+          <button
+            class="reels-view__speed-button"
+            type="button"
+            aria-label="Toggle playback speed"
+            @click="toggleSpeed"
+          >
+            {{ speedLabel }}
+          </button>
         </div>
 
         <ReelActionRail
@@ -160,6 +168,8 @@ const desktopInfoSidebarAnchor = computed<'left' | 'right'>(() =>
   desktopInfoPanelSide.value === 'right' ? 'left' : 'right'
 );
 
+const speedLabel = computed(() => appStore.videoPlaybackRate === 1 ? '×1' : '×2');
+
 const activeItem = computed(() => reelsStore.activeItem);
 const activeFolder = computed(() =>
   activeItem.value ? foldersStore.items.find((folder) => folder.slug === activeItem.value?.folderSlug) ?? null : null
@@ -183,6 +193,10 @@ function goToPrevious() {
 
 function goToNext() {
   deckElement.value?.goToNext();
+}
+
+function toggleSpeed() {
+  appStore.toggleVideoPlaybackRate();
 }
 
 function handleInfoToggle() {
@@ -400,6 +414,32 @@ watch(activeItem, (item) => {
 .reels-view__nav-icon {
   width: 1.15rem;
   height: 1.15rem;
+}
+
+.reels-view__speed-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 78%, var(--text) 22%);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(15, 20, 25, 0.14);
+  transition:
+    transform 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.reels-view__speed-button:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--surface) 64%, var(--text) 36%);
 }
 
 .reels-view__message-card {

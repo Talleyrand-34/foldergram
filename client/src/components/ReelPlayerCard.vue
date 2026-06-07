@@ -192,6 +192,10 @@ function switchToOriginalFallback() {
   isUsingOriginalFallback.value = true;
 }
 
+function applyPlaybackRate(player: MediaPlayerElement) {
+  player.playbackRate = appStore.videoPlaybackRate;
+}
+
 function syncMuted(player: MediaPlayerElement, muted: boolean) {
   const token = ++muteSyncToken;
   player.muted = muted;
@@ -248,6 +252,7 @@ function bindPlayerEventListeners(player: MediaPlayerElement | null) {
   }
 
   const handleReady = () => {
+    applyPlaybackRate(player);
     void syncPlayback();
   };
   const handlePlay = () => {
@@ -362,6 +367,18 @@ watch(
     }
 
     syncMuted(player, videoMuted);
+  }
+);
+
+watch(
+  () => appStore.videoPlaybackRate,
+  () => {
+    const player = playerElement.value;
+    if (!player) {
+      return;
+    }
+
+    applyPlaybackRate(player);
   }
 );
 
