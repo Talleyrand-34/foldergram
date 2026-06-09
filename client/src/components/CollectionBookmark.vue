@@ -16,7 +16,7 @@
       :class="{ 'collection-bookmark__button--saved': isSaved }"
       type="button"
       aria-haspopup="dialog"
-      :aria-expanded="popoverOpen"
+      :aria-expanded="popoverOpen || sheetOpen"
       :aria-label="buttonLabel"
       :title="buttonLabel"
       :disabled="collectionsStore.isPending(item.id)"
@@ -32,6 +32,7 @@
       />
     </button>
 
+    <!-- Desktop popover -->
     <Teleport to="body">
       <div
         v-if="popoverOpen"
@@ -106,6 +107,88 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- Mobile bottom sheet -->
+    <Teleport to="body">
+      <Transition name="collection-bookmark-sheet-backdrop">
+        <div
+          v-if="sheetOpen"
+          class="collection-bookmark__sheet-backdrop"
+          aria-hidden="true"
+          @click.stop="closeSheet"
+        />
+      </Transition>
+      <Transition name="collection-bookmark-sheet">
+        <div
+          v-if="sheetOpen"
+          class="collection-bookmark__sheet"
+          role="dialog"
+          :aria-label="t('collections.bookmark.dialogLabel')"
+          @click.stop
+          @keydown.esc.stop.prevent="closeSheet"
+        >
+          <div class="collection-bookmark__sheet-handle" aria-hidden="true" />
+
+          <div class="collection-bookmark__sheet-header">
+            <strong class="collection-bookmark__sheet-title">{{ t('collections.bookmark.title') }}</strong>
+            <button
+              class="collection-bookmark__sheet-create-btn"
+              type="button"
+              :aria-label="t('collections.bookmark.createCollection')"
+              :title="t('collections.bookmark.createCollection')"
+              @click="startCreating"
+            >
+              <span class="i-fluent-add-16-filled" aria-hidden="true" />
+            </button>
+          </div>
+
+          <form v-if="creating" class="collection-bookmark__sheet-create-form" @submit.prevent="submitCreate">
+            <input
+              ref="createInputElement"
+              v-model="collectionName"
+              class="collection-bookmark__sheet-input"
+              type="text"
+              maxlength="80"
+              :placeholder="t('collections.bookmark.namePlaceholder')"
+              @keydown.esc.stop.prevent="cancelCreating"
+            />
+            <button class="collection-bookmark__sheet-submit" type="submit" :disabled="creatingCollection">
+              <span class="i-fluent-checkmark-16-filled" aria-hidden="true" />
+            </button>
+          </form>
+
+          <p v-if="localError" class="collection-bookmark__sheet-error">{{ localError }}</p>
+          <p v-else-if="collectionsStore.error" class="collection-bookmark__sheet-error">{{ collectionsStore.error }}</p>
+
+          <div class="collection-bookmark__sheet-rows">
+            <p v-if="customMemberships.length === 0" class="collection-bookmark__sheet-empty">{{ t('collections.bookmark.empty') }}</p>
+            <button
+              v-for="collection in customMemberships"
+              :key="collection.slug"
+              class="collection-bookmark__sheet-row"
+              type="button"
+              :disabled="collectionsStore.isCollectionPending(collection.slug, item.id)"
+              @click="toggleCollection(collection.slug)"
+            >
+              <span class="collection-bookmark__sheet-cover">
+                <ResilientImage
+                  v-if="collection.coverImage"
+                  :src="collection.coverImage.thumbnailUrl"
+                  :alt="displayCollectionName(collection)"
+                  loading="lazy"
+                />
+              </span>
+              <span class="collection-bookmark__sheet-name">{{ displayCollectionName(collection) }}</span>
+              <span
+                v-if="collection.containsImage"
+                class="collection-bookmark__sheet-check i-fluent-checkmark-16-filled"
+                aria-hidden="true"
+              />
+            </button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -131,6 +214,7 @@ const buttonElement = ref<HTMLButtonElement | null>(null);
 const popoverElement = ref<HTMLElement | null>(null);
 const createInputElement = ref<HTMLInputElement | null>(null);
 const popoverOpen = ref(false);
+const sheetOpen = ref(false);
 const popoverPlacement = ref<'top' | 'bottom'>('top');
 const popoverStyle = ref<Record<string, string>>({});
 const creating = ref(false);
@@ -141,6 +225,7 @@ const longPressTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 const suppressNextClick = ref(false);
 let openTimer: ReturnType<typeof setTimeout> | null = null;
 let closeTimer: ReturnType<typeof setTimeout> | null = null;
+let lastPointerType = '';
 const popoverViewportMargin = 12;
 const popoverGap = 10;
 const popoverOpenDelayMs = 1000;
@@ -163,6 +248,9 @@ watch(
   () => props.item,
   (item) => {
     collectionsStore.syncSavedState(item);
+    if (sheetOpen.value) {
+      closeSheet();
+    }
   },
   {
     immediate: true
@@ -226,6 +314,30 @@ function closePopover() {
   popoverStyle.value = {};
   creating.value = false;
   localError.value = null;
+}
+
+async function openSheet() {
+  sheetOpen.value = true;
+  localError.value = null;
+  creating.value = false;
+  await collectionsStore.fetchMembership(props.item.id).catch((error) => {
+    localError.value = error instanceof Error ? error.message : t('collections.bookmark.errors.loadCollections');
+  });
+}
+
+function closeSheet() {
+  sheetOpen.value = false;
+  creating.value = false;
+  localError.value = null;
+  collectionName.value = '';
+}
+
+function closePicker() {
+  if (sheetOpen.value) {
+    closeSheet();
+  } else {
+    closePopover();
+  }
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -328,12 +440,21 @@ async function handleBookmarkClick() {
     return;
   }
 
+  if (lastPointerType === 'touch' || lastPointerType === 'pen') {
+    void openSheet();
+    return;
+  }
+
   await collectionsStore.toggleDefaultSave(props.item);
   await collectionsStore.fetchMembership(props.item.id, true);
 }
 
 function handlePointerDown(event: PointerEvent) {
-  if (event.pointerType === 'mouse') {
+  lastPointerType = event.pointerType;
+
+  if (event.pointerType !== 'mouse') {
+    // Touch: open sheet on tap — no long-press needed
+    clearLongPressTimer();
     return;
   }
 
@@ -366,7 +487,9 @@ async function startCreating() {
   localError.value = null;
   await nextTick();
   createInputElement.value?.focus();
-  updatePopoverPosition();
+  if (!sheetOpen.value) {
+    updatePopoverPosition();
+  }
 }
 
 function cancelCreating() {
@@ -388,11 +511,13 @@ async function submitCreate() {
   try {
     await collectionsStore.createAndAdd(name, props.item);
     collectionName.value = '';
-    closePopover();
+    closePicker();
   } catch (error) {
     localError.value = error instanceof Error ? error.message : t('collections.detail.edit.createError');
-    await nextTick();
-    updatePopoverPosition();
+    if (!sheetOpen.value) {
+      await nextTick();
+      updatePopoverPosition();
+    }
   } finally {
     creatingCollection.value = false;
   }
@@ -404,7 +529,7 @@ async function toggleCollection(slug: string) {
   try {
     await collectionsStore.toggleCollectionMembership(slug, props.item);
     if (!creating.value) {
-      closePopover();
+      closePicker();
     }
   } catch (error) {
     localError.value = error instanceof Error ? error.message : t('collections.detail.edit.updateError');
@@ -424,10 +549,17 @@ watch(popoverOpen, (isOpen) => {
   }
 });
 
+watch(sheetOpen, (isOpen) => {
+  document.body.style.overflow = isOpen ? 'hidden' : '';
+});
+
 onBeforeUnmount(() => {
   clearOpenTimer();
   clearCloseTimer();
   clearLongPressTimer();
   removePopoverPositionListeners();
+  if (sheetOpen.value) {
+    document.body.style.overflow = '';
+  }
 });
 </script>

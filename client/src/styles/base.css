@@ -1974,6 +1974,222 @@ img[data-loaded="true"] {
   }
 }
 
+/* ── Collection bookmark bottom sheet ────────────────────── */
+
+.collection-bookmark__sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  background: rgba(0, 0, 0, 0.48);
+}
+
+.collection-bookmark__sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 131;
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  max-height: 72vh;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  background: #252525;
+  color: #f7f7f7;
+  border-radius: 1.25rem 1.25rem 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 -8px 48px rgba(0, 0, 0, 0.32);
+  overflow: hidden;
+}
+
+.collection-bookmark__sheet-handle {
+  width: 2.5rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  margin: 0.85rem auto 0.3rem;
+  flex-shrink: 0;
+}
+
+.collection-bookmark__sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 1.1rem 0.5rem;
+}
+
+.collection-bookmark__sheet-title {
+  font-size: 1.08rem;
+  font-weight: 600;
+}
+
+.collection-bookmark__sheet-create-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
+  border: 0;
+  color: #f7f7f7;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.collection-bookmark__sheet-create-btn span {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.collection-bookmark__sheet-create-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0 1.1rem 0.35rem;
+}
+
+.collection-bookmark__sheet-input {
+  width: 100%;
+  min-width: 0;
+  height: 2.6rem;
+  padding: 0 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0.6rem;
+  color: #f7f7f7;
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+  font-size: 1rem;
+}
+
+.collection-bookmark__sheet-input:focus {
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.collection-bookmark__sheet-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
+  border: 0;
+  color: #f7f7f7;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.collection-bookmark__sheet-submit span {
+  width: 1.2rem;
+  height: 1.2rem;
+}
+
+.collection-bookmark__sheet-error {
+  margin: 0;
+  padding: 0 1.1rem 0.2rem;
+  color: #ffb4ad;
+  font-size: 0.84rem;
+}
+
+.collection-bookmark__sheet-rows {
+  min-height: 0;
+  overflow: hidden auto;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.15rem 0.65rem 0.5rem;
+  overscroll-behavior: contain;
+}
+
+.collection-bookmark__sheet-empty {
+  margin: 0;
+  padding: 0.5rem 0.4rem;
+  color: rgba(247, 247, 247, 0.65);
+  font-size: 0.9rem;
+}
+
+.collection-bookmark__sheet-row {
+  display: grid;
+  grid-template-columns: 3.4rem minmax(0, 1fr) 1.3rem;
+  align-items: center;
+  gap: 0.9rem;
+  min-height: 4.2rem;
+  width: 100%;
+  padding: 0.45rem;
+  border: 0;
+  border-radius: 0.8rem;
+  color: #f7f7f7;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.14s ease;
+}
+
+.collection-bookmark__sheet-row:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.collection-bookmark__sheet-row:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.collection-bookmark__sheet-cover {
+  width: 3.4rem;
+  height: 3.4rem;
+  overflow: hidden;
+  border-radius: 0.58rem;
+  background: rgba(255, 255, 255, 0.09);
+  flex-shrink: 0;
+}
+
+.collection-bookmark__sheet-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.collection-bookmark__sheet-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.collection-bookmark__sheet-check {
+  width: 1.15rem;
+  height: 1.15rem;
+  color: #f7f7f7;
+  flex-shrink: 0;
+}
+
+/* Sheet slide-up transitions */
+.collection-bookmark-sheet-backdrop-enter-active,
+.collection-bookmark-sheet-backdrop-leave-active {
+  transition: opacity 0.22s ease;
+}
+
+.collection-bookmark-sheet-backdrop-enter-from,
+.collection-bookmark-sheet-backdrop-leave-to {
+  opacity: 0;
+}
+
+.collection-bookmark-sheet-enter-active,
+.collection-bookmark-sheet-leave-active {
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.collection-bookmark-sheet-enter-from,
+.collection-bookmark-sheet-leave-to {
+  transform: translateY(100%);
+}
+
 /* ── Keyframe animations ────────────────────────────────────── */
 @keyframes shimmer {
   0% {
