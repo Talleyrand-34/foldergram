@@ -198,6 +198,14 @@
                       />
                     </media-mute-button>
                     <button
+                      class="viewer__player-control viewer__player-speed-button"
+                      type="button"
+                      aria-label="Toggle playback speed"
+                      @click.stop="appStore.toggleVideoPlaybackRate()"
+                    >
+                      {{ speedLabel }}
+                    </button>
+                    <button
                       v-if="showHdButton"
                       class="viewer__player-control"
                       :class="{ 'viewer__player-control--active': isPlayingHd }"
@@ -682,6 +690,8 @@
     return `${megabytes.toFixed(2)} MB`
   })
 
+  const speedLabel = computed(() => `×${appStore.videoPlaybackRate}`)
+
   const showHdButton = computed(
     () =>
       props.image?.mediaType === 'video' &&
@@ -934,6 +944,10 @@
       void navigateByDirection("previous")
     },
   })
+
+  function applyPlaybackRate(player: MediaPlayerElement) {
+    player.playbackRate = appStore.videoPlaybackRate
+  }
 
   function syncVideoMuted(player: MediaPlayerElement, muted: boolean) {
     const token = ++videoMuteSyncToken
@@ -1479,6 +1493,10 @@
 
   async function handlePlayerReadyForPlayback(): Promise<void> {
     const player = playerElement.value
+    if (player) {
+      applyPlaybackRate(player)
+    }
+
     if (player && pendingVideoRestore) {
       const restoreState = pendingVideoRestore
       pendingVideoRestore = null
@@ -1595,6 +1613,18 @@
       }
 
       syncVideoMuted(player, videoMuted)
+    },
+  )
+
+  watch(
+    () => appStore.videoPlaybackRate,
+    () => {
+      const player = playerElement.value
+      if (!player) {
+        return
+      }
+
+      applyPlaybackRate(player)
     },
   )
 

@@ -985,6 +985,12 @@ img[data-loaded="true"] {
   color: rgba(132, 210, 255, 1);
 }
 
+.viewer__player-speed-button {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 .viewer__player-control-icon {
   position: absolute;
   inset: 0;
