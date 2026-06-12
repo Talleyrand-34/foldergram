@@ -13,6 +13,7 @@ export const repositoryRoot = path.resolve(moduleDirectory, '../../..');
 dotenv.config({ path: path.join(repositoryRoot, '.env') });
 
 const envSchema = z.object({
+  SERVER_HOST: z.string().default('0.0.0.0'),
   SERVER_PORT: z.coerce.number().int().positive().optional(),
   DEV_SERVER_PORT: z.coerce.number().int().positive().optional(),
   DEV_CLIENT_PORT: z.coerce.number().int().positive().optional(),
@@ -146,6 +147,7 @@ const managedGalleryRelativeIgnores = uniq(
 );
 
 export const appConfig = {
+  host: parsed.SERVER_HOST,
   port: serverPort,
   devClientPort,
   devClientPorts,
