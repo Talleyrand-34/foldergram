@@ -96,9 +96,13 @@ function normalizeBooleanParams(sql: string, params: unknown[]): unknown[] {
 }
 
 function quoteAliases(sql: string): string {
-  return sql.replace(/\bAS (?!")([a-zA-Z_][a-zA-Z0-9_]*)/g, (match, alias) =>
-    /[A-Z]/.test(alias) ? `AS "${alias}"` : match
-  );
+  return sql
+    .replace(/\bAS (?!")([a-zA-Z_][a-zA-Z0-9_]*)/g, (match, alias) =>
+      /[A-Z]/.test(alias) ? `AS "${alias}"` : match
+    )
+    .replace(/\b(\w+)\.(?!")([a-zA-Z_][a-zA-Z0-9_]*)\b/g, (match, table, column) =>
+      /[A-Z]/.test(column) ? `${table}."${column}"` : match
+    );
 }
 
 function prepSql(sql: string): string {

@@ -731,6 +731,12 @@
       "loading": "正在加载短片详情...",
       "folderPath": "文件夹路径",
       "mimeType": "MIME 类型"
+    },
+    "caption": {
+      "expandAria": "显示完整描述",
+      "collapseAria": "隐藏描述",
+      "edit": "编辑描述",
+      "placeholder": "写点描述..."
     }
   },
   "post": {
@@ -1027,7 +1033,8 @@
     "tabsAria": "搜索结果标签页",
     "tabs": {
       "media": "照片和视频",
-      "folders": "应用文件夹"
+      "folders": "应用文件夹",
+      "descriptions": "描述"
     },
     "errors": {
       "search": "无法搜索帖子",
@@ -1035,6 +1042,8 @@
     },
     "emptySearchTitle": "没有匹配的照片或视频",
     "emptySearchDescription": "请尝试其他文件名或文件夹关键词。",
+    "emptyDescriptionsTitle": "没有匹配的描述",
+    "emptyDescriptionsDescription": "请尝试搜索您在帖子说明中使用的词语。",
     "loadingFolders": "正在加载文件夹...",
     "noFoldersFound": "未找到应用文件夹。",
     "emptyTitle": "暂时没有可探索内容",

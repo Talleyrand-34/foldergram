@@ -184,6 +184,16 @@
           >
             {{ t('explore.tabs.folders') }}
           </button>
+          <button
+            class="explore-view__tab"
+            :class="{ 'explore-view__tab--active': activeSearchTab === 'descriptions' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeSearchTab === 'descriptions'"
+            @click="selectSearchTab('descriptions')"
+          >
+            {{ t('explore.tabs.descriptions') }}
+          </button>
         </div>
 
         <template v-if="activeSearchTab === 'media'">
@@ -239,7 +249,7 @@
           </template>
         </template>
 
-        <section v-else class="max-w-[35rem]">
+        <section v-else-if="activeSearchTab === 'folders'" class="max-w-[35rem]">
           <p
             v-if="foldersStore.loadingList && foldersStore.items.length === 0"
             class="m-0 text-[0.96rem] text-muted"
@@ -279,6 +289,28 @@
               {{ t('explore.noFoldersFound') }}
             </p>
           </div>
+        </section>
+
+        <section
+          v-else-if="activeSearchTab === 'descriptions'"
+          class="grid gap-5"
+        >
+          <section
+            v-if="captionSearchResults.length === 0"
+            class="explore-view__message-card mx-auto"
+          >
+            <h1 class="m-0 text-[1.15rem] font-semibold text-text">
+              {{ t('explore.emptyDescriptionsTitle') }}
+            </h1>
+            <p class="m-0 text-muted">
+              {{ t('explore.emptyDescriptionsDescription') }}
+            </p>
+          </section>
+          <ExploreGrid
+            v-else
+            :items="captionSearchResults"
+            @open="handleSearchMediaOpen"
+          />
         </section>
       </section>
 
@@ -349,7 +381,7 @@ import { searchFolders, rankExploreItems } from '../utils/explore';
 import { formatFolderTitle } from '../utils/folder-titles';
 import { buildLikedCountByFolder } from '../utils/home-recommendations';
 
-type SearchTab = 'media' | 'folders';
+type SearchTab = 'media' | 'folders' | 'descriptions';
 
 const SEARCH_DEBOUNCE_MS = 180;
 
@@ -388,6 +420,16 @@ const showSearchChrome = computed(
 const folderSearchResults = computed(() =>
   searchFolders(foldersStore.items, trimmedSearchQuery.value)
 );
+const captionSearchResults = computed(() => {
+  const q = trimmedSearchQuery.value.toLocaleLowerCase();
+  if (!q) return [];
+  const tokens = [...new Set(q.split(/\s+/).filter(Boolean))];
+  return exploreStore.searchItems.filter((item) => {
+    if (!item.caption) return false;
+    const lc = item.caption.toLocaleLowerCase();
+    return tokens.every((token) => lc.includes(token));
+  });
+});
 const rankedItems = computed(() =>
   rankExploreItems(
     exploreStore.items,
@@ -455,6 +497,8 @@ watch([trimmedSearchQuery, activeSearchTab], ([query, tab]) => {
     nextRouteQuery.q = query;
     if (tab === 'folders') {
       nextRouteQuery.tab = 'folders';
+    } else if (tab === 'descriptions') {
+      nextRouteQuery.tab = 'descriptions';
     } else {
       delete nextRouteQuery.tab;
     }
@@ -646,7 +690,10 @@ function readRouteQueryValue(value: unknown): string {
 }
 
 function parseSearchTab(value: unknown): SearchTab {
-  return readRouteQueryValue(value) === 'folders' ? 'folders' : 'media';
+  const v = readRouteQueryValue(value);
+  if (v === 'folders') return 'folders';
+  if (v === 'descriptions') return 'descriptions';
+  return 'media';
 }
 </script>
 

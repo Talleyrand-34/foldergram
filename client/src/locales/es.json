@@ -731,6 +731,12 @@
       "loading": "Cargando detalles del reel...",
       "folderPath": "Ruta de la carpeta",
       "mimeType": "Tipo MIME"
+    },
+    "caption": {
+      "expandAria": "Mostrar el título completo",
+      "collapseAria": "Ocultar el título",
+      "edit": "Editar título",
+      "placeholder": "Escribe un título..."
     }
   },
   "post": {
@@ -1027,7 +1033,8 @@
     "tabsAria": "Pestañas de resultados de búsqueda",
     "tabs": {
       "media": "Fotos y videos",
-      "folders": "Carpetas de la app"
+      "folders": "Carpetas de la app",
+      "descriptions": "Descripciones"
     },
     "errors": {
       "search": "No se pudieron buscar publicaciones",
@@ -1035,6 +1042,8 @@
     },
     "emptySearchTitle": "No hay fotos ni videos que coincidan",
     "emptySearchDescription": "Prueba con otro nombre de archivo o palabra clave de carpeta.",
+    "emptyDescriptionsTitle": "No hay descripciones que coincidan",
+    "emptyDescriptionsDescription": "Prueba con palabras que hayas usado en el pie de foto de una publicación.",
     "loadingFolders": "Cargando carpetas...",
     "noFoldersFound": "No se encontraron carpetas de la app.",
     "emptyTitle": "Todavía no hay nada para explorar",

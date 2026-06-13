@@ -78,6 +78,94 @@
                 </p>
               </div>
             </RouterLink>
+
+            <div
+              v-if="showCaption"
+              class="reel-player-card__caption"
+              :class="{ 'reel-player-card__caption--editing': captionEditing }"
+            >
+              <form
+                v-if="captionEditing"
+                class="reel-player-card__caption-form"
+                @submit.prevent="submitCaption"
+                @click.stop
+                @pointerdown.stop
+              >
+                <textarea
+                  ref="captionTextarea"
+                  v-model="draftCaption"
+                  class="reel-player-card__caption-input"
+                  maxlength="300"
+                  rows="3"
+                  :placeholder="t('reels.caption.placeholder')"
+                  :disabled="saving"
+                />
+                <p v-if="captionError" class="reel-player-card__caption-error">
+                  {{ captionError }}
+                </p>
+                <div class="reel-player-card__caption-actions">
+                  <button
+                    type="button"
+                    class="reel-player-card__caption-button"
+                    :disabled="saving"
+                    @click="cancelEdit"
+                  >
+                    {{ t('common.cancel') }}
+                  </button>
+                  <button
+                    type="submit"
+                    class="reel-player-card__caption-button reel-player-card__caption-button--primary"
+                    :disabled="saving"
+                  >
+                    {{ saving ? t('common.saving') : t('common.save') }}
+                  </button>
+                </div>
+              </form>
+
+              <div
+                v-else
+                class="reel-player-card__caption-display"
+                :class="{ 'reel-player-card__caption-display--expanded': captionExpanded }"
+                role="button"
+                :tabindex="active ? 0 : -1"
+                :aria-expanded="captionExpanded"
+                :aria-label="
+                  captionExpanded ? t('reels.caption.collapseAria') : t('reels.caption.expandAria')
+                "
+                @click.stop="handleCaptionClick"
+                @pointerdown.stop
+                @keydown="handleCaptionKeydown"
+              >
+                <p class="reel-player-card__caption-text">{{ displayCaption }}</p>
+
+                <span
+                  v-if="!captionExpanded"
+                  class="reel-player-card__caption-chevron i-fluent-chevron-up-16-regular"
+                  aria-hidden="true"
+                />
+
+                <div v-else class="reel-player-card__caption-tools">
+                  <button
+                    v-if="canEditCaption"
+                    type="button"
+                    class="reel-player-card__caption-tool"
+                    :aria-label="t('reels.caption.edit')"
+                    :title="t('reels.caption.edit')"
+                    @click.stop="beginEdit"
+                  >
+                    <span class="i-fluent-edit-16-regular" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    class="reel-player-card__caption-tool"
+                    :aria-label="t('reels.caption.collapseAria')"
+                    @click.stop="collapseCaption"
+                  >
+                    <span class="i-fluent-chevron-down-16-regular" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="reel-player-card__controls">
@@ -114,13 +202,17 @@
 <script setup lang="ts">
 import 'vidstack/bundle';
 
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { RouterLink } from 'vue-router';
 import type { PlayerSrc } from 'vidstack';
 import type { MediaPlayerElement } from 'vidstack/elements';
 
+import { useImageCaptionEditor } from '../composables/useImageCaptionEditor';
 import { useAppStore } from '../stores/app';
+import { useAuthStore } from '../stores/auth';
 import type { FeedItem, FolderSummary } from '../types/api';
+import { resolveDisplayCaption } from '../utils/caption';
 import { formatFolderTitle } from '../utils/folder-titles';
 import { getOriginalMediaUrl } from '../utils/original-media';
 import Avatar from './Avatar.vue';
@@ -132,8 +224,82 @@ const props = defineProps<{
 }>();
 
 const appStore = useAppStore();
+const authStore = useAuthStore();
+const { t } = useI18n();
+const { saving, error: captionError, saveCaption, clearError } = useImageCaptionEditor();
 const playerElement = ref<MediaPlayerElement | null>(null);
 const isPaused = ref(false);
+
+const captionExpanded = ref(false);
+const captionEditing = ref(false);
+const draftCaption = ref('');
+const captionTextarea = ref<HTMLTextAreaElement | null>(null);
+
+const displayCaption = computed(() => resolveDisplayCaption(props.item));
+const hasCustomCaption = computed(
+  () => typeof props.item.caption === 'string' && props.item.caption.trim().length > 0
+);
+const canEditCaption = computed(() => authStore.canManageLibrary);
+const showCaption = computed(() => hasCustomCaption.value || canEditCaption.value);
+
+function handleCaptionClick() {
+  if (!captionExpanded.value) {
+    captionExpanded.value = true;
+    return;
+  }
+
+  if (canEditCaption.value) {
+    beginEdit();
+    return;
+  }
+
+  captionExpanded.value = false;
+}
+
+function handleCaptionKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Enter' && event.key !== ' ') {
+    return;
+  }
+
+  event.preventDefault();
+  handleCaptionClick();
+}
+
+function collapseCaption() {
+  captionExpanded.value = false;
+}
+
+function beginEdit() {
+  if (!canEditCaption.value) {
+    return;
+  }
+
+  clearError();
+  draftCaption.value = displayCaption.value;
+  captionExpanded.value = true;
+  captionEditing.value = true;
+  void nextTick(() => {
+    captionTextarea.value?.focus();
+  });
+}
+
+function cancelEdit() {
+  captionEditing.value = false;
+  clearError();
+}
+
+async function submitCaption() {
+  if (saving.value) {
+    return;
+  }
+
+  try {
+    await saveCaption(props.item, draftCaption.value);
+    captionEditing.value = false;
+  } catch {
+    // Failure is surfaced through captionError from the composable.
+  }
+}
 const isUsingOriginalFallback = ref(false);
 const playerLoadMode = computed(() => (props.active ? 'eager' : 'visible'));
 const currentVideoSrc = computed(() => (isUsingOriginalFallback.value ? getOriginalMediaUrl(props.item.id) : props.item.previewUrl));
@@ -368,6 +534,15 @@ watch(
     resetAutoplayRetry();
     isUsingOriginalFallback.value = false;
     isPaused.value = false;
+  }
+);
+
+watch(
+  () => [props.item.id, props.active] as const,
+  () => {
+    captionExpanded.value = false;
+    captionEditing.value = false;
+    clearError();
   }
 );
 
@@ -616,6 +791,165 @@ defineExpose({ togglePlayback: handleSurfaceClick });
   color: rgba(255, 255, 255, 0.72);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.reel-player-card__caption {
+  margin-top: 0.55rem;
+  pointer-events: auto;
+}
+
+.reel-player-card__caption-display {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0.35rem 1.9rem 0.35rem 0;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.92);
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.reel-player-card__caption-display--expanded {
+  padding: 0.55rem 0.7rem;
+  margin-left: -0.7rem;
+  margin-right: -0.4rem;
+  border-radius: 0.6rem;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.reel-player-card__caption-text {
+  display: -webkit-box;
+  margin: 0;
+  max-height: 1.4em;
+  overflow: hidden;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  transition: max-height 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.reel-player-card__caption-display--expanded .reel-player-card__caption-text {
+  max-height: 40vh;
+  overflow-y: auto;
+  -webkit-line-clamp: unset;
+}
+
+.reel-player-card__caption-chevron {
+  position: absolute;
+  top: 50%;
+  right: 0.2rem;
+  width: 0.9rem;
+  height: 0.9rem;
+  color: rgba(255, 255, 255, 0.62);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.reel-player-card__caption-tools {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.reel-player-card__caption-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(230, 233, 239, 0.2);
+  color: rgba(255, 255, 255, 0.95);
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+
+.reel-player-card__caption-tool:hover {
+  background: rgba(230, 233, 239, 0.32);
+}
+
+.reel-player-card__caption-tool span {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.reel-player-card__caption-form {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  margin-left: -0.7rem;
+  margin-right: -0.4rem;
+  border-radius: 0.6rem;
+  background: rgba(0, 0, 0, 0.52);
+  backdrop-filter: blur(2px);
+}
+
+.reel-player-card__caption-input {
+  width: 100%;
+  min-height: 4.5rem;
+  max-height: 30vh;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.reel-player-card__caption-input:focus {
+  border-color: rgba(255, 255, 255, 0.5);
+  outline: none;
+}
+
+.reel-player-card__caption-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.reel-player-card__caption-error {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #ff8a80;
+}
+
+.reel-player-card__caption-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.reel-player-card__caption-button {
+  min-height: 2rem;
+  padding: 0.35rem 0.9rem;
+  border: 0;
+  border-radius: 0.55rem;
+  background: rgba(230, 233, 239, 0.2);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reel-player-card__caption-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.reel-player-card__caption-button--primary {
+  background: #fff;
+  color: #000;
 }
 
 .reel-player-card__sound-button {

@@ -8,6 +8,12 @@ import ReelPlayerCard from './ReelPlayerCard.vue';
 
 vi.mock('vidstack/bundle', () => ({}));
 
+const updateImageCaptionMock = vi.fn();
+vi.mock('../api/gallery', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/gallery')>()),
+  updateImageCaption: (...args: unknown[]) => updateImageCaptionMock(...args)
+}));
+
 let nextPlayFailures = 0;
 
 class FakeMediaPlayerElement extends HTMLElement {
@@ -109,6 +115,7 @@ describe('ReelPlayerCard', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     nextPlayFailures = 0;
+    updateImageCaptionMock.mockReset();
     const appStore = useAppStore();
     appStore.$patch({
       videoMuted: true
@@ -326,6 +333,63 @@ describe('ReelPlayerCard', () => {
     await flushPromises();
 
     expect(wrapper.get('media-player').attributes('load')).toBe('visible');
+  });
+
+  it('shows the caption collapsed and expands it on click without toggling playback', async () => {
+    const wrapper = mount(ReelPlayerCard, {
+      props: {
+        item: { ...createFeedItem(20), caption: 'Sunset over the hills' },
+        folder: createFolder(),
+        active: true
+      },
+      global: {
+        stubs: globalStubs
+      }
+    });
+
+    await flushPromises();
+
+    const player = getPlayerElement(wrapper);
+    const display = wrapper.get('.reel-player-card__caption-display');
+    expect(display.classes()).not.toContain('reel-player-card__caption-display--expanded');
+    expect(wrapper.get('.reel-player-card__caption-text').text()).toBe('Sunset over the hills');
+
+    await display.trigger('click');
+    await flushPromises();
+
+    expect(wrapper.get('.reel-player-card__caption-display').classes()).toContain(
+      'reel-player-card__caption-display--expanded'
+    );
+    expect(player.pauseCallCount).toBe(0);
+    expect(wrapper.find('.reel-player-card__pause-indicator').exists()).toBe(false);
+  });
+
+  it('lets an editor edit and save the caption through the caption API', async () => {
+    updateImageCaptionMock.mockResolvedValue({ id: 20, caption: 'New caption' });
+
+    const wrapper = mount(ReelPlayerCard, {
+      props: {
+        item: { ...createFeedItem(20), caption: 'Old caption' },
+        folder: createFolder(),
+        active: true
+      },
+      global: {
+        stubs: globalStubs
+      }
+    });
+
+    await flushPromises();
+
+    // First click expands, second click (as an editor) opens the inline editor.
+    await wrapper.get('.reel-player-card__caption-display').trigger('click');
+    await wrapper.get('.reel-player-card__caption-display').trigger('click');
+    await flushPromises();
+
+    await wrapper.get('.reel-player-card__caption-input').setValue('New caption');
+    await wrapper.get('.reel-player-card__caption-form').trigger('submit.prevent');
+    await flushPromises();
+
+    expect(updateImageCaptionMock).toHaveBeenCalledWith(20, 'New caption');
   });
 
   it('makes the folder overlay clickable without toggling playback', async () => {

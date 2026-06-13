@@ -234,6 +234,7 @@ const IMAGE_FILENAME_SEARCH_SQL = 'LOWER(images.filename)';
 const FOLDER_NAME_SEARCH_SQL = 'LOWER(folders.name)';
 const FOLDER_SLUG_SEARCH_SQL = 'LOWER(folders.slug)';
 const FOLDER_PATH_SEARCH_SQL = 'LOWER(folders.folder_path)';
+const IMAGE_CAPTION_SEARCH_SQL = "LOWER(COALESCE(images.caption, ''))";
 
 function getExifCameraMakeSearchSql(): string {
   return `LOWER(COALESCE(${JSON_EXTRACT_FN('images.exif_json', '$.cameraMake')}, ''))`;
@@ -330,7 +331,8 @@ function buildMediaSearchSql(query: string): MediaSearchSql | null {
     FOLDER_PATH_SEARCH_SQL,
     exifCameraMakeSql,
     exifCameraModelSql,
-    exifLensModelSql
+    exifLensModelSql,
+    IMAGE_CAPTION_SEARCH_SQL
   ] as const;
 
   const normalizedTokens = [...new Set(normalizedQuery.split(' ').filter(Boolean))];
@@ -364,7 +366,8 @@ function buildMediaSearchSql(query: string): MediaSearchSql | null {
     `CASE WHEN ${FOLDER_PATH_SEARCH_SQL} LIKE ? ESCAPE '\\' THEN 32 ELSE 0 END`,
     `CASE WHEN ${exifCameraMakeSql} LIKE ? ESCAPE '\\' THEN 20 ELSE 0 END`,
     `CASE WHEN ${exifCameraModelSql} LIKE ? ESCAPE '\\' THEN 20 ELSE 0 END`,
-    `CASE WHEN ${exifLensModelSql} LIKE ? ESCAPE '\\' THEN 18 ELSE 0 END`
+    `CASE WHEN ${exifLensModelSql} LIKE ? ESCAPE '\\' THEN 18 ELSE 0 END`,
+    `CASE WHEN ${IMAGE_CAPTION_SEARCH_SQL} LIKE ? ESCAPE '\\' THEN 64 ELSE 0 END`
   ];
   const rankParams: string[] = [
     normalizedQuery,
@@ -375,6 +378,7 @@ function buildMediaSearchSql(query: string): MediaSearchSql | null {
     queryContainsPattern,
     normalizedQuery,
     queryPrefixPattern,
+    queryContainsPattern,
     queryContainsPattern,
     queryContainsPattern,
     queryContainsPattern,
@@ -391,9 +395,11 @@ function buildMediaSearchSql(query: string): MediaSearchSql | null {
       `CASE WHEN ${FOLDER_PATH_SEARCH_SQL} LIKE ? ESCAPE '\\' THEN 8 ELSE 0 END`,
       `CASE WHEN ${exifCameraMakeSql} LIKE ? ESCAPE '\\' THEN 6 ELSE 0 END`,
       `CASE WHEN ${exifCameraModelSql} LIKE ? ESCAPE '\\' THEN 6 ELSE 0 END`,
-      `CASE WHEN ${exifLensModelSql} LIKE ? ESCAPE '\\' THEN 6 ELSE 0 END`
+      `CASE WHEN ${exifLensModelSql} LIKE ? ESCAPE '\\' THEN 6 ELSE 0 END`,
+      `CASE WHEN ${IMAGE_CAPTION_SEARCH_SQL} LIKE ? ESCAPE '\\' THEN 10 ELSE 0 END`
     );
     rankParams.push(
+      tokenPattern,
       tokenPattern,
       tokenPattern,
       tokenPattern,

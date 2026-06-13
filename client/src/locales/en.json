@@ -731,6 +731,12 @@
       "loading": "Loading reel details...",
       "folderPath": "Folder Path",
       "mimeType": "MIME Type"
+    },
+    "caption": {
+      "expandAria": "Show full caption",
+      "collapseAria": "Hide caption",
+      "edit": "Edit caption",
+      "placeholder": "Write a caption..."
     }
   },
   "post": {
@@ -1027,7 +1033,8 @@
     "tabsAria": "Search result tabs",
     "tabs": {
       "media": "Photos & Videos",
-      "folders": "App Folders"
+      "folders": "App Folders",
+      "descriptions": "Descriptions"
     },
     "errors": {
       "search": "Could not search posts",
@@ -1035,6 +1042,8 @@
     },
     "emptySearchTitle": "No matching photos or videos",
     "emptySearchDescription": "Try a different filename or folder keyword.",
+    "emptyDescriptionsTitle": "No matching descriptions",
+    "emptyDescriptionsDescription": "Try searching for words you used in a post's caption.",
     "loadingFolders": "Loading folders...",
     "noFoldersFound": "No app folders found.",
     "emptyTitle": "Nothing to explore yet",
