@@ -23,6 +23,7 @@ import { createApp } from "./app.js";
 import { collectionRepository, initRepositories } from "./db/repositories.js";
 import { log } from "./services/log-service.js";
 import { authService } from "./services/auth-service.js";
+import { pluginHost } from "./plugins/host.js";
 import { scannerService } from "./services/scanner-service.js";
 import { watcherService } from "./services/watcher-service.js";
 
@@ -52,7 +53,9 @@ async function bootstrap(): Promise<void> {
   await initRepositories();
   await authService.initialize();
   await scannerService.initialize();
+  await pluginHost.loadAll();
   const app = createApp();
+  pluginHost.mountRoutes(app);
   const server = createServer(app);
   const portVariableName = appConfig.nodeEnv === "production" ? "SERVER_PORT" : "DEV_SERVER_PORT";
   await collectionRepository.ensureDefaultCollection();

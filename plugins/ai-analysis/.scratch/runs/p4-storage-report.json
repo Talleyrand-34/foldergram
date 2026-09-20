@@ -1,0 +1,41 @@
+{
+  "corpusSize": 100,
+  "queries": [
+    {
+      "name": "domain:music/reggaeton",
+      "resultCount": 6,
+      "latencyMs": 1.3446010000006936
+    },
+    {
+      "name": "domain:politics",
+      "resultCount": 32,
+      "latencyMs": 0.37418500000057975
+    },
+    {
+      "name": "tag:bad bunny",
+      "resultCount": 24,
+      "latencyMs": 1.221824000000197
+    },
+    {
+      "name": "tag:election",
+      "resultCount": 0,
+      "latencyMs": 0.13143399999898975
+    },
+    {
+      "name": "transcript:olympics",
+      "resultCount": 10,
+      "latencyMs": 0.5445829999989655
+    },
+    {
+      "name": "combined:music/reggaeton × bad bunny",
+      "resultCount": 1,
+      "latencyMs": 0.5293019999990065
+    },
+    {
+      "name": "similar-to-row-0 (top-10)",
+      "resultCount": 10,
+      "latencyMs": 3.69087700000091
+    }
+  ],
+  "embeddingDim": 1024
+}

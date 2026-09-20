@@ -26,6 +26,7 @@
     "test:client": "node scripts/run-workspace-script.mjs client test"
   },
   "devDependencies": {
+    "bun-types": "^1.4.2",
     "concurrently": "^9.1.2",
     "cross-env": "^10.0.0"
   }

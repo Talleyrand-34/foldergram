@@ -34,6 +34,7 @@ import {
 import { libraryRelocationService } from './library-relocation-service.js';
 import { log } from './log-service.js';
 import { placeResolutionService } from './place-service.js';
+import { pluginHost } from '../plugins/host.js';
 import { storageService } from './storage-service.js';
 import {
   createFingerprint,
@@ -2662,6 +2663,8 @@ class ScannerService {
         })
       : null;
 
+    let indexedImage: ImageRecord | null = null;
+
     if (moveCandidate) {
       const image = await imageRepository.reconcileMove({
         id: moveCandidate.id,
@@ -2686,6 +2689,7 @@ class ScannerService {
         playbackStrategy: metadata.playbackStrategy
       });
       await placeResolutionService.resolveImage(image);
+      indexedImage = image;
     } else {
       const image = await imageRepository.upsert({
         folderId: folder.id,
@@ -2714,6 +2718,24 @@ class ScannerService {
         playbackStrategy: metadata.playbackStrategy
       });
       await placeResolutionService.resolveImage(image);
+      indexedImage = image;
+    }
+
+    if (indexedImage && indexedImage.media_type === 'video') {
+      void pluginHost.emit('video.indexed', {
+        imageId: indexedImage.id,
+        assetKey: indexedImage.asset_key ?? '',
+        relativePath: indexedImage.relative_path,
+        absolutePath: indexedImage.absolute_path,
+        folderId: indexedImage.folder_id,
+        mediaType: 'video' as const,
+        extension: extension ?? '',
+        fileSize: file.stats.size,
+        mtimeMs: file.stats.mtimeMs,
+        durationMs: indexedImage.duration_ms ?? null,
+        width: indexedImage.width ?? null,
+        height: indexedImage.height ?? null,
+      });
     }
 
     return {

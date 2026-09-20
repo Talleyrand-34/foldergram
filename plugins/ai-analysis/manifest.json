@@ -1,0 +1,8 @@
+{
+  "name": "ai-analysis",
+  "version": "0.1.0",
+  "description": "AI analysis for videos: frames + audio → domains, tags, summary, transcript. Search by word/domain.",
+  "entry": "index.ts",
+  "hooks": ["video.indexed"],
+  "requireAuth": true
+}

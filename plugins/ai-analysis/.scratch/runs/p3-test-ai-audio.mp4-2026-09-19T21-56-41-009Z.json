@@ -1,0 +1,47 @@
+{
+  "videoPath": "/tmp/test-ai-audio.mp4",
+  "videoMeta": {
+    "duration": 10,
+    "fps": 25,
+    "width": 480,
+    "height": 270,
+    "hasAudio": true
+  },
+  "frames": 3,
+  "audioChars": 19,
+  "detectedLanguage": "auto",
+  "model": "minimax/MiniMax-M3",
+  "classification": {
+    "summary": "Static red screen displaying 'Audio Test' with only cricket chirping sounds, likely an audio calibration clip.",
+    "domains": [
+      "tech"
+    ],
+    "tags": [
+      "audio test",
+      "red screen",
+      "crickets",
+      "calibration",
+      "silent video",
+      "ambient sound"
+    ],
+    "language": "unknown",
+    "sentiment": "neutral",
+    "evidence": {
+      "visual": "Solid red screen with white 'Audio Test' text throughout all frames.",
+      "audio": "Cricket chirping ambient sound effects with no speech."
+    }
+  },
+  "usage": {
+    "completion_tokens": 295,
+    "prompt_tokens": 1104,
+    "total_tokens": 1399,
+    "completion_tokens_details": {
+      "reasoning_tokens": 202
+    },
+    "prompt_tokens_details": {
+      "cached_tokens": 128
+    },
+    "total_characters": 0
+  },
+  "durationMs": 4230
+}

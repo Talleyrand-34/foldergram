@@ -1,0 +1,16 @@
+{
+  "videoPath": "/tmp/test-ai-audio.mp4",
+  "videoMeta": {
+    "duration": 10,
+    "fps": 25,
+    "width": 480,
+    "height": 270,
+    "hasAudio": true
+  },
+  "model": "whisper-1",
+  "detectedLanguage": "auto",
+  "transcript": "(crickets chirping)",
+  "wordCount": 2,
+  "charCount": 19,
+  "durationMs": 1045
+}

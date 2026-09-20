@@ -1,0 +1,40 @@
+{
+  "videoPath": "/tmp/test-ai-video.mp4",
+  "videoMeta": {
+    "duration": 15,
+    "fps": 25,
+    "width": 640,
+    "height": 360,
+    "hasAudio": false
+  },
+  "frameCount": 3,
+  "model": "minimax/MiniMax-M3",
+  "classification": {
+    "summary": "Static blue title card displaying 'Test Video for AI Analysis' text throughout",
+    "domains": [
+      "tech/ai"
+    ],
+    "tags": [
+      "test video",
+      "placeholder",
+      "blue screen",
+      "ai analysis",
+      "sample"
+    ],
+    "language": "en",
+    "sentiment": "neutral"
+  },
+  "usage": {
+    "completion_tokens": 107,
+    "prompt_tokens": 1377,
+    "total_tokens": 1484,
+    "completion_tokens_details": {
+      "reasoning_tokens": 43
+    },
+    "prompt_tokens_details": {
+      "cached_tokens": 128
+    },
+    "total_characters": 0
+  },
+  "durationMs": 2505
+}
