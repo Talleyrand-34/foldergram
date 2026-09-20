@@ -1071,6 +1071,13 @@
       "heading": "AI knowledge of this folder",
       "coverage": "{analyzed} of {total} videos analyzed",
       "empty": "No AI knowledge yet. Click 'Analyze N videos' to generate it."
+    },
+    "popover": {
+      "title": "AI processing",
+      "refresh": "Refresh",
+      "oldest": "Oldest queued:",
+      "queueEmpty": "No videos in queue.",
+      "openSettings": "View in Settings"
     }
   },
   "explore": {

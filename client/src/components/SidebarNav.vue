@@ -388,6 +388,37 @@
         </div>
 
         <button
+          v-if="authStore.canManageLibrary"
+          class="sidebar-item w-full"
+          :class="aiPopoverOpen ? 'bg-surface-hover font-semibold' : ''"
+          type="button"
+          aria-haspopup="dialog"
+          :aria-expanded="aiPopoverOpen"
+          @click="toggleAiPopover"
+        >
+          <span
+            :class="aiHasPending ? 'i-fluent-sparkle-16-filled text-accent' : 'i-fluent-sparkle-16-regular'"
+            class="sidebar__icon flex-shrink-0 w-[1.45rem] h-[1.45rem]"
+            aria-hidden="true"
+          />
+          <span
+            class="sidebar__label max-w-0 overflow-hidden whitespace-nowrap text-[0.9rem] opacity-0 group-hover:max-w-[12rem] group-hover:opacity-100"
+            style="transition: opacity 0.18s ease, max-width 0.22s ease;"
+            >{{ t('ai.popover.title') }}</span>
+          <small
+            v-if="aiHasPending"
+            class="sidebar__badge sidebar__meta ml-auto max-w-0 min-w-[1.5rem] overflow-hidden whitespace-nowrap rounded-full bg-white/12 px-[0.45rem] py-[0.1rem] text-center text-[0.72rem] font-bold text-white/86 opacity-0 group-hover:max-w-[12rem] group-hover:opacity-100"
+            style="transition: opacity 0.18s ease, max-width 0.22s ease;"
+            >{{ aiPendingBadge }}</small>
+        </button>
+
+        <AiStatusPopover
+          :open="aiPopoverOpen"
+          :can-manage="authStore.canManageLibrary"
+          @close="closeAiPopover"
+        />
+
+        <button
           class="sidebar-item w-full"
           :class="moreMenuOpen ? 'bg-surface-hover font-semibold' : ''"
           type="button"
@@ -428,8 +459,10 @@
   import { formatFolderTitle } from "../utils/folder-titles"
   import { buildLikedCountByFolder } from "../utils/home-recommendations"
   import { selectSidebarFolders } from "../utils/sidebar-folders"
+  import { fetchAiStatus } from "../api/ai-analysis"
   import Avatar from "./Avatar.vue"
   import BrandMark from "./BrandMark.vue"
+  import AiStatusPopover from "./AiStatusPopover.vue"
 
   const { t } = useI18n()
   const appVersion = __APP_VERSION__
@@ -440,6 +473,32 @@
   const placesStore = usePlacesStore()
   const route = useRoute()
   const moreMenuOpen = ref(false)
+  const aiPopoverOpen = ref(false)
+  const aiHasPending = ref(false)
+  const aiPendingBadge = ref("")
+  let aiBadgeTimer: ReturnType<typeof setInterval> | null = null
+
+  function toggleAiPopover() {
+    aiPopoverOpen.value = !aiPopoverOpen.value
+    moreMenuOpen.value = false
+  }
+  function closeAiPopover() {
+    aiPopoverOpen.value = false
+  }
+
+  async function refreshAiBadge() {
+    if (!authStore.canManageLibrary) return
+    try {
+      const r = await fetchAiStatus()
+      const pending = (r.byStatus.pending ?? 0) + (r.byStatus.running ?? 0)
+      const failed = r.byStatus.failed ?? 0
+      aiHasPending.value = pending > 0
+      aiPendingBadge.value = pending > 0 ? String(pending) : (failed > 0 ? "!" : "")
+    } catch {
+      // Silent: the sidebar is purely a status indicator. Failures show up
+      // in the popover itself when the user opens it.
+    }
+  }
 
   const likedCountByFolder = computed(() =>
     buildLikedCountByFolder(likesStore.items),
@@ -520,10 +579,21 @@
 
   onMounted(() => {
     void placesStore.fetchPlaces()
+    void refreshAiBadge()
+    aiBadgeTimer = setInterval(refreshAiBadge, 10_000)
     window.addEventListener("keydown", handleWindowKeydown)
   })
 
+  // Close the AI popover when the route changes.
+  watch(
+    () => route.fullPath,
+    () => {
+      if (aiPopoverOpen.value) aiPopoverOpen.value = false
+    },
+  )
+
   onUnmounted(() => {
+    if (aiBadgeTimer) clearInterval(aiBadgeTimer)
     window.removeEventListener("keydown", handleWindowKeydown)
   })
 </script>

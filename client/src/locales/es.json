@@ -1071,6 +1071,13 @@
       "heading": "Conocimiento de IA de esta carpeta",
       "coverage": "{analyzed} de {total} videos analizados",
       "empty": "Aún no hay conocimiento de IA. Pulsa 'Analizar N videos' para generarlo."
+    },
+    "popover": {
+      "title": "Procesando IA",
+      "refresh": "Actualizar",
+      "oldest": "En cola desde hace:",
+      "queueEmpty": "Sin videos en cola.",
+      "openSettings": "Ver en Ajustes"
     }
   },
   "explore": {

@@ -1071,6 +1071,13 @@
       "heading": "此文件夹的 AI 知识",
       "coverage": "已分析 {analyzed} / {total} 个视频",
       "empty": "尚无 AI 知识。点击'分析 N 个视频'来生成。"
+    },
+    "popover": {
+      "title": "AI 处理中",
+      "refresh": "刷新",
+      "oldest": "最早排队:",
+      "queueEmpty": "队列中没有视频。",
+      "openSettings": "在设置中查看"
     }
   },
   "explore": {
