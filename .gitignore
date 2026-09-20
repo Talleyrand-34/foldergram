@@ -29,3 +29,10 @@ pr-m.md
 CLAUDE.md
 plugins/ai-analysis/dist/
 plugins/ai-analysis/index.js
+
+# Build artifacts accidentally emitted into src/
+server/src/**/*.js
+server/src/**/*.d.ts
+
+# Claude agent working dir
+.claude/
