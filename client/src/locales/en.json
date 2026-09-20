@@ -1041,6 +1041,25 @@
         "button": "Analyze {count} videos with AI",
         "result": "Queued {marked}. {alreadyAnalyzed} already done, {alreadyQueued} already queued. Total in folder: {total}."
       }
+    },
+    "status": {
+      "eyebrow": "AI analysis",
+      "title": "AI analysis status",
+      "subtitle": "Live overview of the AI-analysis plugin's queue. Rescans do not trigger analysis — use the per-folder and per-post buttons to opt in.",
+      "refresh": "Refresh",
+      "total": "Total",
+      "videos": "videos in library",
+      "ok": "Analyzed",
+      "analyzed": "frames + audio done",
+      "pending": "Queued",
+      "noQueue": "queue is empty",
+      "queuedJustNow": "queued just now",
+      "queuedMinutesAgo": "queued {n} min ago",
+      "queuedHoursAgo": "queued {n} h ago",
+      "failed": "Failed",
+      "failures": "will retry on next scan",
+      "hint": "Use the per-folder or per-post buttons to enqueue more videos. Auto-queue is off by default.",
+      "error": "Could not load AI status."
     }
   },
   "explore": {

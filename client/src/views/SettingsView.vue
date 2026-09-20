@@ -8,6 +8,8 @@
       </div>
     </header>
 
+    <AiAnalysisStatus v-if="authStore.canManageLibrary" />
+
     <section
       v-if="showScanErrorNotice"
       class="card grid gap-[1rem] p-8 border-[color-mix(in_srgb,#d2a133_45%,var(--border)_55%)]"
@@ -1241,6 +1243,7 @@ import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
 
 import ConfirmDialog from '../components/ConfirmDialog.vue';
+import AiAnalysisStatus from '../components/AiAnalysisStatus.vue';
 import {
   fetchAdminStats,
   triggerLibraryRebuild,

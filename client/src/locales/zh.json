@@ -1041,6 +1041,25 @@
         "button": "使用 AI 分析 {count} 个视频",
         "result": "已加入队列 {marked}。{alreadyAnalyzed} 已完成,{alreadyQueued} 已在队列。文件夹总计:{total}。"
       }
+    },
+    "status": {
+      "eyebrow": "AI 分析",
+      "title": "AI 分析状态",
+      "subtitle": "AI 分析插件队列的实时概览。重新扫描不会触发分析 — 使用每个文件夹或每个帖子的按钮选择加入。",
+      "refresh": "刷新",
+      "total": "总计",
+      "videos": "库中的视频",
+      "ok": "已分析",
+      "analyzed": "帧 + 音频完成",
+      "pending": "已排队",
+      "noQueue": "队列为空",
+      "queuedJustNow": "刚刚排队",
+      "queuedMinutesAgo": "{n} 分钟前排队",
+      "queuedHoursAgo": "{n} 小时前排队",
+      "failed": "失败",
+      "failures": "将在下次扫描时重试",
+      "hint": "使用每个文件夹或每个帖子的按钮将更多视频加入队列。默认禁用自动排队。",
+      "error": "无法加载 AI 状态。"
     }
   },
   "explore": {

@@ -1041,6 +1041,25 @@
         "button": "Analizar {count} videos con IA",
         "result": "En cola {marked}. {alreadyAnalyzed} ya hechos, {alreadyQueued} ya en cola. Total en carpeta: {total}."
       }
+    },
+    "status": {
+      "eyebrow": "Análisis de IA",
+      "title": "Estado del análisis de IA",
+      "subtitle": "Vista en vivo de la cola del plugin de análisis de IA. Los reescaneos no activan el análisis — usa los botones por carpeta o por publicación para activarlo.",
+      "refresh": "Actualizar",
+      "total": "Total",
+      "videos": "videos en la biblioteca",
+      "ok": "Analizados",
+      "analyzed": "fotogramas + audio listos",
+      "pending": "En cola",
+      "noQueue": "la cola está vacía",
+      "queuedJustNow": "en cola ahora mismo",
+      "queuedMinutesAgo": "en cola hace {n} min",
+      "queuedHoursAgo": "en cola hace {n} h",
+      "failed": "Fallidos",
+      "failures": "se reintentarán en el próximo escaneo",
+      "hint": "Usa los botones por carpeta o por publicación para encolar más videos. El auto-queue está desactivado por defecto.",
+      "error": "No se pudo cargar el estado de IA."
     }
   },
   "explore": {
