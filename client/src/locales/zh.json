@@ -1066,6 +1066,10 @@
       "failures": "将在下次扫描时重试",
       "hint": "使用每个文件夹或每个帖子的按钮将更多视频加入队列。默认禁用自动排队。",
       "error": "无法加载 AI 状态。"
+    },
+    "folderSummary": {
+      "heading": "此文件夹的 AI 知识",
+      "coverage": "已分析 {analyzed} / {total} 个视频"
     }
   },
   "explore": {

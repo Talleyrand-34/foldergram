@@ -1066,6 +1066,10 @@
       "failures": "se reintentarán en el próximo escaneo",
       "hint": "Usa los botones por carpeta o por publicación para encolar más videos. El auto-queue está desactivado por defecto.",
       "error": "No se pudo cargar el estado de IA."
+    },
+    "folderSummary": {
+      "heading": "Conocimiento de IA de esta carpeta",
+      "coverage": "{analyzed} de {total} videos analizados"
     }
   },
   "explore": {

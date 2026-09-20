@@ -67,6 +67,32 @@ export interface AiAnalyzeFolderResponse {
   force: boolean;
 }
 
+export interface FolderRollup {
+  folderId: number;
+  summary: string | null;
+  topDomains: string[];
+  language: string | null;
+  videoCount: number;
+  analyzedCount: number;
+  updatedAt: string | null;
+}
+
+export interface VideoStats {
+  imageId: number;
+  eventCount: number;
+  completedCount: number;
+  failedCount: number;
+  firstAttemptAt: string | null;
+  lastAttemptAt: string | null;
+  totalDurationMs: number;
+  avgDurationMs: number | null;
+  fastestDurationMs: number | null;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  lastModel: string | null;
+  lastError: string | null;
+}
+
 export async function fetchAiStatus(): Promise<AiStatusSummary> {
   return await requestJson<AiStatusSummary>('/api/plugins/ai-analysis/status');
 }
@@ -103,6 +129,19 @@ export async function fetchImageAiStatus(imageId: number): Promise<AiImageStatus
   try {
     return await requestJson<AiImageStatus>(
       `/api/plugins/ai-analysis/image/${imageId}/status`,
+    );
+  } catch (e) {
+    if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 404) {
+      return null;
+    }
+    throw e;
+  }
+}
+
+export async function fetchFolderRollup(folderId: number): Promise<FolderRollup | null> {
+  try {
+    return await requestJson<FolderRollup>(
+      `/api/plugins/ai-analysis/folder/${folderId}/rollup`,
     );
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 404) {

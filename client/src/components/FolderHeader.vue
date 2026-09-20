@@ -62,6 +62,8 @@
         <span class="text-[0.74rem] font-bold tracking-[0.1em] text-muted uppercase">{{ t('folder.header.libraryPath') }}</span>
         <p class="m-0 font-mono text-[0.8rem] leading-[1.5] text-muted break-all">{{ folder.folderPath }}</p>
       </div>
+      <FolderAiSummary :folder-id="folder.id" class="max-w-[40rem]" />
+
       <div v-if="folder.description" class="max-w-[34rem] pt-[0.25rem]">
         <div class="flex items-start gap-[0.35rem]">
           <p
@@ -98,6 +100,7 @@
         v-if="isEditingProfile"
         :initial-name="folder.name"
         :initial-description="folder.description"
+        :folder-id="folder.id"
         :error="profileError"
         :loading="savingProfile"
         @cancel="closeProfileEditor"
@@ -115,6 +118,7 @@ import type { FolderSummary } from '../types/api';
 import { formatFolderTitle } from '../utils/folder-titles';
 import Avatar from './Avatar.vue';
 import FolderProfileModal from './FolderProfileModal.vue';
+import FolderAiSummary from './FolderAiSummary.vue';
 import AiAnalyzeButton from './AiAnalyzeButton.vue';
 import { useAppStore } from '../stores/app';
 import { useAuthStore } from '../stores/auth';

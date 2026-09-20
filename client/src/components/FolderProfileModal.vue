@@ -4,6 +4,8 @@
       <div class="grid gap-[1.2rem]">
         <h2 :id="titleId" class="m-0 text-[1.25rem] font-semibold">{{ t('folder.profileModal.title') }}</h2>
 
+        <FolderAiSummary v-if="folderId != null" :folder-id="folderId" />
+
         <form @submit.prevent="submit" class="grid gap-[1.1rem]">
           <div class="grid gap-[0.4rem]">
             <label for="profile-name" class="text-[0.85rem] font-semibold text-text">{{ t('common.name') }}</label>
@@ -54,14 +56,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import FolderAiSummary from './FolderAiSummary.vue';
 
 const props = defineProps<{
   initialName: string;
   initialDescription: string | null;
   error?: string | null;
   loading?: boolean;
+  folderId?: number | null;
 }>();
 
 const emit = defineEmits<{
