@@ -43,30 +43,42 @@
     </header>
 
     <p
-      v-if="hasData && rollup!.summary"
+      v-if="hasData && (rollup!.userSummary ?? rollup!.summary)"
       class="m-0 text-[0.92rem] leading-[1.45] text-text"
     >
-      {{ rollup!.summary }}
+      {{ rollup!.userSummary ?? rollup!.summary }}
+    </p>
+    <p
+      v-if="hasData && rollup!.userSummary && rollup!.summary && rollup!.userSummary !== rollup!.summary"
+      class="m-0 text-[0.74rem] leading-[1.4] text-muted italic"
+    >
+      {{ t('ai.folderSummary.aiSummary') }}: {{ rollup!.summary }}
     </p>
 
     <div
-      v-if="hasData && (rollup!.topDomains.length > 0 || rollup!.language)"
+      v-if="hasData && ((rollup!.userDomains.length > 0 ? rollup!.userDomains : rollup!.topDomains).length > 0 || (rollup!.userLanguage ?? rollup!.language))"
       class="flex flex-wrap items-center gap-[0.35rem] mt-[0.1rem]"
     >
       <span
-        v-for="d in rollup!.topDomains"
+        v-for="d in (rollup!.userDomains.length > 0 ? rollup!.userDomains : rollup!.topDomains)"
         :key="d"
         class="inline-flex items-center px-[0.55rem] py-[0.15rem] text-[0.74rem] font-medium rounded-full border border-border bg-surface text-text"
       >
         {{ d }}
       </span>
       <span
-        v-if="rollup!.language"
+        v-if="rollup!.userLanguage ?? rollup!.language"
         class="ml-[0.25rem] text-[0.72rem] font-medium tracking-[0.04em] uppercase text-muted"
       >
-        {{ rollup!.language }}
+        {{ rollup!.userLanguage ?? rollup!.language }}
       </span>
     </div>
+    <p
+      v-if="hasData && hasAiValues && hasUserOverride"
+      class="m-0 text-[0.72rem] leading-[1.4] text-muted italic"
+    >
+      {{ t('ai.folderSummary.usingOverride') }}
+    </p>
 
     <p
       v-else-if="!loading"
@@ -101,6 +113,14 @@ const rollup = ref<FolderRollup | null>(null);
 const loading = ref(false);
 
 const hasData = computed(() => !!rollup.value && rollup.value.analyzedCount > 0);
+const hasAiValues = computed(() => {
+  const r = rollup.value;
+  return !!r && (!!r.summary || r.topDomains.length > 0 || !!r.language);
+});
+const hasUserOverride = computed(() => {
+  const r = rollup.value;
+  return !!r && (!!r.userSummary || r.userDomains.length > 0 || !!r.userLanguage);
+});
 
 async function refresh() {
   if (!Number.isFinite(props.folderId)) return;

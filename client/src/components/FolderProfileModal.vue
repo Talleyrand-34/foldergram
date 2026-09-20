@@ -6,7 +6,79 @@
 
         <FolderAiSummary v-if="folderId != null" :folder-id="folderId" :show-empty-state="true" />
 
-        <form @submit.prevent="submit" class="grid gap-[1.1rem]">
+        <form v-if="folderId != null" @submit.prevent="submit" class="grid gap-[1.1rem]">
+          <div v-if="hasAiData" class="grid gap-[0.6rem] pt-[0.2rem]">
+            <div class="flex items-center justify-between">
+              <span class="text-[0.78rem] font-bold tracking-[0.08em] text-muted uppercase">
+                {{ t('folder.profileModal.overrideLabel') }}
+              </span>
+              <button
+                v-if="hasAnyOverride"
+                type="button"
+                class="text-[0.74rem] text-muted hover:text-text underline-offset-2 hover:underline"
+                @click.prevent="clearOverrides"
+              >
+                {{ t('folder.profileModal.resetOverride') }}
+              </button>
+            </div>
+
+            <div class="grid gap-[0.35rem]">
+              <label :for="`${titleId}-summary`" class="text-[0.78rem] font-semibold text-muted">
+                {{ t('folder.profileModal.overrideSummary') }}
+              </label>
+              <textarea
+                :id="`${titleId}-summary`"
+                v-model="overrideSummary"
+                class="w-full min-h-[4.5rem] rounded-lg border border-border bg-surface px-[0.75rem] py-[0.55rem] text-[0.88rem] text-text placeholder-muted resize-y focus:border-text focus:outline-none focus:ring-1 focus:ring-text"
+                :placeholder="t('folder.profileModal.overrideSummaryPlaceholder')"
+                maxlength="500"
+              ></textarea>
+              <p v-if="aiSummary" class="m-0 text-[0.72rem] text-muted italic">
+                {{ t('folder.profileModal.aiSaid') }}: {{ aiSummary }}
+              </p>
+            </div>
+
+            <div class="grid gap-[0.35rem]">
+              <label :for="`${titleId}-domains`" class="text-[0.78rem] font-semibold text-muted">
+                {{ t('folder.profileModal.overrideDomains') }}
+              </label>
+              <input
+                :id="`${titleId}-domains`"
+                v-model="overrideDomainsText"
+                class="w-full px-3 py-2 text-[0.88rem] bg-surface border border-border rounded-lg text-text placeholder-muted focus:outline-none focus:border-text focus:ring-1 focus:ring-text"
+                :placeholder="t('folder.profileModal.overrideDomainsPlaceholder')"
+              />
+              <p v-if="aiDomains.length > 0" class="m-0 text-[0.72rem] text-muted italic">
+                {{ t('folder.profileModal.aiSaid') }}:
+                <span v-for="(d, i) in aiDomains" :key="d">
+                  <span class="font-mono">{{ d }}</span><span v-if="i < aiDomains.length - 1">, </span>
+                </span>
+              </p>
+            </div>
+
+            <div class="grid gap-[0.35rem]">
+              <label :for="`${titleId}-language`" class="text-[0.78rem] font-semibold text-muted">
+                {{ t('folder.profileModal.overrideLanguage') }}
+              </label>
+              <input
+                :id="`${titleId}-language`"
+                v-model="overrideLanguage"
+                class="w-full px-3 py-2 text-[0.88rem] bg-surface border border-border rounded-lg text-text placeholder-muted focus:outline-none focus:border-text focus:ring-1 focus:ring-text font-mono uppercase"
+                :placeholder="t('folder.profileModal.overrideLanguagePlaceholder')"
+                maxlength="8"
+              />
+              <p v-if="aiLanguage" class="m-0 text-[0.72rem] text-muted italic">
+                {{ t('folder.profileModal.aiSaid') }}: <span class="font-mono">{{ aiLanguage }}</span>
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-[0.65rem] pt-[0.4rem] border-t border-border">
+            <span class="text-[0.78rem] font-semibold tracking-[0.06em] text-muted uppercase pt-[0.6rem]">
+              {{ t('folder.profileModal.basicLabel') }}
+            </span>
+          </div>
+
           <div class="grid gap-[0.4rem]">
             <label for="profile-name" class="text-[0.85rem] font-semibold text-text">{{ t('common.name') }}</label>
             <input
@@ -56,9 +128,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import FolderAiSummary from './FolderAiSummary.vue';
+import { fetchFolderRollup, updateFolderRollup, type FolderRollup } from '../api/ai-analysis';
 
 const props = defineProps<{
   initialName: string;
@@ -70,7 +143,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   cancel: [];
-  save: [data: { name: string; description: string | null }];
+  save: [data: {
+    name: string;
+    description: string | null;
+    override?: {
+      userSummary?: string | null;
+      userDomains?: string[] | null;
+      userLanguage?: string | null;
+    };
+  }];
 }>();
 
 const { t } = useI18n();
@@ -82,6 +163,47 @@ const formData = reactive({
   description: props.initialDescription ?? ''
 });
 
+// --- AI rollup editing -------------------------------------------------
+const rollup = ref<FolderRollup | null>(null);
+const hasAiData = computed(() => !!rollup.value && rollup.value.analyzedCount > 0);
+const overrideSummary = ref('');
+const overrideDomainsText = ref('');
+const overrideLanguage = ref('');
+
+const aiSummary = computed(() => rollup.value?.summary ?? '');
+const aiDomains = computed(() => rollup.value?.topDomains ?? []);
+const aiLanguage = computed(() => rollup.value?.language ?? '');
+
+const hasAnyOverride = computed(() => {
+  if (!rollup.value) return false;
+  return !!rollup.value.userSummary
+    || rollup.value.userDomains.length > 0
+    || !!rollup.value.userLanguage;
+});
+
+function clearOverrides() {
+  overrideSummary.value = ''
+  overrideDomainsText.value = ''
+  overrideLanguage.value = ''
+}
+
+async function loadRollup() {
+  if (props.folderId == null) return
+  try {
+    const r = await fetchFolderRollup(props.folderId)
+    rollup.value = r
+    overrideSummary.value = r?.userSummary ?? ''
+    overrideDomainsText.value = (r?.userDomains ?? []).join(', ')
+    overrideLanguage.value = r?.userLanguage ?? ''
+  } catch {
+    rollup.value = null
+  }
+}
+
+onMounted(loadRollup)
+watch(() => props.folderId, loadRollup)
+// --- end AI rollup ----------------------------------------------------
+
 const errorMessage = computed(() => validationError.value ?? props.error ?? null);
 
 function submit() {
@@ -91,9 +213,22 @@ function submit() {
   }
 
   validationError.value = null;
+
+  // Collect the override only if the user touched any of the fields.
+  // We treat an empty input as "clear this override" (null in payload).
+  const override: { userSummary?: string | null; userDomains?: string[] | null; userLanguage?: string | null } = {};
+  if (hasAiData.value) {
+    override.userSummary = overrideSummary.value.trim() === '' ? null : overrideSummary.value.trim();
+    override.userDomains = overrideDomainsText.value.trim() === ''
+      ? null
+      : overrideDomainsText.value.split(',').map((s) => s.trim()).filter(Boolean);
+    override.userLanguage = overrideLanguage.value.trim() === '' ? null : overrideLanguage.value.trim().toLowerCase();
+  }
+
   emit('save', {
     name: formData.name.trim(),
-    description: formData.description.trim() || null
+    description: formData.description.trim() || null,
+    override: hasAiData.value ? override : undefined,
   });
 }
 </script>

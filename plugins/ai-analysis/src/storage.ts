@@ -273,6 +273,11 @@ export interface FolderRollup {
   videoCount: number;
   analyzedCount: number;
   updatedAt: string | null;
+  /** Human-authored overrides. When present, the UI shows these instead of
+   *  the AI-generated values above. */
+  userSummary: string | null;
+  userDomains: string[];
+  userLanguage: string | null;
 }
 
 /** One domain in the knowledge graph. */
@@ -384,12 +389,16 @@ export async function recomputeFolderRollup(folderId: number): Promise<FolderRol
     videoCount,
     analyzedCount,
     updatedAt: new Date().toISOString(),
+    userSummary: null,
+    userDomains: [],
+    userLanguage: null,
   };
 }
 
 export async function getFolderRollup(folderId: number): Promise<FolderRollup | null> {
   const row = (await get(
-    `SELECT folder_id, summary, top_domains, language, video_count, analyzed_count, updated_at
+    `SELECT folder_id, summary, top_domains, language, video_count, analyzed_count, updated_at,
+            user_summary, user_domains, user_language
      FROM ai_folder_rollup WHERE folder_id = ?`,
     [folderId],
   )) as {
@@ -400,6 +409,9 @@ export async function getFolderRollup(folderId: number): Promise<FolderRollup | 
     video_count: number;
     analyzed_count: number;
     updated_at: string | null;
+    user_summary: string | null;
+    user_domains: string | null;
+    user_language: string | null;
   } | undefined;
   if (!row) return null;
   return {
@@ -410,7 +422,54 @@ export async function getFolderRollup(folderId: number): Promise<FolderRollup | 
     videoCount: row.video_count,
     analyzedCount: row.analyzed_count,
     updatedAt: row.updated_at,
+    userSummary: row.user_summary,
+    userDomains: row.user_domains ? safeParseStringArray(row.user_domains) : [],
+    userLanguage: row.user_language,
   };
+}
+
+/**
+ * Persist a user-authored override of the folder rollup. Pass null for any
+ * field you want to clear. The folder must already have a rollup row (i.e.
+ * at least one video has been analyzed). Returns the updated rollup, or null
+ * if the rollup doesn't exist yet.
+ */
+export async function updateFolderRollupOverride(
+  folderId: number,
+  override: {
+    userSummary?: string | null;
+    userDomains?: string[] | null;
+    userLanguage?: string | null;
+  },
+): Promise<FolderRollup | null> {
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if ('userSummary' in override) {
+    sets.push('user_summary = ?');
+    params.push(override.userSummary ?? null);
+  }
+  if ('userDomains' in override) {
+    sets.push('user_domains = ?');
+    params.push(
+      override.userDomains && override.userDomains.length > 0
+        ? JSON.stringify(override.userDomains)
+        : null,
+    );
+  }
+  if ('userLanguage' in override) {
+    sets.push('user_language = ?');
+    params.push(override.userLanguage ?? null);
+  }
+  if (sets.length === 0) {
+    return await getFolderRollup(folderId);
+  }
+  sets.push('updated_at = ' + (await nowLiteral()));
+  params.push(folderId);
+  await run(
+    `UPDATE ai_folder_rollup SET ${sets.join(', ')} WHERE folder_id = ?`,
+    params,
+  );
+  return await getFolderRollup(folderId);
 }
 
 /**

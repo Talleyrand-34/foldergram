@@ -75,6 +75,17 @@ export interface FolderRollup {
   videoCount: number;
   analyzedCount: number;
   updatedAt: string | null;
+  /** Human-authored overrides. When present, the UI shows these instead of
+   *  the AI-generated values above. */
+  userSummary: string | null;
+  userDomains: string[];
+  userLanguage: string | null;
+}
+
+export interface FolderRollupOverride {
+  userSummary?: string | null;
+  userDomains?: string[] | null;
+  userLanguage?: string | null;
 }
 
 export interface VideoStats {
@@ -142,6 +153,27 @@ export async function fetchFolderRollup(folderId: number): Promise<FolderRollup 
   try {
     return await requestJson<FolderRollup>(
       `/api/plugins/ai-analysis/folder/${folderId}/rollup`,
+    );
+  } catch (e) {
+    if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 404) {
+      return null;
+    }
+    throw e;
+  }
+}
+
+export async function updateFolderRollup(
+  folderId: number,
+  override: FolderRollupOverride,
+): Promise<FolderRollup | null> {
+  try {
+    return await requestJson<FolderRollup>(
+      `/api/plugins/ai-analysis/folder/${folderId}/rollup`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(override),
+      },
     );
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 404) {

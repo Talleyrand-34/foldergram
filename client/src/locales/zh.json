@@ -689,7 +689,19 @@
       "descriptionPlaceholder": "为此文件夹添加描述...",
       "errors": {
         "nameRequired": "名称为必填项。"
-      }
+      },
+      "aiSaid": "AI 说",
+      "aiSummary": "AI 摘要",
+      "usingOverride": "正在显示你的覆盖值。AI 的值仍保留在下方供参考。",
+      "resetOverride": "重置为 AI",
+      "overrideLabel": "你的覆盖",
+      "overrideSummary": "自定义摘要",
+      "overrideSummaryPlaceholder": "覆盖 AI 摘要（留空则使用 AI）",
+      "overrideDomains": "自定义领域（逗号分隔的路径）",
+      "overrideDomainsPlaceholder": "音乐/reggaeton, 政治/波多黎各, 喜剧/meme",
+      "overrideLanguage": "自定义语言（ISO 代码，如 'es' 或 'en'）",
+      "overrideLanguagePlaceholder": "es",
+      "basicLabel": "基本信息"
     },
     "tabs": {
       "posts": "帖子",
@@ -1070,7 +1082,19 @@
     "folderSummary": {
       "heading": "此文件夹的 AI 知识",
       "coverage": "已分析 {analyzed} / {total} 个视频",
-      "empty": "尚无 AI 知识。点击'分析 N 个视频'来生成。"
+      "empty": "尚无 AI 知识。点击'分析 N 个视频'来生成。",
+      "aiSaid": "AI 说",
+      "aiSummary": "AI 摘要",
+      "usingOverride": "正在显示你的覆盖值。AI 的值仍保留在下方供参考。",
+      "resetOverride": "重置为 AI",
+      "overrideLabel": "你的覆盖",
+      "overrideSummary": "自定义摘要",
+      "overrideSummaryPlaceholder": "覆盖 AI 摘要（留空则使用 AI）",
+      "overrideDomains": "自定义领域（逗号分隔的路径）",
+      "overrideDomainsPlaceholder": "音乐/reggaeton, 政治/波多黎各, 喜剧/meme",
+      "overrideLanguage": "自定义语言（ISO 代码，如 'es' 或 'en'）",
+      "overrideLanguagePlaceholder": "es",
+      "basicLabel": "基本信息"
     },
     "popover": {
       "title": "AI 处理中",

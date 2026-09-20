@@ -689,7 +689,19 @@
       "descriptionPlaceholder": "Añade una descripción a esta carpeta...",
       "errors": {
         "nameRequired": "El nombre es obligatorio."
-      }
+      },
+      "aiSaid": "La IA dijo",
+      "aiSummary": "Resumen de IA",
+      "usingOverride": "Mostrando tu versión. Los valores de IA siguen guardados abajo como referencia.",
+      "resetOverride": "Restablecer a IA",
+      "overrideLabel": "Tu versión",
+      "overrideSummary": "Resumen personalizado",
+      "overrideSummaryPlaceholder": "Reemplaza el resumen de IA (o deja vacío para usar IA)",
+      "overrideDomains": "Dominios personalizados (caminos separados por comas)",
+      "overrideDomainsPlaceholder": "musica/reggaeton, politica/puerto-rico, comedia/memes",
+      "overrideLanguage": "Idioma personalizado (código ISO, p. ej. 'es' o 'en')",
+      "overrideLanguagePlaceholder": "es",
+      "basicLabel": "Básicos"
     },
     "tabs": {
       "posts": "Publicaciones",
@@ -1070,7 +1082,19 @@
     "folderSummary": {
       "heading": "Conocimiento de IA de esta carpeta",
       "coverage": "{analyzed} de {total} videos analizados",
-      "empty": "Aún no hay conocimiento de IA. Pulsa 'Analizar N videos' para generarlo."
+      "empty": "Aún no hay conocimiento de IA. Pulsa 'Analizar N videos' para generarlo.",
+      "aiSaid": "La IA dijo",
+      "aiSummary": "Resumen de IA",
+      "usingOverride": "Mostrando tu versión. Los valores de IA siguen guardados abajo como referencia.",
+      "resetOverride": "Restablecer a IA",
+      "overrideLabel": "Tu versión",
+      "overrideSummary": "Resumen personalizado",
+      "overrideSummaryPlaceholder": "Reemplaza el resumen de IA (o deja vacío para usar IA)",
+      "overrideDomains": "Dominios personalizados (caminos separados por comas)",
+      "overrideDomainsPlaceholder": "musica/reggaeton, politica/puerto-rico, comedia/memes",
+      "overrideLanguage": "Idioma personalizado (código ISO, p. ej. 'es' o 'en')",
+      "overrideLanguagePlaceholder": "es",
+      "basicLabel": "Básicos"
     },
     "popover": {
       "title": "Procesando IA",

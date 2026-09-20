@@ -161,11 +161,24 @@ const formattedUpdatedDate = computed(() =>
     : ''
 );
 
-async function handleSaveProfile(data: { name: string; description: string | null }) {
+async function handleSaveProfile(data: {
+  name: string;
+  description: string | null;
+  override?: {
+    userSummary?: string | null;
+    userDomains?: string[] | null;
+    userLanguage?: string | null;
+  };
+}) {
   try {
     savingProfile.value = true;
     profileError.value = null;
-    await foldersStore.updateFolderProfile(props.folder.slug, data.name, data.description);
+    await foldersStore.updateFolderProfile(
+      props.folder.slug,
+      data.name,
+      data.description,
+      data.override,
+    );
     closeProfileEditor();
   } catch (error) {
     profileError.value = error instanceof Error ? error.message : t('folder.header.errors.updateProfile');

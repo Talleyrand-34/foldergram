@@ -689,7 +689,19 @@
       "descriptionPlaceholder": "Add a description to this folder...",
       "errors": {
         "nameRequired": "Name is required."
-      }
+      },
+      "aiSaid": "AI said",
+      "aiSummary": "AI summary",
+      "usingOverride": "Showing your override. AI values still saved below for reference.",
+      "resetOverride": "Reset to AI",
+      "overrideLabel": "Your override",
+      "overrideSummary": "Custom summary",
+      "overrideSummaryPlaceholder": "Override the AI summary (or leave empty to use AI)",
+      "overrideDomains": "Custom domains (comma-separated slash-notation paths)",
+      "overrideDomainsPlaceholder": "music/reggaeton, politics/puerto-rico, comedy/memes",
+      "overrideLanguage": "Custom language (ISO code, e.g. 'es' or 'en')",
+      "overrideLanguagePlaceholder": "es",
+      "basicLabel": "Basics"
     },
     "tabs": {
       "posts": "Posts",
@@ -1070,7 +1082,19 @@
     "folderSummary": {
       "heading": "AI knowledge of this folder",
       "coverage": "{analyzed} of {total} videos analyzed",
-      "empty": "No AI knowledge yet. Click 'Analyze N videos' to generate it."
+      "empty": "No AI knowledge yet. Click 'Analyze N videos' to generate it.",
+      "aiSaid": "AI said",
+      "aiSummary": "AI summary",
+      "usingOverride": "Showing your override. AI values still saved below for reference.",
+      "resetOverride": "Reset to AI",
+      "overrideLabel": "Your override",
+      "overrideSummary": "Custom summary",
+      "overrideSummaryPlaceholder": "Override the AI summary (or leave empty to use AI)",
+      "overrideDomains": "Custom domains (comma-separated slash-notation paths)",
+      "overrideDomainsPlaceholder": "music/reggaeton, politics/puerto-rico, comedy/memes",
+      "overrideLanguage": "Custom language (ISO code, e.g. 'es' or 'en')",
+      "overrideLanguagePlaceholder": "es",
+      "basicLabel": "Basics"
     },
     "popover": {
       "title": "AI processing",

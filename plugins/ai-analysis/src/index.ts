@@ -26,6 +26,7 @@ import {
   getFolderRollup,
   getTopDomains,
   getVideoStats,
+  updateFolderRollupOverride,
 } from "./storage.js";
 
 import type { Plugin } from "../../../server/dist/plugins/types.js";
@@ -75,4 +76,5 @@ export const exposes = {
   getFolderRollup,
   getTopDomains,
   getDomainEdges,
+  updateFolderRollupOverride,
 };

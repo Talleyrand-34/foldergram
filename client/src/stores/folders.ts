@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 
-import { fetchFolderImages, fetchFolders, updateFolderProfile, setFolderCover } from '../api/gallery';
+import { fetchFolderImages, fetchFolders, updateFolderProfile as apiUpdateFolderProfile, setFolderCover } from '../api/gallery';
 import type { FeedItem, FolderSummary } from '../types/api';
 import { updateCaptionInItems } from '../utils/caption';
 
@@ -200,8 +200,16 @@ export const useFoldersStore = defineStore('folders', {
       }
     },
 
-    async updateFolderProfile(slug: string, name: string, description: string | null) {
-      const updated = await updateFolderProfile(slug, name, description);
+    async updateFolderProfile(
+      slug: string,
+      name: string,
+      description: string | null,
+      aiOverride?: { userSummary?: string | null; userDomains?: string[] | null; userLanguage?: string | null },
+    ) {
+      // The wrapped API helper lives in api/gallery; same name, hence the
+      // explicit `apiUpdateFolderProfile` alias below to avoid the self-name
+      // shadowing.
+      const updated = await apiUpdateFolderProfile(slug, name, description, aiOverride);
       this.items = this.items.map((folder) => (folder.slug === slug ? updated : folder));
 
       if (this.currentFolder?.slug === slug) {

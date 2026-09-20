@@ -168,11 +168,16 @@ export function fetchFolderStoryFeed(slug: string, storyId: string, page = 1, li
   );
 }
 
-export function updateFolderProfile(slug: string, name: string, description: string | null) {
+export function updateFolderProfile(
+  slug: string,
+  name: string,
+  description: string | null,
+  aiOverride?: { userSummary?: string | null; userDomains?: string[] | null; userLanguage?: string | null },
+) {
   return requestJson<FolderSummary>(`/api/folders/${encodeURIComponent(slug)}`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name, description })
+    body: JSON.stringify({ name, description, ...(aiOverride ? { aiOverride } : {}) })
   });
 }
 

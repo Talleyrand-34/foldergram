@@ -112,7 +112,12 @@ const imageIdSchema = z.object({
 
 export const patchFolderBodySchema = z.object({
   name: z.string().min(1).max(255),
-  description: z.string().max(300).nullable().optional()
+  description: z.string().max(300).nullable().optional(),
+  aiOverride: z.object({
+    userSummary: z.string().max(500).nullable().optional(),
+    userDomains: z.array(z.string().min(1).max(120)).max(20).nullable().optional(),
+    userLanguage: z.string().min(2).max(8).nullable().optional()
+  }).optional()
 });
 
 export const patchImageCaptionBodySchema = z
@@ -483,6 +488,45 @@ router.get('/plugins/ai-analysis/folder/:folderId/rollup', async (request, respo
   }
 });
 
+router.put('/plugins/ai-analysis/folder/:folderId/rollup', async (request, response) => {
+  const folderId = Number(request.params.folderId);
+  if (!Number.isFinite(folderId)) {
+    response.status(400).json({ error: 'invalid folderId' });
+    return;
+  }
+  type OverrideBody = {
+    userSummary?: string | null;
+    userDomains?: string[] | null;
+    userLanguage?: string | null;
+  };
+  const body = request.body as OverrideBody | undefined;
+  if (!body || typeof body !== 'object') {
+    response.status(400).json({ error: 'body required' });
+    return;
+  }
+  try {
+    const updateOverride = pluginHost.getExpose<
+      (
+        folderId: number,
+        override: { userSummary?: string | null; userDomains?: string[] | null; userLanguage?: string | null },
+      ) => Promise<unknown>
+    >('ai-analysis', 'updateFolderRollupOverride');
+    if (!updateOverride) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const rollup = await updateOverride(folderId, body);
+    if (!rollup) {
+      response.status(404).json({ error: 'no rollup yet — analyze at least one video first' });
+      return;
+    }
+    response.json(rollup);
+  } catch (e) {
+    log.error('ai-analysis rollup update failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
 router.get('/plugins/ai-analysis/knowledge/domains', async (request, response) => {
   try {
     const getTopDomains = pluginHost.getExpose<(limit?: number) => Promise<unknown>>(
@@ -648,6 +692,24 @@ router.patch('/folders/:slug', requireCapability('canManageLibrary', 'Admin acce
   if (!updated) {
     response.status(404).json({ message: 'Folder not found' });
     return;
+  }
+
+  // If the client passed an AI rollup override, persist it via the plugin
+  // (the rollup lives in ai_folder_rollup, not in folders).
+  if (body.aiOverride && updated.id != null) {
+    const updateOverride = pluginHost.getExpose<
+      (
+        folderId: number,
+        override: { userSummary?: string | null; userDomains?: string[] | null; userLanguage?: string | null },
+      ) => Promise<unknown>
+    >('ai-analysis', 'updateFolderRollupOverride');
+    if (updateOverride) {
+      try {
+        await updateOverride(updated.id, body.aiOverride);
+      } catch (e) {
+        log.error('ai-analysis override update failed', e instanceof Error ? e.message : String(e));
+      }
+    }
   }
 
   response.json(updated);
