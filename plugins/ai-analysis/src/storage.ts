@@ -92,8 +92,12 @@ export async function markSkipped(imageId: number, reason: string): Promise<void
   );
 }
 
-/** Mark a video as pending (queued) — avoids re-queueing duplicates. */
-export async function markPendingIfFresh(imageId: number, sourceMtimeMs: number): Promise<boolean> {
+/** Mark a video as pending (queued) — avoids re-queueing duplicates unless `force` is set. */
+export async function markPendingIfFresh(
+  imageId: number,
+  sourceMtimeMs: number,
+  options: { force?: boolean } = {},
+): Promise<boolean> {
   // Atomically: only set pending if status is null/failed/skipped OR the source mtime changed.
   // We do it in two queries since we don't have a portable UPSERT-with-WHERE form.
   const existing = await get(
@@ -105,7 +109,7 @@ export async function markPendingIfFresh(imageId: number, sourceMtimeMs: number)
   const status = (existing as { ai_status: string | null }).ai_status;
   const lastMtime = (existing as { ai_analyzed_mtime_ms: number | null }).ai_analyzed_mtime_ms ?? 0;
 
-  if (status === "ok" && Math.abs(lastMtime - Math.round(sourceMtimeMs)) < 1000) {
+  if (!options.force && status === "ok" && Math.abs(lastMtime - Math.round(sourceMtimeMs)) < 1000) {
     return false; // already analyzed at this mtime; skip
   }
   if (status === "pending" || status === "running") {
@@ -122,6 +126,59 @@ export async function markPendingIfFresh(imageId: number, sourceMtimeMs: number)
 /** Mark as running while the analyzer is in flight. */
 export async function markRunning(imageId: number): Promise<void> {
   await run(`UPDATE images SET ai_status = ?, ai_error = NULL WHERE id = ?`, ["running", imageId]);
+}
+
+/** Mark every video in a folder as pending. Returns the number of rows marked. */
+export async function markAllPendingInFolder(
+  folderId: number,
+  options: { force?: boolean } = {},
+): Promise<{ marked: number; alreadyAnalyzed: number; alreadyQueued: number }> {
+  const rows = (await all(
+    `SELECT id, mtime_ms, ai_status, ai_analyzed_mtime_ms FROM images
+     WHERE folder_id = ? AND media_type = 'video' AND is_deleted = 0`,
+    [folderId],
+  )) as Array<{
+    id: number;
+    mtime_ms: number;
+    ai_status: string | null;
+    ai_analyzed_mtime_ms: number | null;
+  }>;
+
+  let marked = 0;
+  let alreadyAnalyzed = 0;
+  let alreadyQueued = 0;
+  const idsToMark: number[] = [];
+
+  for (const r of rows) {
+    if (r.ai_status === "pending" || r.ai_status === "running") {
+      alreadyQueued++;
+      continue;
+    }
+    if (
+      !options.force &&
+      r.ai_status === "ok" &&
+      Math.abs((r.ai_analyzed_mtime_ms ?? 0) - Math.round(r.mtime_ms)) < 1000
+    ) {
+      alreadyAnalyzed++;
+      continue;
+    }
+    idsToMark.push(r.id);
+  }
+
+  if (idsToMark.length > 0) {
+    // SQLite doesn't support tuple-in in placeholders the same way as Postgres,
+    // but `IN (?, ?, ...)` works for both drivers via the standard query helper.
+    const placeholders = idsToMark.map(() => "?").join(", ");
+    const result = await run(
+      `UPDATE images SET ai_status = 'pending', ai_error = NULL WHERE id IN (${placeholders})`,
+      idsToMark,
+    );
+    // `run` returns a QueryResult-like object; rowCount is in different fields per driver.
+    const resultAny = result as { rowsAffected?: number; rowCount?: number };
+    marked = resultAny.rowsAffected ?? resultAny.rowCount ?? idsToMark.length;
+  }
+
+  return { marked, alreadyAnalyzed, alreadyQueued };
 }
 
 export interface SearchHit {

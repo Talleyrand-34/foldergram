@@ -12,7 +12,7 @@ import type { Request, Response } from "express";
 import { databaseManager } from "../../../server/src/db/database.js";
 import type { PluginContext } from "../../../server/src/plugins/types.js";
 import { enqueueAnalysis } from "./worker.js";
-import { getStatusSummary, markPendingIfFresh, searchVideos } from "./storage.js";
+import { getStatusSummary, markAllPendingInFolder, markPendingIfFresh, searchVideos } from "./storage.js";
 
 export function registerRoutes(ctx: PluginContext): void {
   ctx.addRoutes([
@@ -56,6 +56,7 @@ export function registerRoutes(ctx: PluginContext): void {
           res.status(400).json({ error: "invalid imageId" });
           return;
         }
+        const force = req.query.force === "1" || req.query.force === "true";
         try {
           const drv = await databaseManager.getConnection();
           const row = (await drv.queryOne(
@@ -66,7 +67,7 @@ export function registerRoutes(ctx: PluginContext): void {
             res.status(404).json({ error: "video not found" });
             return;
           }
-          const queued = await markPendingIfFresh(row.id, row.mtime_ms);
+          const queued = await markPendingIfFresh(row.id, row.mtime_ms, { force });
           if (!queued) {
             res.json({ imageId, queued: false, reason: "already analyzed at this mtime, or already queued" });
             return;
@@ -88,6 +89,42 @@ export function registerRoutes(ctx: PluginContext): void {
           res.json({ imageId, queued: true });
         } catch (e) {
           ctx.log(`analyze trigger failed: ${e instanceof Error ? e.message : String(e)}`);
+          res.status(500).json({ error: "internal" });
+        }
+      },
+    },
+    {
+      method: "post",
+      path: "/analyze-folder/:folderId",
+      handler: async (req: Request, res: Response) => {
+        const folderId = Number(req.params.folderId);
+        if (!Number.isFinite(folderId)) {
+          res.status(400).json({ error: "invalid folderId" });
+          return;
+        }
+        const force = req.query.force === "1" || req.query.force === "true";
+        try {
+          const drv = await databaseManager.getConnection();
+          const folder = (await drv.queryOne(
+            `SELECT id, name, slug FROM folders WHERE id = ?`,
+            [folderId],
+          )) as { id: number; name: string; slug: string } | undefined;
+          if (!folder) {
+            res.status(404).json({ error: "folder not found" });
+            return;
+          }
+          const result = await markAllPendingInFolder(folderId, { force });
+          ctx.log(
+            `analyze-folder: ${folder.name} marked=${result.marked} alreadyAnalyzed=${result.alreadyAnalyzed} alreadyQueued=${result.alreadyQueued} force=${force}`,
+          );
+          res.json({
+            folderId,
+            folderSlug: folder.slug,
+            ...result,
+            force,
+          });
+        } catch (e) {
+          ctx.log(`analyze-folder failed: ${e instanceof Error ? e.message : String(e)}`);
           res.status(500).json({ error: "internal" });
         }
       },

@@ -1024,6 +1024,25 @@
       "processOther": "{count} posts could not be processed."
     }
   },
+  "ai": {
+    "analyze": {
+      "error": "Could not queue analysis.",
+      "video": {
+        "idle": "Analyze with AI",
+        "busy": "Queueing…",
+        "queued": "Queued. Results appear here in a few seconds.",
+        "alreadyDone": "Already analyzed ({reason}).",
+        "button": "Analyze this video with AI",
+        "helper": "Frames + audio are sent to the AI gateway; results save on the post."
+      },
+      "folder": {
+        "idle": "Analyze folder with AI",
+        "busy": "Queueing folder…",
+        "button": "Analyze {count} videos with AI",
+        "result": "Queued {marked}. {alreadyAnalyzed} already done, {alreadyQueued} already queued. Total in folder: {total}."
+      }
+    }
+  },
   "explore": {
     "back": "Back to explore posts",
     "searchPlaceholder": "Search",

@@ -1024,6 +1024,25 @@
       "processOther": "No se pudieron procesar {count} publicaciones."
     }
   },
+  "ai": {
+    "analyze": {
+      "error": "No se pudo poner en cola el análisis.",
+      "video": {
+        "idle": "Analizar con IA",
+        "busy": "Poniendo en cola…",
+        "queued": "En cola. Los resultados aparecerán aquí en unos segundos.",
+        "alreadyDone": "Ya analizado ({reason}).",
+        "button": "Analizar este video con IA",
+        "helper": "Los fotogramas y el audio se envían al gateway de IA; los resultados se guardan en la publicación."
+      },
+      "folder": {
+        "idle": "Analizar carpeta con IA",
+        "busy": "Poniendo carpeta en cola…",
+        "button": "Analizar {count} videos con IA",
+        "result": "En cola {marked}. {alreadyAnalyzed} ya hechos, {alreadyQueued} ya en cola. Total en carpeta: {total}."
+      }
+    }
+  },
   "explore": {
     "back": "Volver a publicaciones de explorar",
     "searchPlaceholder": "Buscar",

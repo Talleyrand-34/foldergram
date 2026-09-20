@@ -1,19 +1,21 @@
 /**
  * AI Analysis plugin — entrypoint.
  *
- * Listens for the `video.indexed` hook, queues the video for analysis
- * (frames + audio → domains, tags, summary, transcript), and exposes:
+ * AI parsing is OPT-IN. Rescans, library rebuilds, and automatic scans
+ * never trigger AI analysis. To analyze a video, hit the per-video or
+ * per-folder endpoints, or click the buttons in the UI.
  *
- *   GET  /api/plugins/ai-analysis/status              → overall progress
- *   GET  /api/plugins/ai-analysis/videos              → list analyzed videos
- *   POST /api/plugins/ai-analysis/analyze/:imageId    → manual trigger
- *   GET  /api/plugins/ai-analysis/search?q=...        → search by word/domain/tag
+ *   GET  /api/plugins/ai-analysis/status                  → overall progress
+ *   GET  /api/plugins/ai-analysis/search?q=...            → search analyzed videos
+ *   POST /api/plugins/ai-analysis/analyze/:imageId[?force] → enqueue one video
+ *   POST /api/plugins/ai-analysis/analyze-folder/:folderId[?force] → enqueue all videos in a folder
  *
- * The plugin does NOT auto-analyze on every video.indexed by default — it
- * rate-limits itself to one concurrent analysis and respects the global
- * AI queue depth exposed via /status.
+ * The `video.indexed` hook fires on every scan but this plugin deliberately
+ * does NOT subscribe to it. We only act when the user explicitly asks.
  *
- * Set AI_ANALYSIS_ENABLED=0 to disable.
+ * Set AI_ANALYSIS_ENABLED=0 to disable the plugin entirely (worker + routes).
+ * Set AI_ANALYSIS_AUTO_QUEUE=1 to subscribe to the hook (NOT recommended —
+ * rescan would trigger a full re-analysis pass).
  */
 
 import { registerRoutes } from "./src/api.js";
@@ -25,7 +27,7 @@ const plugin: Plugin = {
   manifest: {
     name: "ai-analysis",
     version: "0.1.0",
-    hooks: ["video.indexed"],
+    hooks: ["video.indexed"], // documented; not subscribed by default
     requireAuth: true,
   },
 
@@ -35,14 +37,18 @@ const plugin: Plugin = {
       return;
     }
 
-    ctx.log("registering hooks + routes");
-    ctx.hooks.on("video.indexed", (asset) => {
-      // Fire-and-forget: the worker manages its own queue.
-      void import("./src/worker.js").then((m) => m.enqueueAnalysis(asset));
-    });
+    if (process.env.AI_ANALYSIS_AUTO_QUEUE === "1") {
+      // Opt-in: re-analyze every video as it gets indexed. Useful for
+      // initial bulk loads, NOT for normal rescans.
+      ctx.hooks.on("video.indexed", (asset) => {
+        void import("./src/worker.js").then((m) => m.enqueueAnalysis(asset));
+      });
+      ctx.log("auto-queue enabled via AI_ANALYSIS_AUTO_QUEUE=1 — every video.indexed will enqueue");
+    } else {
+      ctx.log("auto-queue disabled — AI parsing is opt-in per-folder or per-post");
+    }
 
     startBackgroundWorker(ctx);
-
     registerRoutes(ctx);
     ctx.log("ready");
   },

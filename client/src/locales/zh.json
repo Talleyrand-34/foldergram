@@ -1024,6 +1024,25 @@
       "processOther": "有 {count} 条帖子无法处理。"
     }
   },
+  "ai": {
+    "analyze": {
+      "error": "无法加入分析队列。",
+      "video": {
+        "idle": "使用 AI 分析",
+        "busy": "正在加入队列…",
+        "queued": "已加入队列,结果将在几秒后显示在此处。",
+        "alreadyDone": "已分析过 ({reason})。",
+        "button": "使用 AI 分析此视频",
+        "helper": "帧和音频将发送到 AI 网关;结果保存在帖子中。"
+      },
+      "folder": {
+        "idle": "使用 AI 分析文件夹",
+        "busy": "正在加入文件夹到队列…",
+        "button": "使用 AI 分析 {count} 个视频",
+        "result": "已加入队列 {marked}。{alreadyAnalyzed} 已完成,{alreadyQueued} 已在队列。文件夹总计:{total}。"
+      }
+    }
+  },
   "explore": {
     "back": "返回探索帖子",
     "searchPlaceholder": "搜索",

@@ -45,6 +45,12 @@
         >
           {{ t('folder.header.editButton') }}
         </button>
+        <AiAnalyzeButton
+          v-if="authStore.canManageLibrary && folder.videoCount > 0"
+          target="folder"
+          :folder-id="folder.id"
+          :label="t('ai.analyze.folder.button', { count: folder.videoCount })"
+        />
       </div>
       <p v-if="folder.breadcrumb" class="m-0 text-[0.84rem] font-medium tracking-[0.02em] text-muted">{{ folder.breadcrumb }}</p>
       <div class="flex items-center gap-[1.6rem] flex-wrap text-[0.95rem] leading-none max-sm:justify-center">
@@ -109,6 +115,7 @@ import type { FolderSummary } from '../types/api';
 import { formatFolderTitle } from '../utils/folder-titles';
 import Avatar from './Avatar.vue';
 import FolderProfileModal from './FolderProfileModal.vue';
+import AiAnalyzeButton from './AiAnalyzeButton.vue';
 import { useAppStore } from '../stores/app';
 import { useAuthStore } from '../stores/auth';
 import { useFoldersStore } from '../stores/folders';

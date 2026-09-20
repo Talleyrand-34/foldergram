@@ -10,6 +10,14 @@
       @close="emit('close')"
       @delete="openDeleteDialog"
     />
+    <div v-if="activeImage && activeImage.mediaType === 'video' && authStore.canManageLibrary" class="card p-4 mt-3 flex items-center gap-3">
+      <AiAnalyzeButton
+        target="video"
+        :video-id="activeImage.id"
+        :label="t('ai.analyze.video.button')"
+      />
+      <p class="m-0 text-[0.78rem] text-muted">{{ t('ai.analyze.video.helper') }}</p>
+    </div>
     <div v-else-if="viewerStore.loading" class="card p-8 text-center">
       <p class="text-muted">Loading post...</p>
     </div>
@@ -59,7 +67,10 @@ import { useRoute, useRouter } from 'vue-router';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import ErrorState from '../components/ErrorState.vue';
 import PostViewer from '../components/PostViewer.vue';
+import AiAnalyzeButton from '../components/AiAnalyzeButton.vue';
+import { useI18n } from 'vue-i18n';
 import { useAppStore } from '../stores/app';
+import { useAuthStore } from '../stores/auth';
 import { useFeedStore } from '../stores/feed';
 import { useLikesStore } from '../stores/likes';
 import { useFoldersStore } from '../stores/folders';
@@ -76,6 +87,7 @@ const emit = defineEmits<{
 }>();
 
 const appStore = useAppStore();
+const authStore = useAuthStore();
 const feedStore = useFeedStore();
 const likesStore = useLikesStore();
 const viewerStore = useViewerStore();
@@ -83,6 +95,7 @@ const foldersStore = useFoldersStore();
 const momentsStore = useMomentsStore();
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 const confirmDeleteOpen = ref(false);
 const deleteOriginalFromDisk = ref(false);
 const deleteError = ref<string | null>(null);
