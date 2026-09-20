@@ -15,7 +15,14 @@ import { join } from "node:path";
 
 import { chat, transcribe, AUDIO_MODEL, VISION_MODEL } from "./lib/litellm-client.js";
 import { extractAudio, extractSampleFrames, probeVideo } from "./lib/ffmpeg.js";
-import { recordAnalysisEvent, saveAnalysis, updateCaptionIfNull } from "./storage.js";
+import {
+  bumpDomainEdges,
+  bumpDomainNodes,
+  recomputeFolderRollup,
+  recordAnalysisEvent,
+  saveAnalysis,
+  updateCaptionIfNull,
+} from "./storage.js";
 import type { IndexedVideoAsset } from "../../../server/dist/plugins/types.js";
 
 const TMP_ROOT = process.env.AI_ANALYSIS_TMP ?? "/tmp/ai-analysis";
@@ -231,6 +238,18 @@ Return ONLY the JSON object. No prose, no markdown.`;
     // never overwrites a manual edit — users who want a fresh AI description
     // can clear the caption in the post viewer and re-trigger analysis.
     await updateCaptionIfNull(asset.imageId, parsed.summary);
+
+    // Roll up into folder knowledge + bump the domain graph. These are
+    // best-effort — a failure here must not fail the analysis.
+    try {
+      await bumpDomainNodes(parsed.domains, parsed.language);
+      await bumpDomainEdges(parsed.domains);
+      await recomputeFolderRollup(asset.folderId);
+    } catch (e) {
+      // Logged but not fatal — knowledge graph maintenance is a background concern.
+      console.error('[ai-analysis] knowledge graph update failed:',
+        e instanceof Error ? e.message : String(e));
+    }
 
     await recordAnalysisEvent({
       eventType: "completed",

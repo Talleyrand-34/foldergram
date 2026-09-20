@@ -429,6 +429,108 @@ router.get('/plugins/ai-analysis/stats', async (request, response) => {
   }
 });
 
+router.get('/plugins/ai-analysis/video/:imageId/stats', async (request, response) => {
+  const imageId = Number(request.params.imageId);
+  if (!Number.isFinite(imageId)) {
+    response.status(400).json({ error: 'invalid imageId' });
+    return;
+  }
+  try {
+    const getVideoStats = pluginHost.getExpose<(id: number) => Promise<unknown>>(
+      'ai-analysis',
+      'getVideoStats',
+    );
+    if (!getVideoStats) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const stats = await getVideoStats(imageId);
+    if (!stats) {
+      response.status(404).json({ error: 'no stats yet' });
+      return;
+    }
+    response.json(stats);
+  } catch (e) {
+    log.error('ai-analysis video stats failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
+router.get('/plugins/ai-analysis/folder/:folderId/rollup', async (request, response) => {
+  const folderId = Number(request.params.folderId);
+  if (!Number.isFinite(folderId)) {
+    response.status(400).json({ error: 'invalid folderId' });
+    return;
+  }
+  try {
+    const getFolderRollup = pluginHost.getExpose<(id: number) => Promise<unknown>>(
+      'ai-analysis',
+      'getFolderRollup',
+    );
+    if (!getFolderRollup) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const rollup = await getFolderRollup(folderId);
+    if (!rollup) {
+      response.status(404).json({ error: 'no rollup yet' });
+      return;
+    }
+    response.json(rollup);
+  } catch (e) {
+    log.error('ai-analysis folder rollup failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
+router.get('/plugins/ai-analysis/knowledge/domains', async (request, response) => {
+  try {
+    const getTopDomains = pluginHost.getExpose<(limit?: number) => Promise<unknown>>(
+      'ai-analysis',
+      'getTopDomains',
+    );
+    if (!getTopDomains) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const limit = Number(request.query.limit ?? 50);
+    const safeLimit = Number.isFinite(limit) && limit > 0 && limit <= 200
+      ? Math.floor(limit)
+      : 50;
+    const domains = await getTopDomains(safeLimit);
+    response.json({ domains });
+  } catch (e) {
+    log.error('ai-analysis domains failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
+router.get('/plugins/ai-analysis/knowledge/edges', async (request, response) => {
+  const domain = typeof request.query.domain === 'string' ? request.query.domain : '';
+  if (!domain) {
+    response.status(400).json({ error: 'domain is required' });
+    return;
+  }
+  try {
+    const getDomainEdges = pluginHost.getExpose<
+      (domain: string, limit?: number) => Promise<unknown>
+    >('ai-analysis', 'getDomainEdges');
+    if (!getDomainEdges) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const limit = Number(request.query.limit ?? 30);
+    const safeLimit = Number.isFinite(limit) && limit > 0 && limit <= 100
+      ? Math.floor(limit)
+      : 30;
+    const edges = await getDomainEdges(domain, safeLimit);
+    response.json({ domain, edges });
+  } catch (e) {
+    log.error('ai-analysis edges failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
 router.get('/status', async (_request, response) => {
   response.json(await galleryService.getStatus());
 });

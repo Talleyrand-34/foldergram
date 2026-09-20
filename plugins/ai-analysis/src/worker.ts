@@ -63,7 +63,7 @@ async function tick(): Promise<void> {
       assetKey: "",
       relativePath: "",
       absolutePath: claimed.absolutePath,
-      folderId: 0,
+      folderId: claimed.folderId,
       mediaType: "video" as const,
       extension: "",
       fileSize: 0,

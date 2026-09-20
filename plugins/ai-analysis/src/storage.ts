@@ -185,6 +185,351 @@ export async function markAllPendingInFolder(
   return { marked, alreadyAnalyzed, alreadyQueued };
 }
 
+/** Per-video aggregated stats, summing across every recorded analysis attempt. */
+export interface VideoStats {
+  imageId: number;
+  eventCount: number;
+  completedCount: number;
+  failedCount: number;
+  firstAttemptAt: string | null;
+  lastAttemptAt: string | null;
+  totalDurationMs: number;
+  avgDurationMs: number | null;
+  fastestDurationMs: number | null;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  lastModel: string | null;
+  lastError: string | null;
+}
+
+export async function getVideoStats(imageId: number): Promise<VideoStats | null> {
+  const row = (await get(
+    `SELECT
+       COUNT(*) AS event_count,
+       SUM(CASE WHEN event_type = 'completed' THEN 1 ELSE 0 END) AS completed,
+       SUM(CASE WHEN event_type = 'failed'    THEN 1 ELSE 0 END) AS failed,
+       MIN(created_at) AS first_at,
+       MAX(created_at) AS last_at,
+       SUM(COALESCE(duration_ms, 0))  AS total_dur,
+       AVG(duration_ms)              AS avg_dur,
+       MIN(duration_ms)              AS min_dur,
+       SUM(COALESCE(input_tokens, 0))  AS total_in,
+       SUM(COALESCE(output_tokens, 0)) AS total_out
+     FROM ai_analysis_events
+     WHERE image_id = ?`,
+    [imageId],
+  )) as {
+    event_count: number | null;
+    completed: number | null;
+    failed: number | null;
+    first_at: string | null;
+    last_at: string | null;
+    total_dur: number | null;
+    avg_dur: number | null;
+    min_dur: number | null;
+    total_in: number | null;
+    total_out: number | null;
+  } | undefined;
+  if (!row || !row.event_count) return null;
+
+  const last = (await get(
+    `SELECT model, error_message, error_kind
+     FROM ai_analysis_events
+     WHERE image_id = ?
+     ORDER BY created_at DESC LIMIT 1`,
+    [imageId],
+  )) as { model: string | null; error_message: string | null; error_kind: string | null } | undefined;
+
+  return {
+    imageId,
+    eventCount: row.event_count,
+    completedCount: row.completed ?? 0,
+    failedCount: row.failed ?? 0,
+    firstAttemptAt: row.first_at,
+    lastAttemptAt: row.last_at,
+    totalDurationMs: row.total_dur ?? 0,
+    avgDurationMs: row.avg_dur ? Math.round(row.avg_dur) : null,
+    fastestDurationMs: row.min_dur,
+    totalInputTokens: row.total_in ?? 0,
+    totalOutputTokens: row.total_out ?? 0,
+    lastModel: last?.model ?? null,
+    lastError: last?.error_message ?? null,
+  };
+}
+
+/* ──────────────────────────────────────────────────────────────────────── *
+ * Per-folder rollup + domain knowledge graph.                              *
+ * Updated each time a video finishes analysis: the rollup is recomputed    *
+ * from the current images rows (single source of truth), and the domain   *
+ * nodes + edges are bumped in place.                                       *
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/** Persisted summary for one folder, computed from its analyzed videos. */
+export interface FolderRollup {
+  folderId: number;
+  summary: string | null;
+  topDomains: string[];
+  language: string | null;
+  videoCount: number;
+  analyzedCount: number;
+  updatedAt: string | null;
+}
+
+/** One domain in the knowledge graph. */
+export interface DomainNode {
+  domain: string;
+  videoCount: number;
+  folderCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  /** Map of ISO code → count, parsed from the JSON 'languages' column. */
+  languages: Record<string, number>;
+}
+
+/** Undirected co-occurrence edge between two domains. */
+export interface DomainEdge {
+  source: string;
+  target: string;
+  weight: number;
+  updatedAt: string;
+}
+
+/**
+ * Recompute the rollup for one folder from the current image rows. Called
+ * after every successful analysis so the summary stays live. Safe to run
+ * concurrently for different folders; per-folder serialization is up to the
+ * caller if you want strict consistency.
+ */
+export async function recomputeFolderRollup(folderId: number): Promise<FolderRollup> {
+  const rows = (await all(
+    `SELECT ai_language, ai_domains, ai_summary
+     FROM images
+     WHERE folder_id = ? AND is_deleted = 0 AND media_type = 'video'`,
+    [folderId],
+  )) as Array<{
+    ai_language: string | null;
+    ai_domains: string | null;
+    ai_summary: string | null;
+  }>;
+
+  const videoCount = rows.length;
+  const analyzedRows = rows.filter((r) => r.ai_summary && r.ai_domains);
+  const analyzedCount = analyzedRows.length;
+
+  // Top domains = most-frequent slash-notation domain across all analyzed
+  // videos in the folder. Counts are per-video, not per-tag — same domain in
+  // 3 different videos → 3 points, even if one video has 2 of them.
+  const domainCounts = new Map<string, number>();
+  const langCounts = new Map<string, number>();
+  for (const r of analyzedRows) {
+    const domains = r.ai_domains ? safeParseStringArray(r.ai_domains) : [];
+    for (const d of domains) domainCounts.set(d, (domainCounts.get(d) ?? 0) + 1);
+    if (r.ai_language) langCounts.set(r.ai_language, (langCounts.get(r.ai_language) ?? 0) + 1);
+  }
+
+  const topDomains = Array.from(domainCounts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 5)
+    .map(([d]) => d);
+
+  // Pick the majority language among analyzed videos (tie → first seen).
+  const dominantLanguage = Array.from(langCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([l]) => l)[0] ?? null;
+
+  // Roll-up summary: stitch together one summary per top domain, deduped.
+  const summaryParts: string[] = [];
+  const seen = new Set<string>();
+  for (const d of topDomains) {
+    for (const r of analyzedRows) {
+      const domains = r.ai_domains ? safeParseStringArray(r.ai_domains) : [];
+      if (!domains.includes(d)) continue;
+      const s = (r.ai_summary ?? "").trim();
+      if (!s) continue;
+      if (seen.has(s)) continue;
+      seen.add(s);
+      summaryParts.push(s);
+      break;
+    }
+    if (summaryParts.length >= 4) break;
+  }
+  const summary = summaryParts.length > 0 ? summaryParts.join(" ") : null;
+
+  const nowExpr = await nowLiteral();
+  await run(
+    `INSERT INTO ai_folder_rollup (folder_id, summary, top_domains, language, video_count, analyzed_count, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ${nowExpr})
+     ON CONFLICT(folder_id) DO UPDATE SET
+       summary = excluded.summary,
+       top_domains = excluded.top_domains,
+       language = excluded.language,
+       video_count = excluded.video_count,
+       analyzed_count = excluded.analyzed_count,
+       updated_at = ${nowExpr}`,
+    [
+      folderId,
+      summary,
+      JSON.stringify(topDomains),
+      dominantLanguage,
+      videoCount,
+      analyzedCount,
+    ],
+  );
+
+  return {
+    folderId,
+    summary,
+    topDomains,
+    language: dominantLanguage,
+    videoCount,
+    analyzedCount,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export async function getFolderRollup(folderId: number): Promise<FolderRollup | null> {
+  const row = (await get(
+    `SELECT folder_id, summary, top_domains, language, video_count, analyzed_count, updated_at
+     FROM ai_folder_rollup WHERE folder_id = ?`,
+    [folderId],
+  )) as {
+    folder_id: number;
+    summary: string | null;
+    top_domains: string | null;
+    language: string | null;
+    video_count: number;
+    analyzed_count: number;
+    updated_at: string | null;
+  } | undefined;
+  if (!row) return null;
+  return {
+    folderId: row.folder_id,
+    summary: row.summary,
+    topDomains: row.top_domains ? safeParseStringArray(row.top_domains) : [],
+    language: row.language,
+    videoCount: row.video_count,
+    analyzedCount: row.analyzed_count,
+    updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * Bump the node counts and timestamps for each domain seen in a video.
+ * Idempotent per (domain, video) pair? No — we want pure counters, so re-running
+ * for the same video will double-count. Callers should call this exactly once per
+ * successful analysis.
+ */
+export async function bumpDomainNodes(domains: string[], language: string | null): Promise<void> {
+  if (domains.length === 0) return;
+  const nowExpr = await nowLiteral();
+  for (const d of domains) {
+    await run(
+      `INSERT INTO ai_domain_nodes (domain, video_count, folder_count, first_seen_at, last_seen_at, languages)
+       VALUES (?, 1, 0, ${nowExpr}, ${nowExpr}, ?)
+       ON CONFLICT(domain) DO UPDATE SET
+         video_count = ai_domain_nodes.video_count + 1,
+         last_seen_at = ${nowExpr},
+         languages = ?`,
+      [d, language ? JSON.stringify({ [language]: 1 }) : null, language ? JSON.stringify({ [language]: 1 }) : null],
+    );
+  }
+}
+
+/** Bump undirected co-occurrence edges for each (d1, d2) pair where d1 != d2. */
+export async function bumpDomainEdges(domains: string[]): Promise<void> {
+  if (domains.length < 2) return;
+  for (let i = 0; i < domains.length; i++) {
+    for (let j = i + 1; j < domains.length; j++) {
+      const a = domains[i];
+      const b = domains[j];
+      // Canonical ordering so (a,b) and (b,a) hit the same row.
+      const [source, target] = a < b ? [a, b] : [b, a];
+      const nowExpr = await nowLiteral();
+      await run(
+        `INSERT INTO ai_domain_edges (source_domain, target_domain, weight, updated_at)
+         VALUES (?, ?, 1, ${nowExpr})
+         ON CONFLICT(source_domain, target_domain) DO UPDATE SET
+           weight = ai_domain_edges.weight + 1,
+           updated_at = ${nowExpr}`,
+        [source, target],
+      );
+    }
+  }
+}
+
+/** Aggregate folders-distinct for the set of videos that mention each domain. */
+export async function recomputeFolderCounts(): Promise<void> {
+  await run(
+    `UPDATE ai_domain_nodes
+     SET folder_count = (
+       SELECT COUNT(DISTINCT images.folder_id)
+       FROM images
+       WHERE ai_domains IS NOT NULL AND ai_domains LIKE '%"' || ai_domain_nodes.domain || '"%'
+     )`,
+  );
+}
+
+export async function getTopDomains(limit = 50): Promise<DomainNode[]> {
+  const rows = (await all(
+    `SELECT domain, video_count, folder_count, first_seen_at, last_seen_at, languages
+     FROM ai_domain_nodes
+     ORDER BY video_count DESC, domain ASC
+     LIMIT ?`,
+    [limit],
+  )) as Array<{
+    domain: string;
+    video_count: number;
+    folder_count: number;
+    first_seen_at: string;
+    last_seen_at: string;
+    languages: string | null;
+  }>;
+  return rows.map((r) => ({
+    domain: r.domain,
+    videoCount: r.video_count,
+    folderCount: r.folder_count,
+    firstSeenAt: r.first_seen_at,
+    lastSeenAt: r.last_seen_at,
+    languages: r.languages ? safeParseLanguages(r.languages) : {},
+  }));
+}
+
+export async function getDomainEdges(domain: string, limit = 30): Promise<DomainEdge[]> {
+  const rows = (await all(
+    `SELECT source_domain, target_domain, weight, updated_at
+     FROM ai_domain_edges
+     WHERE source_domain = ? OR target_domain = ?
+     ORDER BY weight DESC, source_domain ASC
+     LIMIT ?`,
+    [domain, domain, limit],
+  )) as Array<{
+    source_domain: string;
+    target_domain: string;
+    weight: number;
+    updated_at: string;
+  }>;
+  return rows.map((r) => ({
+    source: r.source_domain,
+    target: r.target_domain,
+    weight: r.weight,
+    updatedAt: r.updated_at,
+  }));
+}
+
+function safeParseLanguages(raw: string): Record<string, number> {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === 'number') out[k] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Set the post's `caption` (the user-visible description) to `text`, but
  * only if it's currently null/empty. User-edited captions are never
@@ -344,15 +689,20 @@ export async function getStatusSummary(): Promise<StatusSummary> {
 }
 
 /** Pull the next pending video and lock it as running. Returns null if queue empty. */
-export async function claimNextPending(): Promise<{ imageId: number; absolutePath: string; mtimeMs: number } | null> {
+export async function claimNextPending(): Promise<{ imageId: number; folderId: number; absolutePath: string; mtimeMs: number } | null> {
   const row = (await get(
-    `SELECT id, absolute_path, mtime_ms FROM images
+    `SELECT id, folder_id, absolute_path, mtime_ms FROM images
      WHERE media_type = 'video' AND is_deleted = 0 AND ai_status = 'pending'
      ORDER BY id ASC LIMIT 1`,
-  )) as { id: number; absolute_path: string; mtime_ms: number } | undefined;
+  )) as { id: number; folder_id: number; absolute_path: string; mtime_ms: number } | undefined;
   if (!row) return null;
   await run(`UPDATE images SET ai_status = 'running' WHERE id = ?`, [row.id]);
-  return { imageId: row.id, absolutePath: row.absolute_path, mtimeMs: row.mtime_ms };
+  return {
+    imageId: row.id,
+    folderId: row.folder_id,
+    absolutePath: row.absolute_path,
+    mtimeMs: row.mtime_ms,
+  };
 }
 
 // ─── driver-specific query helpers ─────────────────────────────────────
@@ -392,6 +742,14 @@ async function run(sql: string, params?: unknown[]): Promise<unknown> {
   return await drv.execute(sql, params);
 }
 
+/** Driver-aware "now" — the migration files use dbmate, which is dialect-aware,
+ *  but our SQL helpers run via the driver directly and need the right literal.
+ *  SQLite uses datetime('now'); Postgres uses CURRENT_TIMESTAMP. */
+async function nowLiteral(): Promise<string> {
+  const drv = await getDriver();
+  return drv.dialect === 'postgres' ? 'CURRENT_TIMESTAMP' : "datetime('now')";
+}
+
 /** Stage timings captured by the analyzer and persisted as one event row. */
 export interface AnalysisTimings {
   durationMs: number;
@@ -420,13 +778,14 @@ export interface AnalysisEventInput {
  *  can't block the actual analysis pipeline. */
 export async function recordAnalysisEvent(input: AnalysisEventInput): Promise<void> {
   try {
+    const nowExpr = await nowLiteral();
     await run(
       `INSERT INTO ai_analysis_events
          (event_type, image_id, folder_id, language, domain_count,
           duration_ms, frame_extract_ms, audio_extract_ms, whisper_ms, llm_ms,
           input_tokens, output_tokens, model,
-          error_kind, error_message)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          error_kind, error_message, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${nowExpr})`,
       [
         input.eventType,
         input.imageId,

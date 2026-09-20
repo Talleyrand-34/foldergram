@@ -60,9 +60,9 @@ export function registerRoutes(ctx: PluginContext): void {
         try {
           const drv = await databaseManager.getConnection();
           const row = (await drv.queryOne(
-            `SELECT id, absolute_path, mtime_ms, media_type FROM images WHERE id = ? AND is_deleted = 0`,
+            `SELECT id, folder_id, absolute_path, mtime_ms, media_type FROM images WHERE id = ? AND is_deleted = 0`,
             [imageId],
-          )) as { id: number; absolute_path: string; mtime_ms: number; media_type: string } | undefined;
+          )) as { id: number; folder_id: number; absolute_path: string; mtime_ms: number; media_type: string } | undefined;
           if (!row || row.media_type !== "video") {
             res.status(404).json({ error: "video not found" });
             return;
@@ -77,7 +77,7 @@ export function registerRoutes(ctx: PluginContext): void {
             assetKey: "",
             relativePath: "",
             absolutePath: row.absolute_path,
-            folderId: 0,
+            folderId: row.folder_id,
             mediaType: "video" as const,
             extension: "",
             fileSize: 0,
