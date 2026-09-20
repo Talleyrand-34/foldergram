@@ -1069,7 +1069,8 @@
     },
     "folderSummary": {
       "heading": "Conocimiento de IA de esta carpeta",
-      "coverage": "{analyzed} de {total} videos analizados"
+      "coverage": "{analyzed} de {total} videos analizados",
+      "empty": "Aún no hay conocimiento de IA. Pulsa 'Analizar N videos' para generarlo."
     }
   },
   "explore": {

@@ -1069,7 +1069,8 @@
     },
     "folderSummary": {
       "heading": "AI knowledge of this folder",
-      "coverage": "{analyzed} of {total} videos analyzed"
+      "coverage": "{analyzed} of {total} videos analyzed",
+      "empty": "No AI knowledge yet. Click 'Analyze N videos' to generate it."
     }
   },
   "explore": {

@@ -4,7 +4,7 @@
       <div class="grid gap-[1.2rem]">
         <h2 :id="titleId" class="m-0 text-[1.25rem] font-semibold">{{ t('folder.profileModal.title') }}</h2>
 
-        <FolderAiSummary v-if="folderId != null" :folder-id="folderId" />
+        <FolderAiSummary v-if="folderId != null" :folder-id="folderId" :show-empty-state="true" />
 
         <form @submit.prevent="submit" class="grid gap-[1.1rem]">
           <div class="grid gap-[0.4rem]">
