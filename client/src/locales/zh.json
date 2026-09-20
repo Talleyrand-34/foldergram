@@ -1031,9 +1031,7 @@
         "idle": "使用 AI 分析",
         "busy": "正在加入队列…",
         "queued": "已加入队列,结果将在几秒后显示在此处。",
-        "alreadyDone": "已分析过 ({reason})。",
-        "button": "使用 AI 分析此视频",
-        "helper": "帧和音频将发送到 AI 网关;结果保存在帖子中。"
+        "alreadyDone": "已分析过 ({reason})。"
       },
       "folder": {
         "idle": "使用 AI 分析文件夹",

@@ -1031,9 +1031,7 @@
         "idle": "Analyze with AI",
         "busy": "Queueing…",
         "queued": "Queued. Results appear here in a few seconds.",
-        "alreadyDone": "Already analyzed ({reason}).",
-        "button": "Analyze this video with AI",
-        "helper": "Frames + audio are sent to the AI gateway; results save on the post."
+        "alreadyDone": "Already analyzed ({reason})."
       },
       "folder": {
         "idle": "Analyze folder with AI",

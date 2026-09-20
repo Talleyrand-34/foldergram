@@ -1031,9 +1031,7 @@
         "idle": "Analizar con IA",
         "busy": "Poniendo en cola…",
         "queued": "En cola. Los resultados aparecerán aquí en unos segundos.",
-        "alreadyDone": "Ya analizado ({reason}).",
-        "button": "Analizar este video con IA",
-        "helper": "Los fotogramas y el audio se envían al gateway de IA; los resultados se guardan en la publicación."
+        "alreadyDone": "Ya analizado ({reason})."
       },
       "folder": {
         "idle": "Analizar carpeta con IA",

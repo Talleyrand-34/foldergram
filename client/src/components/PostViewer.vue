@@ -600,6 +600,7 @@
   import { useAuthStore } from "../stores/auth"
   import { useLikesStore } from "../stores/likes"
   import { useFoldersStore } from "../stores/folders"
+  import { analyzeVideo } from "../api/ai-analysis"
   import { resolveDisplayCaption } from "../utils/caption"
   import { formatFolderTitle } from "../utils/folder-titles"
   import { getOriginalMediaDownloadUrl, getOriginalMediaUrl } from "../utils/original-media"
@@ -645,6 +646,21 @@
   const sidebarSheetDragOffset = ref(0)
   const settingCover = ref(false)
   const isEditingCaption = ref(false)
+  const aiBusy = ref(false)
+  const aiButtonLabel = computed(() =>
+    aiBusy.value ? t('ai.analyze.video.busy') : t('ai.analyze.video.idle')
+  )
+  async function triggerAiAnalysis() {
+    if (aiBusy.value) return
+    aiBusy.value = true
+    try {
+      await analyzeVideo(props.image?.id ?? -1, false)
+    } catch {
+      // Silent: the button just disables briefly. The Settings polling card surfaces real failures.
+    } finally {
+      aiBusy.value = false
+    }
+  }
   const {
     saving: captionSaving,
     error: captionError,
