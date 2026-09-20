@@ -479,6 +479,21 @@
             >
               <span :class="[isCurrentCover ? 'i-fluent-folder-add-20-filled text-accent' : 'i-fluent-folder-add-20-regular', 'w-[1.5rem] h-[1.5rem]']" aria-hidden="true" />
             </button>
+            <!-- Analyze with AI (videos only) -->
+            <button
+              v-if="authStore.canManageLibrary && image.mediaType === 'video'"
+              class="viewer__sidebar-action inline-flex items-center justify-center p-0 border-0 bg-transparent cursor-pointer text-text transition-[opacity,transform] duration-180 hover:opacity-72 hover:-translate-y-px disabled:opacity-45 disabled:cursor-wait disabled:transform-none"
+              type="button"
+              :aria-label="aiButtonLabel"
+              :title="aiButtonLabel"
+              :disabled="aiBusy"
+              @click="triggerAiAnalysis"
+            >
+              <span
+                :class="[aiBusy ? 'i-fluent-arrow-sync-20-filled animate-spin' : 'i-fluent-sparkle-20-regular', 'w-[1.5rem] h-[1.5rem]']"
+                aria-hidden="true"
+              />
+            </button>
             <!-- Download original -->
             <a
               class="viewer__sidebar-action inline-flex items-center justify-center p-0 border-0 bg-transparent cursor-pointer text-text transition-[opacity,transform] duration-180 hover:opacity-72 hover:-translate-y-px"
