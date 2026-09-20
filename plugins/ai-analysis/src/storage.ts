@@ -181,6 +181,28 @@ export async function markAllPendingInFolder(
   return { marked, alreadyAnalyzed, alreadyQueued };
 }
 
+/**
+ * Set the post's `caption` (the user-visible description) to `text`, but
+ * only if it's currently null/empty. User-edited captions are never
+ * overwritten — the analyzer can fill in blanks but must not clobber
+ * manual edits. Returns whether the update actually happened.
+ */
+export async function updateCaptionIfNull(
+  imageId: number,
+  text: string,
+): Promise<boolean> {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return false;
+  const result = await run(
+    `UPDATE images SET caption = ?
+     WHERE id = ? AND (caption IS NULL OR TRIM(caption) = '')`,
+    [trimmed, imageId],
+  );
+  const resultAny = result as { rowsAffected?: number; rowCount?: number };
+  const n = resultAny.rowsAffected ?? resultAny.rowCount ?? 0;
+  return n > 0;
+}
+
 /** Fetch the AI status of one image. Returns null if the row doesn't exist or isn't a video. */
 export async function getImageAiStatus(
   imageId: number,

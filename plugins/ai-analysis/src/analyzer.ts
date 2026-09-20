@@ -12,6 +12,8 @@
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
+import { updateCaptionIfNull } from "./storage.js";
+
 import { chat, transcribe, AUDIO_MODEL, VISION_MODEL } from "./lib/litellm-client.js";
 import { extractAudio, extractSampleFrames, probeVideo } from "./lib/ffmpeg.js";
 import { saveAnalysis } from "./storage.js";
@@ -138,6 +140,11 @@ Return ONLY the JSON object. No prose, no markdown.`;
       model: llmResult.model,
       usageTokens: llmResult.usage.total_tokens,
     });
+
+    // Backfill the post's user-visible caption when it's empty. The analyzer
+    // never overwrites a manual edit — users who want a fresh AI description
+    // can clear the caption in the post viewer and re-trigger analysis.
+    await updateCaptionIfNull(asset.imageId, parsed.summary);
 
     return {
       imageId: asset.imageId,
