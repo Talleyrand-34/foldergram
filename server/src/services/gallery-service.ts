@@ -156,7 +156,20 @@ interface PlaceRowFields {
 }
 
 type IndexedFeedImage = FeedImage & PlaceRowFields & { playbackStrategy?: PlaybackStrategy | null };
-type IndexedImageDetail = ImageDetail & PlaceRowFields & { playbackStrategy?: PlaybackStrategy | null; exifJson?: string | null };
+type IndexedImageDetail = ImageDetail & PlaceRowFields & {
+  playbackStrategy?: PlaybackStrategy | null;
+  exifJson?: string | null;
+  aiStatus?: string | null;
+  aiSummary?: string | null;
+  aiSummaryEn?: string | null;
+  aiSummaryEs?: string | null;
+  aiDomains?: string | null;
+  aiTags?: string | null;
+  aiLanguage?: string | null;
+  aiSentiment?: string | null;
+  aiTranscript?: string | null;
+  aiAnalyzedAt?: string | null;
+};
 type IndexedTrashImage = TrashImage & PlaceRowFields & { playbackStrategy?: PlaybackStrategy | null };
 type ScanSummaryRecord = Awaited<ReturnType<typeof scanRunRepository.latestCompleted>>;
 
@@ -490,7 +503,14 @@ async function mapFeedImage(
 }
 
 async function mapImageDetail(image: IndexedImageDetail, derivativeVersion: string | null): Promise<ImageDetail> {
-  const { playbackStrategy, exifJson, placeId, placeSlug, placeName, placeKind, placeIsApproximate, isSaved, ...rest } = image;
+  const {
+    playbackStrategy, exifJson,
+    placeId, placeSlug, placeName, placeKind, placeIsApproximate,
+    isSaved,
+    aiStatus, aiSummary, aiSummaryEn, aiSummaryEs,
+    aiDomains, aiTags, aiLanguage, aiSentiment, aiTranscript, aiAnalyzedAt,
+    ...rest
+  } = image;
   const useOriginalForImages = appConfig.imageDetailSource === 'original';
   return {
     ...rest,
@@ -507,8 +527,29 @@ async function mapImageDetail(image: IndexedImageDetail, derivativeVersion: stri
     }, useOriginalForImages, derivativeVersion),
     originalUrl: buildOriginalUrl(rest.id),
     playbackStrategy,
-    place: mapPlaceSummaryFromRow({ placeId, placeSlug, placeName, placeKind, placeIsApproximate })
+    place: mapPlaceSummaryFromRow({ placeId, placeSlug, placeName, placeKind, placeIsApproximate }),
+    ai: aiStatus === 'ok' ? {
+      status: aiStatus,
+      summary: aiSummary,
+      summaryEn: aiSummaryEn,
+      summaryEs: aiSummaryEs,
+      domains: aiDomains ? safeParseStringArrayServer(aiDomains) : [],
+      tags: aiTags ? safeParseStringArrayServer(aiTags) : [],
+      language: aiLanguage,
+      sentiment: aiSentiment,
+      transcript: aiTranscript,
+      analyzedAt: aiAnalyzedAt
+    } : null
   };
+}
+
+function safeParseStringArrayServer(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 async function mapTrashImage(image: IndexedTrashImage, derivativeVersion: string | null): Promise<TrashImage> {

@@ -433,6 +433,30 @@
           </div>
         </dl>
 
+        <!-- AI analysis: locale-aware summary + transcript -->
+        <div
+          v-if="image.ai && (displayedSummary || image.ai.transcript)"
+          class="viewer__sidebar-ai m-0 px-5 pt-[0.85rem] grid gap-[0.5rem]"
+        >
+          <div v-if="displayedSummary" class="grid gap-[0.2rem]">
+            <span class="text-[0.7rem] font-bold tracking-[0.08em] text-muted uppercase">
+              {{ t('post.viewer.aiSummary') }}
+              <span v-if="displayedSummaryLanguage" class="ml-[0.4rem] font-medium tracking-normal normal-case text-[0.66rem] text-muted/85">
+                ({{ displayedSummaryLanguage }})
+              </span>
+            </span>
+            <p class="m-0 text-[0.92rem] leading-[1.4]">{{ displayedSummary }}</p>
+          </div>
+          <div v-if="image.ai.transcript" class="grid gap-[0.2rem]">
+            <span class="text-[0.7rem] font-bold tracking-[0.08em] text-muted uppercase">
+              {{ t('post.viewer.transcript') }}
+            </span>
+            <p class="m-0 text-[0.86rem] leading-[1.45] text-text/85 whitespace-pre-wrap max-h-[14rem] overflow-y-auto">
+              {{ image.ai.transcript }}
+            </p>
+          </div>
+        </div>
+
         <!-- Actions -->
         <div
           class="viewer__sidebar-actions flex items-center justify-between gap-3 px-5 pt-[0.7rem] pb-5 mt-auto"
@@ -480,22 +504,11 @@
               <span :class="[isCurrentCover ? 'i-fluent-folder-add-20-filled text-accent' : 'i-fluent-folder-add-20-regular', 'w-[1.5rem] h-[1.5rem]']" aria-hidden="true" />
             </button>
             <!-- Analyze with AI (videos only) -->
-            <button
+            <AiAnalyzeIconButton
               v-if="authStore.canManageLibrary && image.mediaType === 'video'"
-              class="viewer__sidebar-action inline-flex items-center justify-center p-0 border-0 bg-transparent cursor-pointer text-text transition-[opacity,transform,color] duration-180 hover:opacity-72 hover:-translate-y-px disabled:opacity-45 disabled:cursor-wait disabled:transform-none"
-              :class="aiButtonColorClass"
-              type="button"
-              :aria-label="aiButtonLabel"
-              :title="aiButtonLabel"
-              :disabled="aiBusy || aiState === 'running'"
-              @click="triggerAiAnalysis"
-            >
-              <span
-                :class="aiIconClass"
-                class="w-[1.5rem] h-[1.5rem]"
-                aria-hidden="true"
-              />
-            </button>
+              :video-id="image.id"
+              mode="icon"
+            />
             <!-- Download original -->
             <a
               class="viewer__sidebar-action inline-flex items-center justify-center p-0 border-0 bg-transparent cursor-pointer text-text transition-[opacity,transform] duration-180 hover:opacity-72 hover:-translate-y-px"
@@ -617,7 +630,7 @@
   import { useAuthStore } from "../stores/auth"
   import { useLikesStore } from "../stores/likes"
   import { useFoldersStore } from "../stores/folders"
-  import { analyzeVideo, fetchImageAiStatus } from "../api/ai-analysis"
+  import AiAnalyzeIconButton from "./AiAnalyzeIconButton.vue"
   import { resolveDisplayCaption } from "../utils/caption"
   import { formatFolderTitle } from "../utils/folder-titles"
   import { getOriginalMediaDownloadUrl, getOriginalMediaUrl } from "../utils/original-media"
@@ -663,89 +676,6 @@
   const sidebarSheetDragOffset = ref(0)
   const settingCover = ref(false)
   const isEditingCaption = ref(false)
-  const aiBusy = ref(false)
-  type AiButtonState = 'idle' | 'pending' | 'running' | 'done' | 'failed'
-  const aiState = ref<AiButtonState>('idle')
-  const aiBusyRef = ref<number | null>(null)
-
-  const aiButtonLabel = computed(() => {
-    if (aiBusy.value) return t('ai.analyze.video.busy')
-    switch (aiState.value) {
-      case 'pending': return t('ai.analyze.video.state.queued')
-      case 'running': return t('ai.analyze.video.state.running')
-      case 'done':    return t('ai.analyze.video.state.done')
-      case 'failed':  return t('ai.analyze.video.state.failed')
-      default:        return t('ai.analyze.video.idle')
-    }
-  })
-  const aiIconClass = computed(() => {
-    if (aiBusy.value) return 'i-fluent-arrow-sync-20-filled animate-spin'
-    if (aiState.value === 'running') return 'i-fluent-arrow-sync-20-filled animate-spin'
-    if (aiState.value === 'done')    return 'i-fluent-sparkle-20-filled'
-    return 'i-fluent-sparkle-20-regular'
-  })
-  const aiButtonColorClass = computed(() => {
-    if (aiState.value === 'pending') return 'text-muted'
-    if (aiState.value === 'done')    return 'text-accent'
-    if (aiState.value === 'failed')  return 'text-[#b42318]'
-    return ''
-  })
-
-  async function loadAiStatus() {
-    const id = props.image?.id
-    if (id === undefined) return
-    try {
-      const res = await fetchImageAiStatus(id)
-      if (!res) {
-        aiState.value = 'idle'
-        return
-      }
-      // Skip if a click we just made is still in flight (optimistic update).
-      if (aiBusyRef.value !== null && aiBusyRef.value === id) return
-      aiState.value = mapServerStatus(res.status)
-    } catch {
-      // Silent: the button stays in its previous state.
-    }
-  }
-  function mapServerStatus(s: 'pending' | 'running' | 'ok' | 'failed' | 'skipped' | null): AiButtonState {
-    if (s === 'pending') return 'pending'
-    if (s === 'running') return 'running'
-    if (s === 'ok') return 'done'
-    if (s === 'failed') return 'failed'
-    return 'idle'
-  }
-
-  watch(
-    () => props.image?.id,
-    (id) => {
-      if (id !== undefined) {
-        aiState.value = 'idle'
-        void loadAiStatus()
-      }
-    },
-    { immediate: true }
-  )
-
-  async function triggerAiAnalysis() {
-    if (aiBusy.value) return
-    const id = props.image?.id
-    if (id === undefined) return
-    aiBusy.value = true
-    aiBusyRef.value = id
-    aiState.value = 'pending'
-    try {
-      await analyzeVideo(id, false)
-      // Optimistic: assume 'pending' until the worker picks it up. A second
-      // pass is scheduled to re-read the actual status once it's done.
-      setTimeout(() => void loadAiStatus(), 1500)
-      setTimeout(() => void loadAiStatus(), 8000)
-    } catch {
-      aiState.value = 'failed'
-    } finally {
-      aiBusy.value = false
-      aiBusyRef.value = null
-    }
-  }
   const {
     saving: captionSaving,
     error: captionError,
@@ -863,6 +793,29 @@
   const displayFolderTitle = computed(() =>
     props.image ? formatFolderTitle(props.folder ?? props.image, appStore.nestedFolderTitleFormat) : "",
   )
+
+  // Pick the AI summary that best matches the viewer's locale. Falls back
+  // through: native → en → es → the first available string.
+  const displayedSummaryLanguage = computed<string | null>(() => {
+    const ai = props.image?.ai
+    if (!ai) return null
+    const lang = (locale.value || 'en').toLowerCase()
+    if (lang.startsWith('es') && ai.summaryEs) return 'es'
+    if (lang.startsWith('en') && ai.summaryEn) return 'en'
+    if (ai.language === 'es' && ai.summaryEs) return 'es'
+    if (ai.language === 'en' && ai.summaryEn) return 'en'
+    return null
+  })
+  const displayedSummary = computed<string | null>(() => {
+    const ai = props.image?.ai
+    if (!ai) return null
+    const lang = (locale.value || 'en').toLowerCase()
+    if (lang.startsWith('es') && ai.summaryEs) return ai.summaryEs
+    if (lang.startsWith('en') && ai.summaryEn) return ai.summaryEn
+    if (ai.language === 'es' && ai.summaryEs) return ai.summaryEs
+    if (ai.language === 'en' && ai.summaryEn) return ai.summaryEn
+    return ai.summary ?? ai.summaryEn ?? ai.summaryEs ?? null
+  })
   const folderBreadcrumbLabel = computed(() =>
     props.folder?.breadcrumb ?? props.image?.folderBreadcrumb ?? t('folder.shared.topLevelSourceFolder'),
   )

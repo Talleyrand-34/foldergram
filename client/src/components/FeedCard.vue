@@ -53,6 +53,11 @@
           <circle cx="17.5" cy="12" r="1.5" fill="currentColor" />
         </svg>
       </button>
+      <AiAnalyzeIconButton
+        v-if="authStore.canManageLibrary && item.mediaType === 'video'"
+        :video-id="item.id"
+        mode="card-overlay"
+      />
     </div>
 
     <RouterLink v-if="!isHomeContext" custom :to="imageRoute" v-slot="{ href, navigate }">
@@ -444,6 +449,7 @@ import ConfirmDialog from './ConfirmDialog.vue';
 import PostCaptionModal from './PostCaptionModal.vue';
 import ResilientImage from './ResilientImage.vue';
 import VideoProgressFooter from './VideoProgressFooter.vue';
+import AiAnalyzeIconButton from './AiAnalyzeIconButton.vue';
 
 interface HomeVideoVisibilityChange {
   id: number;

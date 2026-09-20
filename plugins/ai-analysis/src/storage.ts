@@ -31,6 +31,8 @@ export type AiStatus = "pending" | "running" | "ok" | "failed" | "skipped";
 
 export interface AiMetadata {
   summary: string;
+  summaryEn: string | null;
+  summaryEs: string | null;
   domains: string[];
   tags: string[];
   language: string;
@@ -42,7 +44,7 @@ export interface AiMetadata {
 }
 
 const COLUMNS =
-  "ai_status, ai_summary, ai_domains, ai_tags, ai_language, ai_sentiment, ai_transcript, ai_model, ai_usage_tokens, ai_error, ai_analyzed_at, ai_analyzed_mtime_ms";
+  "ai_status, ai_summary, ai_summary_en, ai_summary_es, ai_domains, ai_tags, ai_language, ai_sentiment, ai_transcript, ai_model, ai_usage_tokens, ai_error, ai_analyzed_at, ai_analyzed_mtime_ms";
 
 function getDb(): never {
   throw new Error("getDb() removed — use the cached driver via getDriver()");
@@ -58,6 +60,8 @@ export async function saveAnalysis(
   const params: unknown[] = [
     "ok",
     data.summary,
+    data.summaryEn,
+    data.summaryEs,
     JSON.stringify(data.domains),
     JSON.stringify(data.tags),
     data.language,
@@ -278,7 +282,7 @@ export async function searchVideos(opts: SearchOptions): Promise<SearchHit[]> {
   }
 
   const limit = Math.min(opts.limit ?? 50, 200);
-  const sql = `SELECT id, filename, relative_path, ai_summary, ai_domains, ai_tags, ai_language, ai_transcript, ai_status
+  const sql = `SELECT id, filename, relative_path, ai_summary, ai_summary_en, ai_summary_es, ai_domains, ai_tags, ai_language, ai_transcript, ai_status
                FROM images
                WHERE ${conds.join(" AND ")}
                ORDER BY ai_analyzed_at DESC NULLS LAST
@@ -292,6 +296,8 @@ export async function searchVideos(opts: SearchOptions): Promise<SearchHit[]> {
     filename: string;
     relative_path: string;
     ai_summary: string | null;
+    ai_summary_en: string | null;
+    ai_summary_es: string | null;
     ai_domains: string | null;
     ai_tags: string | null;
     ai_language: string | null;
@@ -304,6 +310,8 @@ export async function searchVideos(opts: SearchOptions): Promise<SearchHit[]> {
     filename: r.filename,
     relativePath: r.relative_path,
     summary: r.ai_summary,
+    summaryEn: r.ai_summary_en,
+    summaryEs: r.ai_summary_es,
     domains: r.ai_domains ? safeParseStringArray(r.ai_domains) : [],
     tags: r.ai_tags ? safeParseStringArray(r.ai_tags) : [],
     language: r.ai_language,

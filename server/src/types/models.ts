@@ -189,6 +189,19 @@ export interface ReelCandidate extends FeedImage {
   likedAt: string | null;
 }
 
+export interface AiMetadata {
+  status: string;
+  summary?: string | null;
+  summaryEn?: string | null;
+  summaryEs?: string | null;
+  domains: string[];
+  tags: string[];
+  language?: string | null;
+  sentiment?: string | null;
+  transcript?: string | null;
+  analyzedAt?: string | null;
+}
+
 export interface ImageDetail extends FeedImage {
   folderAvatarImageId: number | null;
   relativePath: string;
@@ -199,6 +212,7 @@ export interface ImageDetail extends FeedImage {
   playbackStrategy?: PlaybackStrategy | null;
   nextImageId: number | null;
   previousImageId: number | null;
+  ai: AiMetadata | null;
 }
 
 export interface TrashImage extends FeedImage {

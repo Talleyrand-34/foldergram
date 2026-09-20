@@ -53,6 +53,19 @@ export interface UpdateExcludedFoldersSettingResult extends ExcludedFoldersSetti
   requiresScan: boolean;
 }
 
+export interface AiMetadata {
+  status: string;
+  summary?: string | null;
+  summaryEn?: string | null;
+  summaryEs?: string | null;
+  domains: string[];
+  tags: string[];
+  language?: string | null;
+  sentiment?: string | null;
+  transcript?: string | null;
+  analyzedAt?: string | null;
+}
+
 export interface FeedItem {
   id: number;
   folderId: number;
@@ -74,6 +87,7 @@ export interface FeedItem {
   takenAt: number | null;
   isSaved?: boolean;
   place?: PlaceSummary | null;
+  ai?: AiMetadata | null;
 }
 
 export type PlaceKind = 'city' | 'approximate_spot' | 'manual';

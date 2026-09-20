@@ -192,6 +192,11 @@
                 aria-hidden="true"
               />
             </button>
+            <AiAnalyzeIconButton
+              v-if="authStore.canManageLibrary"
+              :video-id="item.id"
+              mode="icon"
+            />
           </div>
         </div>
       </div>
@@ -205,12 +210,13 @@ import 'vidstack/bundle';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RouterLink } from 'vue-router';
+import { useAuthStore } from '../stores/auth';
+import AiAnalyzeIconButton from './AiAnalyzeIconButton.vue';
 import type { PlayerSrc } from 'vidstack';
 import type { MediaPlayerElement } from 'vidstack/elements';
 
 import { useImageCaptionEditor } from '../composables/useImageCaptionEditor';
 import { useAppStore } from '../stores/app';
-import { useAuthStore } from '../stores/auth';
 import type { FeedItem, FolderSummary } from '../types/api';
 import { resolveDisplayCaption } from '../utils/caption';
 import { formatFolderTitle } from '../utils/folder-titles';

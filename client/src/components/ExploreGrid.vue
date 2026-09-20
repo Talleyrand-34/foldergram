@@ -14,6 +14,13 @@
             {{ formatMediaDuration(item.durationMs) }}
           </span>
         </div>
+        <div v-if="item.mediaType === 'video'" class="absolute right-1.5 bottom-1.5">
+          <AiAnalyzeIconButton
+            v-if="authStore.canManageLibrary"
+            :video-id="item.id"
+            mode="card-overlay"
+          />
+        </div>
       </a>
     </RouterLink>
   </section>
@@ -23,9 +30,11 @@
 import { RouterLink, useRoute } from 'vue-router';
 
 import { useAppStore } from '../stores/app';
+import { useAuthStore } from '../stores/auth';
 import type { FeedItem } from '../types/api';
 import { formatMediaDuration } from '../utils/media';
 import ResilientImage from './ResilientImage.vue';
+import AiAnalyzeIconButton from './AiAnalyzeIconButton.vue';
 
 defineProps<{
   items: FeedItem[];
@@ -38,6 +47,7 @@ const emit = defineEmits<{
 const FEATURE_INDEXES = new Set([2, 8, 13]);
 
 const appStore = useAppStore();
+const authStore = useAuthStore();
 const route = useRoute();
 
 function getTileClass(index: number): string {

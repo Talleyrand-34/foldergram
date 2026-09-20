@@ -785,7 +785,9 @@
       "setAsCover": "设为文件夹封面",
       "downloadOriginalFile": "下载原始文件",
       "openOriginalFile": "打开原始文件",
-      "deletePost": "删除帖子"
+      "deletePost": "删除帖子",
+      "aiSummary": "AI 摘要",
+      "transcript": "转录"
     },
     "feedCard": {
       "openStories": "打开 {name} 的动态",

@@ -785,7 +785,9 @@
       "setAsCover": "Establecer como portada de la carpeta",
       "downloadOriginalFile": "Descargar archivo original",
       "openOriginalFile": "Abrir archivo original",
-      "deletePost": "Eliminar publicación"
+      "deletePost": "Eliminar publicación",
+      "aiSummary": "Resumen de IA",
+      "transcript": "Transcripción"
     },
     "feedCard": {
       "openStories": "Abrir historias de {name}",

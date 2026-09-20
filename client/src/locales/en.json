@@ -785,7 +785,9 @@
       "setAsCover": "Set as folder cover",
       "downloadOriginalFile": "Download original file",
       "openOriginalFile": "Open original file",
-      "deletePost": "Delete post"
+      "deletePost": "Delete post",
+      "aiSummary": "AI summary",
+      "transcript": "Transcript"
     },
     "feedCard": {
       "openStories": "Open {name} stories",

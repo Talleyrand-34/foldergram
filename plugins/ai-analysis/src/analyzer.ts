@@ -80,14 +80,18 @@ Detected language: ${detectedLanguage}
 
 Output JSON with this exact shape:
 {
-  "summary": "one sentence (≤120 chars) describing what this video is",
-  "domains": ["slash notation: 'music/reggaeton', 'politics/france', 'films/scifi', etc."],
-  "tags": ["5-15 lowercase tags — names, places, brands, songs, events"],
-  "language": "ISO 639-1 code (es, en, fr, de, ja, etc.), or 'unknown'",
+  "summary": "one sentence (≤120 chars) describing what this video is. CRITICAL: write this in the video's ORIGINAL language (the language of the audio transcript below). Do NOT translate to English.",
+  "summary_en": "English translation of summary. If the source is already English, copy summary verbatim.",
+  "summary_es": "Spanish translation of summary. If the source is already Spanish, copy summary verbatim.",
+  "domains": ["slash notation: 'music/reggaeton', 'politics/france', 'films/scifi', etc. — write in the source language"],
+  "tags": ["5-15 lowercase tags — names, places, brands, songs, events — write in the source language"],
+  "language": "ISO 639-1 code of the SOURCE language (es, en, fr, de, ja, etc.), or 'unknown'",
   "sentiment": "one of: positive | negative | neutral | mixed | provocative | informative"
 }
 
 Pick domains from: arts/music, arts/film, arts/literature, comedy, education, finance, food, gaming, health, history, news, philosophy, politics, religion, science, sports, tech, travel, vlog + sub-genre/sub-region. Always at least one domain. At most 3.
+
+REMINDER: 'summary' MUST be in the source language (matching the transcript). 'summary_en' is the English translation. 'summary_es' is the Spanish translation. Do not put English in 'summary' if the source is non-English.
 
 Return ONLY the JSON object. No prose, no markdown.`;
 
@@ -115,6 +119,8 @@ Return ONLY the JSON object. No prose, no markdown.`;
 
     const parsed = parseJsonLenient<{
       summary: string;
+      summary_en?: string;
+      summary_es?: string;
       domains: string[];
       tags: string[];
       language: string;
@@ -131,6 +137,8 @@ Return ONLY the JSON object. No prose, no markdown.`;
 
     await saveAnalysis(asset.imageId, asset.mtimeMs, {
       summary: parsed.summary,
+      summaryEn: parsed.summary_en?.trim() || null,
+      summaryEs: parsed.summary_es?.trim() || null,
       domains: parsed.domains,
       tags: parsed.tags.map((t) => t.toLowerCase()),
       language: parsed.language,
