@@ -20,6 +20,7 @@
 
 import { registerRoutes } from "./api.js";
 import { startBackgroundWorker } from "./worker.js";
+import { getAnalysisStats } from "./storage.js";
 
 import type { Plugin } from "../../../server/dist/plugins/types.js";
 
@@ -55,3 +56,13 @@ const plugin: Plugin = {
 };
 
 export default plugin;
+
+/**
+ * Named exports exposed for the host server to call into. The plugin
+ * loader attaches this object to the plugin's LoadedPlugin.exposes so
+ * the server's main router can pull stats queries (and any future
+ * server-driven hooks) without reaching into the plugin's internals.
+ */
+export const exposes = {
+  getAnalysisStats,
+};

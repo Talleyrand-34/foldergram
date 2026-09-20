@@ -1,22 +1,21 @@
 /**
  * Analyzer — the AI pipeline per video.
  *
- * Extracted and hardened from plugins/ai-analysis/.scratch/p3-full-pipeline.ts.
- * Differences:
+ * Differences from the original prototype:
  *   - Runs in-process (no separate script invocation)
  *   - Persists results via the storage module
  *   - Idempotent (skips if already analyzed at a newer mtime)
  *   - Times out per stage; surfaces structured errors so the worker can retry
+ *   - Records per-stage timings + outcome to ai_analysis_events so we can
+ *     tune the slow stages and watch error rates without leaving the box.
  */
 
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-
-import { updateCaptionIfNull } from "./storage.js";
 
 import { chat, transcribe, AUDIO_MODEL, VISION_MODEL } from "./lib/litellm-client.js";
 import { extractAudio, extractSampleFrames, probeVideo } from "./lib/ffmpeg.js";
-import { saveAnalysis } from "./storage.js";
+import { recordAnalysisEvent, saveAnalysis, updateCaptionIfNull } from "./storage.js";
 import type { IndexedVideoAsset } from "../../../server/dist/plugins/types.js";
 
 const TMP_ROOT = process.env.AI_ANALYSIS_TMP ?? "/tmp/ai-analysis";
@@ -35,40 +34,62 @@ export interface AnalysisResult {
 }
 
 export async function analyzeVideo(asset: IndexedVideoAsset): Promise<AnalysisResult> {
-  const start = Date.now();
+  const totalStart = Date.now();
   const tmpDir = join(TMP_ROOT, `an-${asset.imageId}-${Date.now()}`);
   await mkdir(tmpDir, { recursive: true });
 
+  // Per-stage timers. Reset to 0 if a stage is skipped.
+  const t = {
+    frameExtractMs: 0,
+    audioExtractMs: 0,
+    whisperMs: 0,
+    llmMs: 0,
+  };
+  let detectedLanguage: string | null = null;
+  let domainsCount: number | null = null;
+  let model = VISION_MODEL;
+  let inputTokens = 0;
+  let outputTokens = 0;
+
   try {
-    // Probe + extract
+    // ----- probe -----
     const info = await probeVideo(asset.absolutePath);
 
-    // Skip if too short or too long (defensive — caller already filtered, but
-    // someone could call this directly via the API).
     if (info.duration <= 0) {
-      return { imageId: asset.imageId, status: "skipped", reason: "zero duration", durationMs: Date.now() - start };
+      return { imageId: asset.imageId, status: "skipped", reason: "zero duration", durationMs: Date.now() - totalStart };
     }
 
-    const framesDir = join(tmpDir, "frames");
-    await mkdir(framesDir, { recursive: true });
-    const framePaths = await extractSampleFrames(asset.absolutePath, 3, framesDir);
+    // ----- frame extraction -----
+    {
+      const t0 = Date.now();
+      const framesDir = join(tmpDir, "frames");
+      await mkdir(framesDir, { recursive: true });
+      await extractSampleFrames(asset.absolutePath, 3, framesDir);
+      t.frameExtractMs = Date.now() - t0;
+    }
 
+    // ----- audio extraction + whisper transcription -----
     let transcript = "";
-    let detectedLanguage = "n/a";
     if (info.hasAudio) {
       const audioPath = await extractAudio(asset.absolutePath, tmpDir);
       try {
+        const w0 = Date.now();
         const r = await transcribe({ filePath: audioPath, model: AUDIO_MODEL });
         transcript = r.text.trim();
         detectedLanguage = (r.raw as { language?: string }).language ?? "auto";
+        t.whisperMs = Date.now() - w0;
       } catch (e) {
-        // Audio is best-effort; vision alone can still produce a useful result.
         transcript = "";
         detectedLanguage = "unknown";
+        // Audio is best-effort; vision alone can still produce a useful result.
+        // Errors here will be reflected in the final 'failed' event below
+        // only if no usable summary comes back.
       }
+    } else {
+      detectedLanguage = "no_audio";
     }
 
-    // Combined inference
+    // ----- LLM combined inference -----
     const prompt = `You are a video librarian. You have 3 frames (10%, 50%, 95% of a <1 minute video) AND an audio transcript. Produce STRICT JSON.
 
 Audio transcript (may be empty if no speech):
@@ -95,27 +116,62 @@ REMINDER: 'summary' MUST be in the source language (matching the transcript). 's
 
 Return ONLY the JSON object. No prose, no markdown.`;
 
-    const dataUrls = await Promise.all(
-      framePaths.map(async (p: string) => {
-        const buf = await readFile(p);
-        return `data:image/jpeg;base64,${buf.toString("base64")}`;
-      }),
-    );
+    const framesDir = join(tmpDir, "frames");
+    const frameNames = (await readdir(framesDir)).sort();
+    const dataUrls: string[] = [];
+    for (const n of frameNames) {
+      const buf = await readFile(join(framesDir, n));
+      dataUrls.push(`data:image/jpeg;base64,${buf.toString("base64")}`);
+    }
 
-    const llmResult = await chat({
-      model: VISION_MODEL,
-      maxTokens: 2000,
-      json: true,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            ...dataUrls.map((url: string) => ({ type: "image_url" as const, image_url: { url } })),
-          ],
+    let llmResult;
+    try {
+      const llmStart = Date.now();
+      llmResult = await chat({
+        model: VISION_MODEL,
+        maxTokens: 2000,
+        json: true,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              ...dataUrls.map((url) => ({ type: "image_url" as const, image_url: { url } })),
+            ],
+          },
+        ],
+      });
+      t.llmMs = Date.now() - llmStart;
+      model = llmResult.model;
+      inputTokens = llmResult.usage.prompt_tokens;
+      outputTokens = llmResult.usage.completion_tokens;
+    } catch (e) {
+      await recordAnalysisEvent({
+        eventType: "failed",
+        imageId: asset.imageId,
+        folderId: asset.folderId,
+        language: detectedLanguage,
+        domainCount: null,
+        timings: {
+          durationMs: Date.now() - totalStart,
+          frameExtractMs: t.frameExtractMs,
+          audioExtractMs: 0,
+          whisperMs: t.whisperMs,
+          llmMs: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          model: VISION_MODEL,
         },
-      ],
-    });
+        errorKind: "llm_request_failed",
+        errorMessage: e instanceof Error ? e.message.slice(0, 500) : String(e).slice(0, 500),
+      });
+      return {
+        imageId: asset.imageId,
+        status: "failed",
+        reason: e instanceof Error ? e.message : String(e),
+        durationMs: Date.now() - totalStart,
+      };
+    }
 
     const parsed = parseJsonLenient<{
       summary: string;
@@ -127,13 +183,35 @@ Return ONLY the JSON object. No prose, no markdown.`;
       sentiment: string;
     }>(llmResult.content);
     if (!parsed) {
+      await recordAnalysisEvent({
+        eventType: "failed",
+        imageId: asset.imageId,
+        folderId: asset.folderId,
+        language: detectedLanguage,
+        domainCount: null,
+        timings: {
+          durationMs: Date.now() - totalStart,
+          frameExtractMs: t.frameExtractMs,
+          audioExtractMs: 0,
+          whisperMs: t.whisperMs,
+          llmMs: t.llmMs,
+          inputTokens,
+          outputTokens,
+          model,
+        },
+        errorKind: "llm_json_parse_failed",
+        errorMessage: llmResult.content.slice(0, 500),
+      });
       return {
         imageId: asset.imageId,
         status: "failed",
         reason: "llm json parse failed",
-        durationMs: Date.now() - start,
+        durationMs: Date.now() - totalStart,
       };
     }
+
+    domainsCount = parsed.domains.length;
+    detectedLanguage = parsed.language;
 
     await saveAnalysis(asset.imageId, asset.mtimeMs, {
       summary: parsed.summary,
@@ -154,6 +232,26 @@ Return ONLY the JSON object. No prose, no markdown.`;
     // can clear the caption in the post viewer and re-trigger analysis.
     await updateCaptionIfNull(asset.imageId, parsed.summary);
 
+    await recordAnalysisEvent({
+      eventType: "completed",
+      imageId: asset.imageId,
+      folderId: asset.folderId,
+      language: detectedLanguage,
+      domainCount: domainsCount,
+      timings: {
+        durationMs: Date.now() - totalStart,
+        frameExtractMs: t.frameExtractMs,
+        audioExtractMs: 0,
+        whisperMs: t.whisperMs,
+        llmMs: t.llmMs,
+        inputTokens,
+        outputTokens,
+        model,
+      },
+      errorKind: null,
+      errorMessage: null,
+    });
+
     return {
       imageId: asset.imageId,
       status: "ok",
@@ -163,14 +261,33 @@ Return ONLY the JSON object. No prose, no markdown.`;
       language: parsed.language,
       sentiment: parsed.sentiment,
       transcript,
-      durationMs: Date.now() - start,
+      durationMs: Date.now() - totalStart,
     };
   } catch (e) {
+    await recordAnalysisEvent({
+      eventType: "failed",
+      imageId: asset.imageId,
+      folderId: asset.folderId,
+      language: detectedLanguage,
+      domainCount: domainsCount,
+      timings: {
+        durationMs: Date.now() - totalStart,
+        frameExtractMs: t.frameExtractMs,
+        audioExtractMs: 0,
+        whisperMs: t.whisperMs,
+        llmMs: t.llmMs,
+        inputTokens,
+        outputTokens,
+        model,
+      },
+      errorKind: "unexpected_exception",
+      errorMessage: (e instanceof Error ? e.message : String(e)).slice(0, 500),
+    });
     return {
       imageId: asset.imageId,
       status: "failed",
       reason: e instanceof Error ? e.message : String(e),
-      durationMs: Date.now() - start,
+      durationMs: Date.now() - totalStart,
     };
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});

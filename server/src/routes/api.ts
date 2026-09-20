@@ -10,6 +10,8 @@ import { createRateLimiter } from '../middleware/rate-limit.js';
 import { metricsService } from '../services/metrics-service.js';
 import { LIBRARY_REBUILD_REQUIRED_MESSAGE, scannerService } from '../services/scanner-service.js';
 import { storageService } from '../services/storage-service.js';
+import { pluginHost } from '../plugins/host.js';
+import { log } from '../services/log-service.js';
 import { watcherService } from '../services/watcher-service.js';
 import { databaseManager } from '../db/database.js';
 
@@ -404,6 +406,27 @@ router.get('/reels', async (request, response) => {
 router.get('/feed/search', async (request, response) => {
   const query = mediaSearchQuerySchema.parse(request.query);
   response.json(await galleryService.searchMedia(query.q, query.page, query.limit));
+});
+
+router.get('/plugins/ai-analysis/stats', async (request, response) => {
+  try {
+    const getAnalysisStats = pluginHost.getExpose<
+      (windowDays?: number) => Promise<unknown>
+    >('ai-analysis', 'getAnalysisStats');
+    if (!getAnalysisStats) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const windowDaysRaw = Number(request.query.windowDays ?? 7);
+    const windowDays = Number.isFinite(windowDaysRaw) && windowDaysRaw > 0 && windowDaysRaw <= 90
+      ? Math.floor(windowDaysRaw)
+      : 7;
+    const stats = await getAnalysisStats(windowDays);
+    response.json(stats);
+  } catch (e) {
+    log.error('ai-analysis stats failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
 });
 
 router.get('/status', async (_request, response) => {

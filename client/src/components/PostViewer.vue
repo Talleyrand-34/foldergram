@@ -648,7 +648,7 @@
     deleting?: boolean
   }>()
 
-  defineEmits<{
+  const emit = defineEmits<{
     close: []
     delete: []
   }>()
@@ -1748,7 +1748,7 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (!props.isModal || !props.image || event.defaultPrevented) {
+    if (!props.image || event.defaultPrevented) {
       return
     }
 
@@ -1757,6 +1757,20 @@
     }
 
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return
+    }
+
+    // Escape closes the post from both modal and page views. The parent
+    // (PostView) decides what to do: emit close in modal mode, navigate
+    // back to the folder in page mode.
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      emit('close')
+      return
+    }
+
+    // Navigation shortcuts only apply when the post is a modal.
+    if (!props.isModal) {
       return
     }
 

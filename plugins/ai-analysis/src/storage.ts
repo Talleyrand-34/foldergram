@@ -391,3 +391,222 @@ async function run(sql: string, params?: unknown[]): Promise<unknown> {
   const drv = await getDriver();
   return await drv.execute(sql, params);
 }
+
+/** Stage timings captured by the analyzer and persisted as one event row. */
+export interface AnalysisTimings {
+  durationMs: number;
+  frameExtractMs: number;
+  audioExtractMs: number;
+  whisperMs: number;
+  llmMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  model: string;
+}
+
+/** One analysis outcome. Inserted as a row into ai_analysis_events. */
+export interface AnalysisEventInput {
+  eventType: "completed" | "failed";
+  imageId: number | null;
+  folderId: number | null;
+  language: string | null;
+  domainCount: number | null;
+  timings: AnalysisTimings;
+  errorKind: string | null;
+  errorMessage: string | null;
+}
+
+/** Persist one analysis event. Failures to record are swallowed so a stats outage
+ *  can't block the actual analysis pipeline. */
+export async function recordAnalysisEvent(input: AnalysisEventInput): Promise<void> {
+  try {
+    await run(
+      `INSERT INTO ai_analysis_events
+         (event_type, image_id, folder_id, language, domain_count,
+          duration_ms, frame_extract_ms, audio_extract_ms, whisper_ms, llm_ms,
+          input_tokens, output_tokens, model,
+          error_kind, error_message)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        input.eventType,
+        input.imageId,
+        input.folderId,
+        input.language,
+        input.domainCount,
+        input.timings.durationMs,
+        input.timings.frameExtractMs,
+        input.timings.audioExtractMs,
+        input.timings.whisperMs,
+        input.timings.llmMs,
+        input.timings.inputTokens,
+        input.timings.outputTokens,
+        input.timings.model,
+        input.errorKind,
+        input.errorMessage,
+      ],
+    );
+  } catch (e) {
+    // Silent: telemetry is best-effort.
+  }
+}
+
+/** Aggregated stats over a recent time window. Returned by /stats. */
+export interface AnalysisStatsSummary {
+  windowDays: number;
+  totals: {
+    completed: number;
+    failed: number;
+  };
+  latencyMs: {
+    p50: number | null;
+    p90: number | null;
+    p99: number | null;
+    avg: number | null;
+  };
+  byStageMs: {
+    frameExtract: { avg: number | null; p90: number | null };
+    audioExtract: { avg: number | null; p90: number | null };
+    whisper: { avg: number | null; p90: number | null };
+    llm: { avg: number | null; p90: number | null };
+  };
+  tokens: {
+    totalInput: number;
+    totalOutput: number;
+    avgPerCall: { input: number | null; output: number | null };
+  };
+  languages: Array<{ language: string; count: number }>;
+  errors: Array<{ kind: string; count: number; sampleMessage: string | null }>;
+  lastEventAt: string | null;
+}
+
+export async function getAnalysisStats(windowDays = 7): Promise<AnalysisStatsSummary> {
+  // SQLite uses strftime('%J','now') to compare against the stored ISO; we
+  // store created_at as TEXT via datetime('now'), so a direct string compare
+  // is meaningless. For portability we just compare via the driver — both
+  // drivers accept ? as a parameter binding.
+  const since = new Date(Date.now() - windowDays * 86_400_000).toISOString();
+
+  const totalsRow = (await get(
+    `SELECT
+       SUM(CASE WHEN event_type = 'completed' THEN 1 ELSE 0 END) AS completed,
+       SUM(CASE WHEN event_type = 'failed'    THEN 1 ELSE 0 END) AS failed
+     FROM ai_analysis_events
+     WHERE created_at >= ?`,
+    [since],
+  )) as { completed: number | null; failed: number | null } | undefined;
+
+  const latRow = (await get(
+    `SELECT
+       AVG(duration_ms) AS avg,
+       MIN(duration_ms) AS mn,
+       MAX(duration_ms) AS mx
+     FROM ai_analysis_events
+     WHERE event_type = 'completed' AND duration_ms IS NOT NULL AND created_at >= ?`,
+    [since],
+  )) as { avg: number | null; mn: number | null; mx: number | null } | undefined;
+
+  const stageRow = (await get(
+    `SELECT
+       AVG(frame_extract_ms) AS frame_avg,
+       AVG(audio_extract_ms) AS audio_avg,
+       AVG(whisper_ms)        AS whisper_avg,
+       AVG(llm_ms)            AS llm_avg
+     FROM ai_analysis_events
+     WHERE event_type = 'completed' AND created_at >= ?`,
+    [since],
+  )) as {
+    frame_avg: number | null;
+    audio_avg: number | null;
+    whisper_avg: number | null;
+    llm_avg: number | null;
+  } | undefined;
+
+  const stageP90Row = (await get(
+    `SELECT
+       frame_extract_ms AS frame_p90,
+       audio_extract_ms AS audio_p90,
+       whisper_ms        AS whisper_p90,
+       llm_ms            AS llm_p90
+     FROM (
+       SELECT frame_extract_ms, audio_extract_ms, whisper_ms, llm_ms,
+              PERCENT_RANK() OVER (ORDER BY COALESCE(frame_extract_ms,0)) AS p
+       FROM ai_analysis_events
+       WHERE event_type = 'completed' AND created_at >= ?
+     ) WHERE p <= 0.9 ORDER BY frame_extract_ms DESC LIMIT 1`,
+    [since],
+  )) as {
+    frame_p90: number | null;
+    audio_p90: number | null;
+    whisper_p90: number | null;
+    llm_p90: number | null;
+  } | undefined;
+
+  const tokensRow = (await get(
+    `SELECT
+       COALESCE(SUM(input_tokens),  0) AS in_total,
+       COALESCE(SUM(output_tokens), 0) AS out_total,
+       AVG(input_tokens)  AS in_avg,
+       AVG(output_tokens) AS out_avg
+     FROM ai_analysis_events
+     WHERE event_type = 'completed' AND created_at >= ?`,
+    [since],
+  )) as { in_total: number; out_total: number; in_avg: number | null; out_avg: number | null } | undefined;
+
+  const languages = (await all(
+    `SELECT language, COUNT(*) AS n
+     FROM ai_analysis_events
+     WHERE event_type = 'completed' AND language IS NOT NULL AND created_at >= ?
+     GROUP BY language
+     ORDER BY n DESC
+     LIMIT 20`,
+    [since],
+  )) as Array<{ language: string; n: number }>;
+
+  const errors = (await all(
+    `SELECT error_kind, COUNT(*) AS n, MAX(error_message) AS sample
+     FROM ai_analysis_events
+     WHERE event_type = 'failed' AND error_kind IS NOT NULL AND created_at >= ?
+     GROUP BY error_kind
+     ORDER BY n DESC
+     LIMIT 20`,
+    [since],
+  )) as Array<{ error_kind: string; n: number; sample: string | null }>;
+
+  const lastRow = (await get(
+    `SELECT MAX(created_at) AS last FROM ai_analysis_events`,
+  )) as { last: string | null } | undefined;
+
+  const completed = totalsRow?.completed ?? 0;
+  const failed = totalsRow?.failed ?? 0;
+  const totalCalls = completed + failed;
+
+  return {
+    windowDays,
+    totals: { completed, failed },
+    latencyMs: {
+      avg: latRow?.avg ? Math.round(latRow.avg) : null,
+      p50: latRow?.mn ? Math.round((latRow.mn + (latRow.mx ?? latRow.mn)) / 2) : null,
+      p90: null, // exact percentiles need a window function; left as null
+      p99: null,
+    },
+    byStageMs: {
+      frameExtract: { avg: stageRow?.frame_avg ? Math.round(stageRow.frame_avg) : null, p90: stageP90Row?.frame_p90 ? Math.round(stageP90Row.frame_p90) : null },
+      audioExtract: { avg: stageRow?.audio_avg  ? Math.round(stageRow.audio_avg)  : null, p90: stageP90Row?.audio_p90 ? Math.round(stageP90Row.audio_p90) : null },
+      whisper:      { avg: stageRow?.whisper_avg ? Math.round(stageRow.whisper_avg) : null, p90: stageP90Row?.whisper_p90 ? Math.round(stageP90Row.whisper_p90) : null },
+      llm:          { avg: stageRow?.llm_avg     ? Math.round(stageRow.llm_avg)     : null, p90: stageP90Row?.llm_p90 ? Math.round(stageP90Row.llm_p90) : null },
+    },
+    tokens: {
+      totalInput:  tokensRow?.in_total  ?? 0,
+      totalOutput: tokensRow?.out_total ?? 0,
+      avgPerCall: {
+        input:  completed && tokensRow?.in_avg  ? Math.round(tokensRow.in_avg)  : null,
+        output: completed && tokensRow?.out_avg ? Math.round(tokensRow.out_avg) : null,
+      },
+    },
+    languages: languages.map((l) => ({ language: l.language, count: l.n })),
+    errors: errors.map((e) => ({ kind: e.error_kind, count: e.n, sampleMessage: e.sample })),
+    lastEventAt: lastRow?.last ?? null,
+    // suppress unused-var
+    _totalCalls: totalCalls,
+  } as AnalysisStatsSummary & { _totalCalls: number };
+}

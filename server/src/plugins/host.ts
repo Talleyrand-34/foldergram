@@ -39,6 +39,9 @@ interface LoadedPlugin {
   plugin: Plugin;
   ctx: PluginContext;
   routes: PluginRoute[];
+  /** Optional named exports the server can call into. The plugin's index.ts can
+   *  attach functions to a named export `exposes` for the server to use. */
+  exposes?: Record<string, unknown>;
 }
 
 class PluginHost {
@@ -128,7 +131,7 @@ class PluginHost {
     manifest: PluginManifest,
     entryPath: string,
   ): Promise<void> {
-    let mod: { default?: Plugin } & Partial<Plugin>;
+    let mod: { default?: Plugin } & Partial<Plugin> & { exposes?: Record<string, unknown> };
     try {
       mod = await import(entryPath);
     } catch (e) {
@@ -163,7 +166,7 @@ class PluginHost {
       return;
     }
 
-    this.plugins.set(manifest.name, { plugin, ctx, routes });
+    this.plugins.set(manifest.name, { plugin, ctx, routes, exposes: mod.exposes });
     log.info(`Plugin loaded: ${manifest.name} v${manifest.version}`, {
       hooks: manifest.hooks ?? [],
       routes: routes.length,
@@ -221,6 +224,12 @@ class PluginHost {
       hooks: p.plugin.manifest.hooks ?? [],
       routes: p.routes.length,
     }));
+  }
+
+  /** Get a named function exposed by a plugin's index.ts. Returns undefined
+   *  if the plugin isn't loaded or didn't expose the function. */
+  getExpose<T = unknown>(pluginName: string, key: string): T | undefined {
+    return this.plugins.get(pluginName)?.exposes?.[key] as T | undefined;
   }
 }
 

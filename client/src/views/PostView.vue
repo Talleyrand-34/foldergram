@@ -7,7 +7,7 @@
       :folder="folder"
       :is-modal="modal"
       :deleting="viewerStore.deleting"
-      @close="emit('close')"
+      @close="onClose"
       @delete="openDeleteDialog"
     />
     <div v-else-if="viewerStore.loading" class="card p-8 text-center">
@@ -76,6 +76,25 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
 }>();
+
+/**
+ * Close handler that routes to the right escape behavior per mode:
+ *  - modal: bubble up to the parent (App.vue), which navigates to the
+ *    background path the modal was opened from.
+ *  - page: navigate back to the folder the post belongs to.
+ */
+function onClose() {
+  if (props.modal) {
+    emit('close');
+    return;
+  }
+  const slug = activeImage.value?.folderSlug ?? folder.value?.slug;
+  if (slug) {
+    void router.replace({ name: 'folder', params: { slug } });
+  } else {
+    void router.replace({ name: 'library' });
+  }
+}
 
 const appStore = useAppStore();
 const feedStore = useFeedStore();
