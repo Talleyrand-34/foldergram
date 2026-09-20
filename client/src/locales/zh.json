@@ -1031,7 +1031,13 @@
         "idle": "使用 AI 分析",
         "busy": "正在加入队列…",
         "queued": "已加入队列,结果将在几秒后显示在此处。",
-        "alreadyDone": "已分析过 ({reason})。"
+        "alreadyDone": "已分析过 ({reason})。",
+        "state": {
+          "queued": "已排队 — 等待分析",
+          "running": "正在分析…",
+          "done": "已分析 — 点击重新分析",
+          "failed": "分析失败 — 点击重试"
+        }
       },
       "folder": {
         "idle": "使用 AI 分析文件夹",

@@ -1031,7 +1031,13 @@
         "idle": "Analyze with AI",
         "busy": "Queueing…",
         "queued": "Queued. Results appear here in a few seconds.",
-        "alreadyDone": "Already analyzed ({reason})."
+        "alreadyDone": "Already analyzed ({reason}).",
+        "state": {
+          "queued": "Queued — waiting for analysis",
+          "running": "Analyzing now…",
+          "done": "Analyzed — click to re-analyze",
+          "failed": "Analysis failed — click to retry"
+        }
       },
       "folder": {
         "idle": "Analyze folder with AI",

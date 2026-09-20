@@ -1031,7 +1031,13 @@
         "idle": "Analizar con IA",
         "busy": "Poniendo en cola…",
         "queued": "En cola. Los resultados aparecerán aquí en unos segundos.",
-        "alreadyDone": "Ya analizado ({reason})."
+        "alreadyDone": "Ya analizado ({reason}).",
+        "state": {
+          "queued": "En cola — esperando análisis",
+          "running": "Analizando ahora…",
+          "done": "Analizado — clic para re-analizar",
+          "failed": "Análisis fallido — clic para reintentar"
+        }
       },
       "folder": {
         "idle": "Analizar carpeta con IA",

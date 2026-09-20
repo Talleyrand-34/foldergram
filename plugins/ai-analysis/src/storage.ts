@@ -181,6 +181,25 @@ export async function markAllPendingInFolder(
   return { marked, alreadyAnalyzed, alreadyQueued };
 }
 
+/** Fetch the AI status of one image. Returns null if the row doesn't exist or isn't a video. */
+export async function getImageAiStatus(
+  imageId: number,
+): Promise<{ status: AiStatus; analyzedAt: string | null } | null> {
+  const row = (await get(
+    `SELECT ai_status, ai_analyzed_at FROM images WHERE id = ? AND is_deleted = 0 AND media_type = 'video'`,
+    [imageId],
+  )) as { ai_status: AiStatus | null; ai_analyzed_at: string | null } | undefined;
+  if (!row) return null;
+  // 'skipped' is also a non-terminal state for the user; the button only
+  // cares about the four meaningful ones: pending / running / ok / failed.
+  // Normalize to 'ok' is wrong (skipped != ok); instead expose the raw value
+  // and let the UI decide.
+  return {
+    status: row.ai_status ?? "skipped",
+    analyzedAt: row.ai_analyzed_at,
+  };
+}
+
 export interface SearchHit {
   id: number;
   filename: string;

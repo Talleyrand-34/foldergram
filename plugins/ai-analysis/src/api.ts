@@ -12,7 +12,7 @@ import type { Request, Response } from "express";
 import { databaseManager } from "../../../server/dist/db/database.js";
 import type { PluginContext } from "../../../server/dist/plugins/types.js";
 import { enqueueAnalysis } from "./worker.js";
-import { getStatusSummary, markAllPendingInFolder, markPendingIfFresh, searchVideos } from "./storage.js";
+import { getImageAiStatus, getStatusSummary, markAllPendingInFolder, markPendingIfFresh, searchVideos } from "./storage.js";
 
 export function registerRoutes(ctx: PluginContext): void {
   ctx.addRoutes([
@@ -125,6 +125,28 @@ export function registerRoutes(ctx: PluginContext): void {
           });
         } catch (e) {
           ctx.log(`analyze-folder failed: ${e instanceof Error ? e.message : String(e)}`);
+          res.status(500).json({ error: "internal" });
+        }
+      },
+    },
+    {
+      method: "get",
+      path: "/image/:imageId/status",
+      handler: async (req: Request, res: Response) => {
+        const imageId = Number(req.params.imageId);
+        if (!Number.isFinite(imageId)) {
+          res.status(400).json({ error: "invalid imageId" });
+          return;
+        }
+        try {
+          const status = await getImageAiStatus(imageId);
+          if (!status) {
+            res.status(404).json({ error: "video not found" });
+            return;
+          }
+          res.json({ imageId, ...status });
+        } catch (e) {
+          ctx.log(`image status failed: ${e instanceof Error ? e.message : String(e)}`);
           res.status(500).json({ error: "internal" });
         }
       },

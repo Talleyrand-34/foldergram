@@ -29,6 +29,12 @@ export interface AiStatusSummary {
   oldestPendingAt: string | null;
 }
 
+export interface AiImageStatus {
+  imageId: number;
+  status: AiStatus;
+  analyzedAt: string | null;
+}
+
 export interface AiSearchHit {
   id: number;
   filename: string;
@@ -91,6 +97,19 @@ export async function analyzeVideo(imageId: number, force = false): Promise<AiAn
     `/api/plugins/ai-analysis/analyze/${imageId}${force ? '?force=1' : ''}`,
     { method: 'POST' },
   );
+}
+
+export async function fetchImageAiStatus(imageId: number): Promise<AiImageStatus | null> {
+  try {
+    return await requestJson<AiImageStatus>(
+      `/api/plugins/ai-analysis/image/${imageId}/status`,
+    );
+  } catch (e) {
+    if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 404) {
+      return null;
+    }
+    throw e;
+  }
 }
 
 export async function analyzeFolder(
