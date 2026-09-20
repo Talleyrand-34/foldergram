@@ -44,7 +44,7 @@ interface GeonamesCity {
   distanceKm?: number;
 }
 
-interface GeodataMetadata {
+export interface GeodataMetadata {
   source: string;
   sourceUrl: string;
   importedAt: string;

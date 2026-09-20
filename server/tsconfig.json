@@ -9,6 +9,8 @@
     "resolveJsonModule": true,
     "outDir": "dist",
     "rootDir": "src",
+    "declaration": true,
+    "declarationMap": false,
     "types": [
       "node"
     ]

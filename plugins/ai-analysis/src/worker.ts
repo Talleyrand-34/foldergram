@@ -8,7 +8,7 @@
  * don't drop work. Statuses stay "pending" so the queue is recoverable.
  */
 
-import type { IndexedVideoAsset, PluginContext } from "../../../server/src/plugins/types.js";
+import type { IndexedVideoAsset, PluginContext } from "../../../server/dist/plugins/types.js";
 import { analyzeVideo } from "./analyzer.js";
 import { claimNextPending, getStatusSummary, markFailed, markPendingIfFresh, markRunning } from "./storage.js";
 

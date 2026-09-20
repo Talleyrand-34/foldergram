@@ -96,26 +96,30 @@ class PluginHost {
       return;
     }
 
-    // Resolve entrypoint. Default to index.ts; ts-node-less, so we expect either
-    // a compiled .js next to the .ts (production), or that the project uses
-    // tsx/ts-node in dev. We use a dynamic import — the caller resolves.
+    // Try entrypoints in this order:
+    //   1. manifest.entry (e.g. "dist/index.js" for prod, "index.ts" for dev)
+    //   2. index.ts at the plugin root (dev fallback when manifest says dist/)
+    //   3. index.js at the plugin root (older prod fallback)
+    const candidates: string[] = [];
     const entryRel = manifest.entry ?? "index.js";
-    const entryPath = path.join(pluginDir, entryRel);
+    candidates.push(path.join(pluginDir, entryRel));
+    candidates.push(path.join(pluginDir, "index.ts"));
+    candidates.push(path.join(pluginDir, "index.js"));
 
-    if (!fs.existsSync(entryPath)) {
-      // Fallback: try .ts if .js was requested and we're in dev (tsx/ts-node
-      // resolves the .ts at runtime via their loader; if neither is installed,
-      // this load fails and we log).
-      const tsFallback = entryPath.replace(/\.js$/, ".ts");
-      if (entryRel.endsWith(".js") && fs.existsSync(tsFallback)) {
-        await this.tryLoad(dirName, pluginDir, manifest, tsFallback);
-        return;
+    let chosen: string | null = null;
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        chosen = candidate;
+        break;
       }
-      log.error(`Plugin ${dirName}: entrypoint not found`, { entryPath });
+    }
+
+    if (!chosen) {
+      log.error(`Plugin ${dirName}: entrypoint not found`, { tried: candidates });
       return;
     }
 
-    await this.tryLoad(dirName, pluginDir, manifest, entryPath);
+    await this.tryLoad(dirName, pluginDir, manifest, chosen);
   }
 
   private async tryLoad(

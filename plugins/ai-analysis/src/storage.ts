@@ -24,8 +24,8 @@
  * way out.
  */
 
-import { databaseManager } from "../../../server/src/db/database.js";
-import type { IDbDriver } from "../../../server/src/db/driver/types.js";
+import { databaseManager } from "../../../server/dist/db/database.js";
+import type { IDbDriver } from "../../../server/dist/db/driver/types.js";
 
 export type AiStatus = "pending" | "running" | "ok" | "failed" | "skipped";
 

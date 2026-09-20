@@ -1,7 +1,7 @@
 /**
  * HTTP routes exposed by the ai-analysis plugin.
  *
- * Mounted under /api/plugins/ai-analysis by the host (see server/src/plugins/host.ts).
+ * Mounted under /api/plugins/ai-analysis by the host (see server/dist/plugins/host.ts).
  *
  *   GET  /status                       — overall progress
  *   GET  /search?q=&domain=&tag=&limit= — search analyzed videos
@@ -9,8 +9,8 @@
  */
 
 import type { Request, Response } from "express";
-import { databaseManager } from "../../../server/src/db/database.js";
-import type { PluginContext } from "../../../server/src/plugins/types.js";
+import { databaseManager } from "../../../server/dist/db/database.js";
+import type { PluginContext } from "../../../server/dist/plugins/types.js";
 import { enqueueAnalysis } from "./worker.js";
 import { getStatusSummary, markAllPendingInFolder, markPendingIfFresh, searchVideos } from "./storage.js";
 

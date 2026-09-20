@@ -25,7 +25,7 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { embed, EMBED_MODEL } from "./lib/litellm-client.js";
+import { embed, EMBED_MODEL } from "../src/lib/litellm-client.js";
 
 interface VideoRow {
   id: number;

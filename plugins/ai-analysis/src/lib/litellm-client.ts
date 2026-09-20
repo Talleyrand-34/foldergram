@@ -101,9 +101,13 @@ export async function transcribe(opts: TranscriptionOptions): Promise<{ text: st
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 300_000);
   try {
-    const file = Bun.file(opts.filePath);
+    const filename = opts.filePath.split("/").pop() ?? "audio";
+    const mime = mimeForFilename(filename);
+    const buf = await readFile(opts.filePath);
+    const blob = new Blob([buf], { type: mime });
+    const file = new File([blob], filename, { type: mime });
     const fd = new FormData();
-    fd.append("file", file, opts.filePath.split("/").pop() ?? "audio");
+    fd.append("file", file, filename);
     fd.append("model", opts.model ?? AUDIO_MODEL);
     fd.append("response_format", "json");
     if (opts.language) fd.append("language", opts.language);
@@ -161,4 +165,15 @@ export async function embed(opts: EmbedOptions): Promise<{ vectors: number[][]; 
 export async function fileToDataUrl(filePath: string, mime = "image/jpeg"): Promise<string> {
   const buf = await readFile(filePath);
   return `data:${mime};base64,${buf.toString("base64")}`;
+}
+
+function mimeForFilename(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".mp3")) return "audio/mpeg";
+  if (lower.endsWith(".wav")) return "audio/wav";
+  if (lower.endsWith(".flac")) return "audio/flac";
+  if (lower.endsWith(".ogg")) return "audio/ogg";
+  if (lower.endsWith(".m4a")) return "audio/mp4";
+  if (lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".webm")) return "video/mp4";
+  return "application/octet-stream";
 }

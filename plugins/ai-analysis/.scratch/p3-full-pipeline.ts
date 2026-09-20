@@ -19,8 +19,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { chat, fileToDataUrl, transcribe, VISION_MODEL, AUDIO_MODEL } from "./lib/litellm-client.js";
-import { extractAudio, extractSampleFrames, probeVideo, rmTempDir } from "./lib/ffmpeg.js";
+import { chat, fileToDataUrl, transcribe, VISION_MODEL, AUDIO_MODEL } from "../src/lib/litellm-client.js";
+import { extractAudio, extractSampleFrames, probeVideo, rmTempDir } from "../src/lib/ffmpeg.js";
 
 interface ClassificationResult {
   summary: string;

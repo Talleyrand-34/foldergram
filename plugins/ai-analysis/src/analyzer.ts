@@ -9,13 +9,13 @@
  *   - Times out per stage; surfaces structured errors so the worker can retry
  */
 
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { chat, transcribe, AUDIO_MODEL, VISION_MODEL } from "../.scratch/lib/litellm-client.js";
-import { extractAudio, extractSampleFrames, probeVideo } from "../.scratch/lib/ffmpeg.js";
+import { chat, transcribe, AUDIO_MODEL, VISION_MODEL } from "./lib/litellm-client.js";
+import { extractAudio, extractSampleFrames, probeVideo } from "./lib/ffmpeg.js";
 import { saveAnalysis } from "./storage.js";
-import type { IndexedVideoAsset } from "../../../server/src/plugins/types.js";
+import type { IndexedVideoAsset } from "../../../server/dist/plugins/types.js";
 
 const TMP_ROOT = process.env.AI_ANALYSIS_TMP ?? "/tmp/ai-analysis";
 
@@ -91,8 +91,8 @@ Return ONLY the JSON object. No prose, no markdown.`;
 
     const dataUrls = await Promise.all(
       framePaths.map(async (p: string) => {
-        const buf = await Bun.file(p).arrayBuffer();
-        return `data:image/jpeg;base64,${Buffer.from(buf).toString("base64")}`;
+        const buf = await readFile(p);
+        return `data:image/jpeg;base64,${buf.toString("base64")}`;
       }),
     );
 

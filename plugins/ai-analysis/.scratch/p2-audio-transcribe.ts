@@ -15,8 +15,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { transcribe, AUDIO_MODEL } from "./lib/litellm-client.js";
-import { extractAudio, probeVideo, rmTempDir } from "./lib/ffmpeg.js";
+import { transcribe, AUDIO_MODEL } from "../src/lib/litellm-client.js";
+import { extractAudio, probeVideo, rmTempDir } from "../src/lib/ffmpeg.js";
 
 async function main() {
   const videoPath = process.argv[2];
