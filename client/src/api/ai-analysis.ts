@@ -162,6 +162,28 @@ export async function fetchFolderRollup(folderId: number): Promise<FolderRollup 
   }
 }
 
+export async function fetchTopDomains(limit = 200): Promise<string[]> {
+  try {
+    const r = await requestJson<{ domains: Array<{ domain: string }> }>(
+      `/api/plugins/ai-analysis/knowledge/domains?limit=${limit}`,
+    );
+    return r.domains.map((d) => d.domain);
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchDistinctLanguages(limit = 50): Promise<string[]> {
+  try {
+    const r = await requestJson<{ languages: string[] }>(
+      `/api/plugins/ai-analysis/knowledge/languages?limit=${limit}`,
+    );
+    return r.languages;
+  } catch {
+    return [];
+  }
+}
+
 export async function updateFolderRollup(
   folderId: number,
   override: FolderRollupOverride,

@@ -701,7 +701,8 @@
       "overrideDomainsPlaceholder": "music/reggaeton, politics/puerto-rico, comedy/memes",
       "overrideLanguage": "Custom language (ISO code, e.g. 'es' or 'en')",
       "overrideLanguagePlaceholder": "es",
-      "basicLabel": "Basics"
+      "basicLabel": "Basics",
+      "overrideAdd": "Add"
     },
     "tabs": {
       "posts": "Posts",
@@ -1130,5 +1131,9 @@
     "emptyDescription": "Index a few folders and this page will start surfacing posts here.",
     "folderPostsOne": "{count} post",
     "folderPostsOther": "{count} posts"
+  },
+  "editableChip": {
+    "remove": "Remove {value}",
+    "createHint": "Press Enter to create \"{value}\""
   }
 }

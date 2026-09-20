@@ -549,6 +549,27 @@ router.get('/plugins/ai-analysis/knowledge/domains', async (request, response) =
   }
 });
 
+router.get('/plugins/ai-analysis/knowledge/languages', async (request, response) => {
+  try {
+    const getDistinctLanguages = pluginHost.getExpose<
+      (limit?: number) => Promise<unknown>
+    >('ai-analysis', 'getDistinctLanguages');
+    if (!getDistinctLanguages) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const limit = Number(request.query.limit ?? 50);
+    const safeLimit = Number.isFinite(limit) && limit > 0 && limit <= 200
+      ? Math.floor(limit)
+      : 50;
+    const languages = await getDistinctLanguages(safeLimit);
+    response.json({ languages });
+  } catch (e) {
+    log.error('ai-analysis languages failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
 router.get('/plugins/ai-analysis/knowledge/edges', async (request, response) => {
   const domain = typeof request.query.domain === 'string' ? request.query.domain : '';
   if (!domain) {

@@ -22,6 +22,7 @@ import { registerRoutes } from "./api.js";
 import { startBackgroundWorker } from "./worker.js";
 import {
   getAnalysisStats,
+  getDistinctLanguages,
   getDomainEdges,
   getFolderRollup,
   getTopDomains,
@@ -76,5 +77,6 @@ export const exposes = {
   getFolderRollup,
   getTopDomains,
   getDomainEdges,
+  getDistinctLanguages,
   updateFolderRollupOverride,
 };

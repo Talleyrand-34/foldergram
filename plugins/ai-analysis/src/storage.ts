@@ -575,6 +575,21 @@ export async function getDomainEdges(domain: string, limit = 30): Promise<Domain
   }));
 }
 
+/** Distinct languages seen across analyzed videos, ordered by frequency. */
+export async function getDistinctLanguages(limit = 50): Promise<string[]> {
+  const rows = (await all(
+    `SELECT ai_language AS language, COUNT(*) AS n
+     FROM images
+     WHERE media_type::text = 'video' AND is_deleted = 0
+       AND ai_language IS NOT NULL AND ai_language <> ''
+     GROUP BY ai_language
+     ORDER BY n DESC, ai_language ASC
+     LIMIT ?`,
+    [limit],
+  )) as Array<{ language: string; n: number }>;
+  return rows.map((r) => r.language);
+}
+
 function safeParseLanguages(raw: string): Record<string, number> {
   try {
     const parsed = JSON.parse(raw);

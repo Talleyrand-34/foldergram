@@ -701,7 +701,8 @@
       "overrideDomainsPlaceholder": "音乐/reggaeton, 政治/波多黎各, 喜剧/meme",
       "overrideLanguage": "自定义语言（ISO 代码，如 'es' 或 'en'）",
       "overrideLanguagePlaceholder": "es",
-      "basicLabel": "基本信息"
+      "basicLabel": "基本信息",
+      "overrideAdd": "添加"
     },
     "tabs": {
       "posts": "帖子",
@@ -1130,5 +1131,9 @@
     "emptyDescription": "先为几个文件夹建立索引，这个页面就会开始在这里展示帖子。",
     "folderPostsOne": "{count} 篇帖子",
     "folderPostsOther": "{count} 篇帖子"
+  },
+  "editableChip": {
+    "remove": "移除 {value}",
+    "createHint": "按 Enter 创建 \"{value}\""
   }
 }

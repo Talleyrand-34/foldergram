@@ -701,7 +701,8 @@
       "overrideDomainsPlaceholder": "musica/reggaeton, politica/puerto-rico, comedia/memes",
       "overrideLanguage": "Idioma personalizado (código ISO, p. ej. 'es' o 'en')",
       "overrideLanguagePlaceholder": "es",
-      "basicLabel": "Básicos"
+      "basicLabel": "Básicos",
+      "overrideAdd": "Añadir"
     },
     "tabs": {
       "posts": "Publicaciones",
@@ -1130,5 +1131,9 @@
     "emptyDescription": "Indexa algunas carpetas y esta página empezará a mostrar publicaciones aquí.",
     "folderPostsOne": "{count} publicación",
     "folderPostsOther": "{count} publicaciones"
+  },
+  "editableChip": {
+    "remove": "Quitar {value}",
+    "createHint": "Pulsa Enter para crear \"{value}\""
   }
 }

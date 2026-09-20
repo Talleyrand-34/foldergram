@@ -39,14 +39,17 @@
             </div>
 
             <div class="grid gap-[0.35rem]">
-              <label :for="`${titleId}-domains`" class="text-[0.78rem] font-semibold text-muted">
+              <label class="text-[0.78rem] font-semibold text-muted">
                 {{ t('folder.profileModal.overrideDomains') }}
               </label>
-              <input
-                :id="`${titleId}-domains`"
-                v-model="overrideDomainsText"
-                class="w-full px-3 py-2 text-[0.88rem] bg-surface border border-border rounded-lg text-text placeholder-muted focus:outline-none focus:border-text focus:ring-1 focus:ring-text"
+              <EditableChipInput
+                v-model="overrideDomains"
+                :suggestions="domainSuggestions"
                 :placeholder="t('folder.profileModal.overrideDomainsPlaceholder')"
+                :add-label="t('folder.profileModal.overrideAdd')"
+                :max-items="20"
+                :normalize="(v) => v.toLowerCase().trim()"
+                :validate="validateDomain"
               />
               <p v-if="aiDomains.length > 0" class="m-0 text-[0.72rem] text-muted italic">
                 {{ t('folder.profileModal.aiSaid') }}:
@@ -57,15 +60,17 @@
             </div>
 
             <div class="grid gap-[0.35rem]">
-              <label :for="`${titleId}-language`" class="text-[0.78rem] font-semibold text-muted">
+              <label class="text-[0.78rem] font-semibold text-muted">
                 {{ t('folder.profileModal.overrideLanguage') }}
               </label>
-              <input
-                :id="`${titleId}-language`"
+              <EditableChipInput
                 v-model="overrideLanguage"
-                class="w-full px-3 py-2 text-[0.88rem] bg-surface border border-border rounded-lg text-text placeholder-muted focus:outline-none focus:border-text focus:ring-1 focus:ring-text font-mono uppercase"
+                mode="single"
+                :suggestions="languageSuggestions"
                 :placeholder="t('folder.profileModal.overrideLanguagePlaceholder')"
-                maxlength="8"
+                :add-label="t('folder.profileModal.overrideAdd')"
+                :normalize="(v) => v.toLowerCase().trim()"
+                :validate="validateLanguage"
               />
               <p v-if="aiLanguage" class="m-0 text-[0.72rem] text-muted italic">
                 {{ t('folder.profileModal.aiSaid') }}: <span class="font-mono">{{ aiLanguage }}</span>
@@ -131,7 +136,14 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import FolderAiSummary from './FolderAiSummary.vue';
-import { fetchFolderRollup, updateFolderRollup, type FolderRollup } from '../api/ai-analysis';
+import EditableChipInput from './EditableChipInput.vue';
+import {
+  fetchDistinctLanguages,
+  fetchFolderRollup,
+  fetchTopDomains,
+  updateFolderRollup,
+  type FolderRollup,
+} from '../api/ai-analysis';
 
 const props = defineProps<{
   initialName: string;
@@ -167,12 +179,15 @@ const formData = reactive({
 const rollup = ref<FolderRollup | null>(null);
 const hasAiData = computed(() => !!rollup.value && rollup.value.analyzedCount > 0);
 const overrideSummary = ref('');
-const overrideDomainsText = ref('');
-const overrideLanguage = ref('');
+const overrideDomains = ref<string[]>([]);
+const overrideLanguage = ref<string>('');
 
 const aiSummary = computed(() => rollup.value?.summary ?? '');
 const aiDomains = computed(() => rollup.value?.topDomains ?? []);
 const aiLanguage = computed(() => rollup.value?.language ?? '');
+
+const domainSuggestions = ref<string[]>([]);
+const languageSuggestions = ref<string[]>([]);
 
 const hasAnyOverride = computed(() => {
   if (!rollup.value) return false;
@@ -182,26 +197,51 @@ const hasAnyOverride = computed(() => {
 });
 
 function clearOverrides() {
-  overrideSummary.value = ''
-  overrideDomainsText.value = ''
-  overrideLanguage.value = ''
+  overrideSummary.value = '';
+  overrideDomains.value = [];
+  overrideLanguage.value = '';
+}
+
+function validateDomain(v: string): string | null {
+  if (!/^[a-z0-9][a-z0-9/-]*$/.test(v)) {
+    return 'Use lowercase letters, digits, /, - (e.g. music/reggaeton)';
+  }
+  return null;
+}
+function validateLanguage(v: string): string | null {
+  if (!/^[a-z]{2,3}(-[a-z0-9]+)?$/i.test(v)) {
+    return 'Use ISO code like es, en, pt-br';
+  }
+  return null;
 }
 
 async function loadRollup() {
-  if (props.folderId == null) return
+  if (props.folderId == null) return;
   try {
-    const r = await fetchFolderRollup(props.folderId)
-    rollup.value = r
-    overrideSummary.value = r?.userSummary ?? ''
-    overrideDomainsText.value = (r?.userDomains ?? []).join(', ')
-    overrideLanguage.value = r?.userLanguage ?? ''
+    const r = await fetchFolderRollup(props.folderId);
+    rollup.value = r;
+    overrideSummary.value = r?.userSummary ?? '';
+    overrideDomains.value = [...(r?.userDomains ?? [])];
+    overrideLanguage.value = r?.userLanguage ?? '';
   } catch {
-    rollup.value = null
+    rollup.value = null;
   }
 }
 
-onMounted(loadRollup)
-watch(() => props.folderId, loadRollup)
+async function loadSuggestions() {
+  const [domains, languages] = await Promise.all([
+    fetchTopDomains().catch(() => []),
+    fetchDistinctLanguages().catch(() => []),
+  ]);
+  domainSuggestions.value = domains;
+  languageSuggestions.value = languages;
+}
+
+onMounted(() => {
+  void loadRollup();
+  void loadSuggestions();
+});
+watch(() => props.folderId, loadRollup);
 // --- end AI rollup ----------------------------------------------------
 
 const errorMessage = computed(() => validationError.value ?? props.error ?? null);
@@ -219,9 +259,7 @@ function submit() {
   const override: { userSummary?: string | null; userDomains?: string[] | null; userLanguage?: string | null } = {};
   if (hasAiData.value) {
     override.userSummary = overrideSummary.value.trim() === '' ? null : overrideSummary.value.trim();
-    override.userDomains = overrideDomainsText.value.trim() === ''
-      ? null
-      : overrideDomainsText.value.split(',').map((s) => s.trim()).filter(Boolean);
+    override.userDomains = overrideDomains.value.length === 0 ? null : overrideDomains.value;
     override.userLanguage = overrideLanguage.value.trim() === '' ? null : overrideLanguage.value.trim().toLowerCase();
   }
 
