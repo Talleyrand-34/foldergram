@@ -1143,6 +1143,15 @@
       "resetOverride": "Restablecer a IA",
       "saveFailed": "Error al guardar",
       "saved": "Guardado"
+    },
+    "settings": {
+      "eyebrow": "IA",
+      "title": "Gestión de IA",
+      "subtitle": "Estado en vivo, el grafo de dominios y el conocimiento por carpeta.",
+      "shortcutHint": "Gestiona el estado, edita dominios y carpetas.",
+      "tabStatus": "Estado",
+      "tabDomains": "Dominios",
+      "tabFolders": "Carpetas"
     }
   },
   "explore": {

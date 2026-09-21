@@ -213,6 +213,8 @@ export interface AiDomainNode {
   firstSeenAt: string;
   lastSeenAt: string;
   languages: Record<string, number>;
+  /** Human-authored description of what this domain represents. */
+  description: string | null;
 }
 
 export async function fetchTopDomains(limit = 200): Promise<AiDomainNode[]> {
@@ -276,6 +278,25 @@ export async function deleteDomain(domain: string): Promise<boolean> {
     await requestJson(
       `/api/plugins/ai-analysis/knowledge/domains/${encodeURIComponent(domain)}`,
       { method: 'DELETE' },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function updateDomainDescription(
+  domain: string,
+  description: string | null,
+): Promise<boolean> {
+  try {
+    await requestJson(
+      `/api/plugins/ai-analysis/knowledge/domains/${encodeURIComponent(domain)}/description`,
+      {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ description }),
+      },
     );
     return true;
   } catch {

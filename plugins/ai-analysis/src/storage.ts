@@ -530,7 +530,7 @@ export async function recomputeFolderCounts(): Promise<void> {
 
 export async function getTopDomains(limit = 50): Promise<DomainNode[]> {
   const rows = (await all(
-    `SELECT domain, video_count, folder_count, first_seen_at, last_seen_at, languages
+    `SELECT domain, video_count, folder_count, first_seen_at, last_seen_at, languages, description
      FROM ai_domain_nodes
      ORDER BY video_count DESC, domain ASC
      LIMIT ?`,
@@ -542,6 +542,7 @@ export async function getTopDomains(limit = 50): Promise<DomainNode[]> {
     first_seen_at: string;
     last_seen_at: string;
     languages: string | null;
+    description: string | null;
   }>;
   return rows.map((r) => ({
     domain: r.domain,
@@ -550,6 +551,7 @@ export async function getTopDomains(limit = 50): Promise<DomainNode[]> {
     firstSeenAt: r.first_seen_at,
     lastSeenAt: r.last_seen_at,
     languages: r.languages ? safeParseLanguages(r.languages) : {},
+    description: r.description,
   }));
 }
 
@@ -752,6 +754,24 @@ export async function getFoldersWithRollup(
     topDomains: r.top_domains ? safeParseStringArray(r.top_domains) : [],
     language: r.language,
   }));
+}
+
+/**
+ * Persist a human-authored description for a domain. Pass null/empty to
+ * clear it. The domain must exist (it was created by the analyzer or
+ * manually via addDomainNode).
+ */
+export async function updateDomainDescription(
+  domain: string,
+  description: string | null,
+): Promise<boolean> {
+  const d = domain.trim().toLowerCase();
+  if (!d) return false;
+  await run(
+    `UPDATE ai_domain_nodes SET description = ? WHERE domain = ?`,
+    [description && description.trim() !== '' ? description.trim() : null, d],
+  );
+  return true;
 }
 
 function safeParseLanguages(raw: string): Record<string, number> {

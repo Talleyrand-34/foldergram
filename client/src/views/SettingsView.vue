@@ -8,9 +8,18 @@
       </div>
     </header>
 
-    <AiAnalysisStatus v-if="authStore.canManageLibrary" />
-    <AiDomainManager v-if="authStore.canManageLibrary" />
-    <AiFolderKnowledgeManager v-if="authStore.canManageLibrary" />
+    <RouterLink
+      v-if="authStore.canManageLibrary"
+      :to="{ name: 'settings-ai' }"
+      class="card flex items-center justify-between gap-4 px-5 py-4 no-underline transition-colors hover:bg-surface-hover"
+    >
+      <div>
+        <span class="eyebrow">{{ t('ai.settings.eyebrow') }}</span>
+        <h2 class="m-0 text-[1.05rem] mt-[0.1rem]">{{ t('ai.settings.title') }}</h2>
+        <p class="m-0 text-muted text-[0.82rem] mt-[0.05rem]">{{ t('ai.settings.shortcutHint') }}</p>
+      </div>
+      <span class="i-fluent-arrow-right-16-regular w-[1.15rem] h-[1.15rem] text-muted" aria-hidden="true" />
+    </RouterLink>
 
     <section
       v-if="showScanErrorNotice"
@@ -1242,7 +1251,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useRoute } from 'vue-router';
+import { useRoute, RouterLink } from 'vue-router';
 
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import AiAnalysisStatus from '../components/AiAnalysisStatus.vue';

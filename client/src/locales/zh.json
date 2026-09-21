@@ -1143,6 +1143,15 @@
       "resetOverride": "重置为 AI",
       "saveFailed": "保存失败",
       "saved": "已保存"
+    },
+    "settings": {
+      "eyebrow": "AI",
+      "title": "AI 管理",
+      "subtitle": "实时状态、领域知识图谱、每个文件夹的 AI 知识。",
+      "shortcutHint": "管理分析器状态、编辑领域和文件夹知识。",
+      "tabStatus": "状态",
+      "tabDomains": "领域",
+      "tabFolders": "文件夹"
     }
   },
   "explore": {

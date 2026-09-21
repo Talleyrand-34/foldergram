@@ -1143,6 +1143,15 @@
       "resetOverride": "Reset to AI",
       "saveFailed": "Save failed",
       "saved": "Saved"
+    },
+    "settings": {
+      "eyebrow": "AI",
+      "title": "AI management",
+      "subtitle": "Live status, the domain knowledge graph, and per-folder AI knowledge.",
+      "shortcutHint": "Manage analyzer status, edit domain and folder knowledge.",
+      "tabStatus": "Status",
+      "tabDomains": "Domains",
+      "tabFolders": "Folders"
     }
   },
   "explore": {

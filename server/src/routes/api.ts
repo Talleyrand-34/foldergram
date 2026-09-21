@@ -602,6 +602,30 @@ router.post('/plugins/ai-analysis/knowledge/domains', async (request, response) 
   }
 });
 
+router.patch('/plugins/ai-analysis/knowledge/domains/:domain/description', async (request, response) => {
+  const domain = decodeURIComponent(request.params.domain).trim().toLowerCase();
+  const body = request.body as { description?: string | null } | undefined;
+  const description = body?.description ?? null;
+  try {
+    const updateDesc = pluginHost.getExpose<
+      (d: string, description: string | null) => Promise<unknown>
+    >('ai-analysis', 'updateDomainDescription');
+    if (!updateDesc) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const ok = await updateDesc(domain, description);
+    if (!ok) {
+      response.status(400).json({ error: 'invalid domain' });
+      return;
+    }
+    response.json({ domain, description });
+  } catch (e) {
+    log.error('ai-analysis domain description update failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
 router.put('/plugins/ai-analysis/knowledge/domains/:domain', async (request, response) => {
   const oldName = decodeURIComponent(request.params.domain).trim().toLowerCase();
   const body = request.body as { newDomain?: string } | undefined;

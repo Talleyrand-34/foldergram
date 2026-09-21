@@ -17,6 +17,7 @@ import { useAppStore } from '../stores/app';
 import { useAuthStore } from '../stores/auth';
 import { pinia } from '../stores/pinia';
 import SettingsView from '../views/SettingsView.vue';
+import AiSettingsView from '../views/AiSettingsView.vue';
 import type { AuthCapabilities } from '../types/api';
 
 type RouteCapability = keyof AuthCapabilities;
@@ -111,6 +112,14 @@ export const router = createRouter({
       component: SettingsView,
       meta: {
         requiredCapability: 'canAccessSettings'
+      }
+    },
+    {
+      path: '/settings/ai',
+      name: 'settings-ai',
+      component: AiSettingsView,
+      meta: {
+        requiredCapability: 'canManageLibrary'
       }
     },
     {

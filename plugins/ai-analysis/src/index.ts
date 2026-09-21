@@ -31,6 +31,7 @@ import {
   getTopDomains,
   getVideoStats,
   renameDomain,
+  updateDomainDescription,
   updateFolderRollupOverride,
 } from "./storage.js";
 
@@ -87,4 +88,5 @@ export const exposes = {
   addDomainNode,
   renameDomain,
   deleteDomain,
+  updateDomainDescription,
 };
