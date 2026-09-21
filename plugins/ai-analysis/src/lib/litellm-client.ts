@@ -12,6 +12,33 @@
 
 import { readFile } from "node:fs/promises";
 
+/**
+ * Thrown when an upstream rate-limits us. The worker catches this and
+ * pauses the queue until the Retry-After window expires.
+ */
+export class RateLimitedError extends Error {
+  readonly name = "RateLimitedError";
+  readonly retryAfterSec: number;
+  constructor(retryAfterSec: number, message?: string) {
+    super(message ?? `upstream rate-limited; resume in ${retryAfterSec}s`);
+    this.retryAfterSec = retryAfterSec;
+  }
+}
+
+/** Parse an HTTP Retry-After header (seconds or HTTP-date). */
+function parseRetryAfter(value: string | null, fallbackSec = 60): number {
+  if (!value) return fallbackSec;
+  const trimmed = value.trim();
+  const asNum = Number(trimmed);
+  if (!Number.isNaN(asNum) && asNum >= 0) return Math.floor(asNum);
+  // HTTP-date form
+  const asDate = Date.parse(trimmed);
+  if (!Number.isNaN(asDate)) {
+    return Math.max(1, Math.ceil((asDate - Date.now()) / 1000));
+  }
+  return fallbackSec;
+}
+
 export const LITELLM_BASE = process.env.LITELLM_BASE ?? "http://10.0.2.31:4000/v1";
 export const VISION_MODEL = process.env.AI_VISION_MODEL ?? "minimax/MiniMax-M3";
 export const AUDIO_MODEL = process.env.AI_AUDIO_MODEL ?? "whisper-1";
@@ -66,6 +93,12 @@ export async function chat(opts: ChatOptions): Promise<ChatResponse> {
     });
     if (!r.ok) {
       const text = await r.text();
+      if (r.status === 429) {
+        throw new RateLimitedError(
+          parseRetryAfter(r.headers.get('retry-after')),
+          `chat 429: ${text.slice(0, 200)}`,
+        );
+      }
       throw new Error(`chat ${r.status}: ${text.slice(0, 500)}`);
     }
     const data = (await r.json()) as {
@@ -119,6 +152,12 @@ export async function transcribe(opts: TranscriptionOptions): Promise<{ text: st
     });
     if (!r.ok) {
       const text = await r.text();
+      if (r.status === 429) {
+        throw new RateLimitedError(
+          parseRetryAfter(r.headers.get('retry-after')),
+          `transcribe 429: ${text.slice(0, 200)}`,
+        );
+      }
       throw new Error(`transcribe ${r.status}: ${text.slice(0, 500)}`);
     }
     const data = (await r.json()) as { text: string };

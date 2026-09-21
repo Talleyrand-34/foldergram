@@ -1167,6 +1167,18 @@
       "noTagged": "No videos tagged with this domain yet.",
       "saveFailed": "Could not save knowledge",
       "saved": "Knowledge saved"
+    },
+    "rateLimit": {
+      "paused": "AI processing paused (remote service rate limit)",
+      "resumesAt": "resumes at {iso}",
+      "retryAfter": "Retry-After: {seconds}s"
+    },
+    "backfill": {
+      "runBackfill": "Analyze all unanalyzed videos",
+      "running": "Queuing…",
+      "queued": "Queued {videos} video(s) across {folders} folder(s).",
+      "nothingToQueue": "All videos are already analyzed.",
+      "failed": "Could not trigger backfill."
     }
   },
   "explore": {

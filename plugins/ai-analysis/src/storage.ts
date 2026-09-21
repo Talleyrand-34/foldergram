@@ -774,6 +774,39 @@ export async function updateDomainDescription(
   return true;
 }
 
+/**
+ * List distinct folder ids that have at least one video that hasn't been
+ * analyzed yet (or that failed). Used by the auto-backfill on startup to
+ * seed the queue without enqueueing already-done folders.
+ */
+export async function getDistinctFolderIdsWithPendingOrUnanalyzedVideos(): Promise<number[]> {
+  const rows = (await all(
+    `SELECT DISTINCT folder_id
+     FROM images
+     WHERE media_type::text = 'video' AND is_deleted = 0
+       AND (ai_status IS NULL OR ai_status = 'failed')`,
+  )) as Array<{ folder_id: number }>;
+  return rows.map((r) => r.folder_id);
+}
+
+/**
+ * Mark every unanalyzed video in a folder as pending, returning the
+ * number of rows that transitioned into pending. Used by the worker's
+ * auto-backfill to enqueue a whole folder without exposing the local
+ * 'all' query helper.
+ */
+export async function markFolderUnanalyzedAsPending(folderId: number): Promise<number> {
+  const r = (await run(
+    `UPDATE images
+     SET ai_status = 'pending', ai_error = NULL
+     WHERE folder_id = ?
+       AND media_type::text = 'video' AND is_deleted = 0
+       AND (ai_status IS NULL OR ai_status = 'failed')`,
+    [folderId],
+  )) as { rowCount?: number; rowsAffected?: number };
+  return r.rowCount ?? r.rowsAffected ?? 0;
+}
+
 /** Lightweight video row used by the Domain Knowledge modal. */
 export interface DomainVideoRow {
   id: number;

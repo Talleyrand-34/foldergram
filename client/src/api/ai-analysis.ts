@@ -331,6 +331,36 @@ export async function fetchVideosForDomain(
   }
 }
 
+export interface RateLimitState {
+  limitedUntil: number | null;
+  limitedUntilIso: string | null;
+  retryAfterSec: number | null;
+}
+
+export async function fetchRateLimit(): Promise<RateLimitState> {
+  try {
+    return await requestJson<RateLimitState>(
+      '/api/plugins/ai-analysis/rate-limit',
+    );
+  } catch {
+    return { limitedUntil: null, limitedUntilIso: null, retryAfterSec: null };
+  }
+}
+
+export async function triggerAutoBackfill(): Promise<{
+  foldersScanned: number;
+  videosQueued: number;
+} | null> {
+  try {
+    return await requestJson(
+      '/api/plugins/ai-analysis/auto-backfill',
+      { method: 'POST' },
+    );
+  } catch {
+    return null;
+  }
+}
+
 export async function updateFolderRollup(
   folderId: number,
   override: FolderRollupOverride,

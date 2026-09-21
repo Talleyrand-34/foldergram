@@ -1167,6 +1167,18 @@
       "noTagged": "Aún no hay videos etiquetados con este dominio.",
       "saveFailed": "No se pudo guardar el conocimiento",
       "saved": "Conocimiento guardado"
+    },
+    "rateLimit": {
+      "paused": "Procesamiento IA pausado (límite del servicio remoto)",
+      "resumesAt": "reanuda a las {iso}",
+      "retryAfter": "Retry-After: {seconds}s"
+    },
+    "backfill": {
+      "runBackfill": "Analizar todos los videos sin analizar",
+      "running": "Encolando…",
+      "queued": "Encolados {videos} video(s) en {folders} carpeta(s).",
+      "nothingToQueue": "Todos los videos ya están analizados.",
+      "failed": "No se pudo iniciar el backfill."
     }
   },
   "explore": {

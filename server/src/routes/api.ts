@@ -434,6 +434,63 @@ router.get('/plugins/ai-analysis/stats', async (request, response) => {
   }
 });
 
+router.get('/plugins/ai-analysis/rate-limit', async (request, response) => {
+  try {
+    const getRateLimitState = pluginHost.getExpose<() => {
+      limitedUntil: number | null;
+      retryAfterSec: number | null;
+    } | undefined>('ai-analysis', 'getRateLimitState');
+    if (!getRateLimitState) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const state = getRateLimitState()!;
+    response.json({
+      limitedUntil: state.limitedUntil,
+      limitedUntilIso: state.limitedUntil ? new Date(state.limitedUntil).toISOString() : null,
+      retryAfterSec: state.retryAfterSec,
+    });
+  } catch (e) {
+    log.error('ai-analysis rate-limit query failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
+router.post('/plugins/ai-analysis/rate-limit/clear', async (_request, response) => {
+  // The rate-limit timer can only be cleared by waiting for it to expire
+  // or restarting the plugin. This endpoint exists for completeness but
+  // intentionally does nothing server-side — it's a placeholder for a
+  // future "force resume" admin action.
+  response.json({ ok: true });
+});
+
+router.post('/plugins/ai-analysis/auto-backfill', async (request, response) => {
+  try {
+    // Mark every unanalyzed video in every folder as pending so the
+    // worker tick picks them up. Returns the number of videos queued.
+    const markFolder = pluginHost.getExpose<
+      (folderId: number) => Promise<number> | undefined
+    >('ai-analysis', 'markFolderUnanalyzedAsPending');
+    const distinct = pluginHost.getExpose<
+      () => Promise<number[]> | undefined
+    >('ai-analysis', 'getDistinctFolderIdsWithPendingOrUnanalyzedVideos');
+    if (!markFolder || !distinct) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const folderIds = (await distinct())!;
+    let totalQueued = 0;
+    for (const folderId of folderIds) {
+      const n = (await markFolder(folderId))!;
+      totalQueued += n;
+    }
+    response.json({ foldersScanned: folderIds.length, videosQueued: totalQueued });
+  } catch (e) {
+    log.error('ai-analysis auto-backfill failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
 router.get('/plugins/ai-analysis/video/:imageId/stats', async (request, response) => {
   const imageId = Number(request.params.imageId);
   if (!Number.isFinite(imageId)) {

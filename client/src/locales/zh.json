@@ -1167,6 +1167,18 @@
       "noTagged": "尚无标记此领域的视频。",
       "saveFailed": "保存知识失败",
       "saved": "知识已保存"
+    },
+    "rateLimit": {
+      "paused": "AI 处理已暂停（远程服务限流）",
+      "resumesAt": "在 {iso} 恢复",
+      "retryAfter": "Retry-After: {seconds}s"
+    },
+    "backfill": {
+      "runBackfill": "分析所有未分析的视频",
+      "running": "排队中…",
+      "queued": "已在 {folders} 个文件夹中排队 {videos} 个视频。",
+      "nothingToQueue": "所有视频都已分析。",
+      "failed": "无法触发 backfill。"
     }
   },
   "explore": {

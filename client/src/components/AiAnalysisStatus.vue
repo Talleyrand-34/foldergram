@@ -35,7 +35,39 @@
       {{ error }}
     </div>
 
-    <div v-else-if="status" class="grid grid-cols-2 sm:grid-cols-4 gap-[0.75rem]">
+    <div
+      v-if="rateLimit && rateLimit.limitedUntil && rateLimit.limitedUntil > Date.now()"
+      class="px-3 py-2 rounded-[0.55rem] border border-[rgba(214,48,49,0.32)] text-[0.84rem] bg-[rgba(214,48,49,0.06)]"
+    >
+      <p class="m-0 flex items-center gap-[0.5rem] text-[#b42318]">
+        <span class="i-fluent-pause-16-filled w-[1rem] h-[1rem]" aria-hidden="true" />
+        <span class="font-semibold">{{ t('ai.rateLimit.paused') }}</span>
+        <span class="text-muted">·</span>
+        <span class="font-mono">
+          {{ t('ai.rateLimit.resumesAt', { iso: rateLimit.limitedUntilIso }) }}
+        </span>
+      </p>
+      <p class="m-0 mt-[0.25rem] text-[0.78rem] text-muted">
+        {{ t('ai.rateLimit.retryAfter', { seconds: rateLimit.retryAfterSec }) }}
+      </p>
+    </div>
+
+    <div class="flex items-center gap-[0.5rem] flex-wrap">
+      <button
+        type="button"
+        class="inline-flex items-center gap-[0.35rem] px-3 py-[0.5rem] text-[0.78rem] font-semibold leading-none rounded-[0.55rem] border border-border bg-surface-hover text-text hover:bg-border transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+        :disabled="backfillBusy"
+        @click="runBackfill"
+      >
+        <span class="i-fluent-arrow-download-16-regular w-[0.95rem] h-[0.95rem]" aria-hidden="true" />
+        {{ backfillBusy ? t('ai.backfill.running') : t('ai.backfill.runBackfill') }}
+      </button>
+      <span v-if="backfillResult" class="text-[0.78rem] text-muted italic">
+        {{ backfillResult }}
+      </span>
+    </div>
+
+    <div v-if="status" class="grid grid-cols-2 sm:grid-cols-4 gap-[0.75rem]">
       <div class="rounded-[0.7rem] border border-border bg-surface-alt px-3 py-[0.7rem]">
         <span class="block text-[0.7rem] font-bold tracking-[0.08em] text-muted uppercase">{{ t('ai.status.total') }}</span>
         <span class="block mt-[0.15rem] text-[1.4rem] font-medium tabular-nums">{{ status.totalVideos }}</span>
@@ -70,7 +102,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { fetchAiStatus, type AiStatusSummary } from '../api/ai-analysis';
+import {
+  fetchAiStatus,
+  fetchRateLimit,
+  triggerAutoBackfill,
+  type AiStatusSummary,
+  type RateLimitState,
+} from '../api/ai-analysis';
 
 const { t, locale } = useI18n();
 const POLL_INTERVAL_MS = 10_000;
@@ -79,6 +117,9 @@ const status = ref<AiStatusSummary | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const lastUpdated = ref<number | null>(null);
+const rateLimit = ref<RateLimitState | null>(null);
+const backfillBusy = ref(false);
+const backfillResult = ref<string | null>(null);
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -86,12 +127,39 @@ async function refresh() {
   loading.value = true;
   error.value = null;
   try {
-    status.value = await fetchAiStatus();
+    const [s, rl] = await Promise.all([
+      fetchAiStatus(),
+      fetchRateLimit(),
+    ]);
+    status.value = s;
+    rateLimit.value = rl;
     lastUpdated.value = Date.now();
   } catch (e) {
     error.value = e instanceof Error ? e.message : t('ai.status.error');
   } finally {
     loading.value = false;
+  }
+}
+
+async function runBackfill() {
+  backfillBusy.value = true;
+  backfillResult.value = null;
+  try {
+    const r = await triggerAutoBackfill();
+    if (!r) {
+      backfillResult.value = t('ai.backfill.failed');
+    } else if (r.videosQueued === 0) {
+      backfillResult.value = t('ai.backfill.nothingToQueue');
+    } else {
+      backfillResult.value = t('ai.backfill.queued', {
+        folders: r.foldersScanned,
+        videos: r.videosQueued,
+      });
+    }
+  } catch {
+    backfillResult.value = t('ai.backfill.failed');
+  } finally {
+    backfillBusy.value = false;
   }
 }
 

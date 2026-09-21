@@ -13,7 +13,7 @@
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { chat, transcribe, AUDIO_MODEL, VISION_MODEL } from "./lib/litellm-client.js";
+import { chat, transcribe, AUDIO_MODEL, RateLimitedError, VISION_MODEL } from "./lib/litellm-client.js";
 import { extractAudio, extractSampleFrames, probeVideo } from "./lib/ffmpeg.js";
 import {
   bumpDomainEdges,
@@ -283,6 +283,12 @@ Return ONLY the JSON object. No prose, no markdown.`;
       durationMs: Date.now() - totalStart,
     };
   } catch (e) {
+    // Rate-limit errors must propagate to the worker so it can pause
+    // the queue; they are not a "failed" outcome for the video itself.
+    if (e instanceof RateLimitedError) {
+      console.log(`[ai-analysis] rate-limited during id=${asset.imageId}: ${e.message}`);
+      throw e;
+    }
     await recordAnalysisEvent({
       eventType: "failed",
       imageId: asset.imageId,

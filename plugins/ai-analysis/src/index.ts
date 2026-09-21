@@ -20,10 +20,12 @@
 
 import { registerRoutes } from "./api.js";
 import { startBackgroundWorker } from "./worker.js";
+import { getRateLimitState } from "./worker.js";
 import {
   addDomainNode,
   deleteDomain,
   getAnalysisStats,
+  getDistinctFolderIdsWithPendingOrUnanalyzedVideos,
   getDistinctLanguages,
   getDomainEdges,
   getFolderRollup,
@@ -31,6 +33,7 @@ import {
   getTopDomains,
   getVideoStats,
   getVideosForDomain,
+  markFolderUnanalyzedAsPending,
   renameDomain,
   updateDomainDescription,
   updateFolderRollupOverride,
@@ -86,6 +89,9 @@ export const exposes = {
   getDomainEdges,
   getDistinctLanguages,
   getVideosForDomain,
+  getDistinctFolderIdsWithPendingOrUnanalyzedVideos,
+  markFolderUnanalyzedAsPending,
+  getRateLimitState,
   updateFolderRollupOverride,
   addDomainNode,
   renameDomain,
