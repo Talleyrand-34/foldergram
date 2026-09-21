@@ -1123,6 +1123,26 @@
       "deleteFailed": "删除失败",
       "deleted": "已删除 {domain}",
       "confirmDelete": "删除领域 '{domain}'?同时会从每个提到它的视频中移除。"
+    },
+    "folders": {
+      "heading": "AI 文件夹",
+      "title": "文件夹知识",
+      "subtitle": "分析器已总结的所有文件夹。点击可覆盖其 AI 摘要、领域和语言。",
+      "empty": "尚无文件夹有 AI 摘要 — 先分析一些视频。",
+      "analyzed": "已分析",
+      "overrideBadge": "已覆盖",
+      "summary": "当前摘要",
+      "yourOverride": "你的覆盖",
+      "noSummary": "此文件夹尚无 AI 摘要。",
+      "summaryPlaceholder": "覆盖 AI 摘要（留空 = 使用 AI）",
+      "domains": "自定义领域",
+      "domainsPlaceholder": "音乐/reggaeton, 政治/波多黎各, 喜剧/meme",
+      "language": "自定义语言",
+      "languagePlaceholder": "es",
+      "add": "添加",
+      "resetOverride": "重置为 AI",
+      "saveFailed": "保存失败",
+      "saved": "已保存"
     }
   },
   "explore": {

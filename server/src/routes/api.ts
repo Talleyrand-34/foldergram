@@ -527,6 +527,31 @@ router.put('/plugins/ai-analysis/folder/:folderId/rollup', async (request, respo
   }
 });
 
+router.get('/plugins/ai-analysis/knowledge/folders', async (request, response) => {
+  try {
+    const getFoldersWithRollup = pluginHost.getExpose<
+      (limit?: number, offset?: number) => Promise<unknown>
+    >('ai-analysis', 'getFoldersWithRollup');
+    if (!getFoldersWithRollup) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const limit = Number(request.query.limit ?? 200);
+    const offset = Number(request.query.offset ?? 0);
+    const safeLimit = Number.isFinite(limit) && limit > 0 && limit <= 500
+      ? Math.floor(limit)
+      : 200;
+    const safeOffset = Number.isFinite(offset) && offset >= 0
+      ? Math.floor(offset)
+      : 0;
+    const folders = await getFoldersWithRollup(safeLimit, safeOffset);
+    response.json({ folders });
+  } catch (e) {
+    log.error('ai-analysis folders list failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
 router.get('/plugins/ai-analysis/knowledge/domains', async (request, response) => {
   try {
     const getTopDomains = pluginHost.getExpose<(limit?: number) => Promise<unknown>>(

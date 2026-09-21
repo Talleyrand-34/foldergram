@@ -674,6 +674,86 @@ export async function deleteDomain(name: string): Promise<boolean> {
   return true;
 }
 
+/** One folder row in the Settings folder-knowledge list. */
+export interface FolderKnowledgeRow {
+  folderId: number;
+  folderSlug: string;
+  folderName: string;
+  folderPath: string;
+  videoCount: number;
+  analyzedCount: number;
+  hasRollup: boolean;
+  hasUserOverride: boolean;
+  summary: string | null;
+  topDomains: string[];
+  language: string | null;
+}
+
+/**
+ * List folders that have an AI rollup, with the per-folder counts and the
+ * override flag. Bounded by `limit` to keep the response small; the UI can
+ * paginate. Used by the Settings folder-knowledge section.
+ */
+export async function getFoldersWithRollup(
+  limit = 200,
+  offset = 0,
+): Promise<FolderKnowledgeRow[]> {
+  const rows = (await all(
+    `SELECT
+       folders.id            AS folder_id,
+       folders.slug          AS folder_slug,
+       folders.name          AS folder_name,
+       folders.folder_path   AS folder_path,
+       folders.video_count   AS video_count,
+       (SELECT COUNT(*) FROM images
+          WHERE images.folder_id = folders.id
+            AND images.media_type::text = 'video'
+            AND images.is_deleted = 0
+            AND images.ai_status::text = 'ok') AS analyzed_count,
+       CASE WHEN ai_folder_rollup.folder_id IS NULL THEN 0 ELSE 1 END AS has_rollup,
+       CASE WHEN ai_folder_rollup.user_summary IS NULL
+              AND (ai_folder_rollup.user_domains IS NULL OR ai_folder_rollup.user_domains = '')
+              AND ai_folder_rollup.user_language IS NULL
+            THEN 0 ELSE 1 END AS has_user_override,
+       ai_folder_rollup.summary     AS summary,
+       ai_folder_rollup.top_domains AS top_domains,
+       ai_folder_rollup.language    AS language
+     FROM folders
+     LEFT JOIN ai_folder_rollup ON ai_folder_rollup.folder_id = folders.id
+     WHERE folders.role::text = 'normal'
+       AND ai_folder_rollup.folder_id IS NOT NULL
+     ORDER BY ai_folder_rollup.updated_at DESC NULLS LAST,
+              folders.name ASC
+     LIMIT ? OFFSET ?`,
+    [limit, offset],
+  )) as Array<{
+    folder_id: number;
+    folder_slug: string;
+    folder_name: string;
+    folder_path: string;
+    video_count: number;
+    analyzed_count: number;
+    has_rollup: number;
+    has_user_override: number;
+    summary: string | null;
+    top_domains: string | null;
+    language: string | null;
+  }>;
+  return rows.map((r) => ({
+    folderId: r.folder_id,
+    folderSlug: r.folder_slug,
+    folderName: r.folder_name,
+    folderPath: r.folder_path,
+    videoCount: r.video_count,
+    analyzedCount: r.analyzed_count,
+    hasRollup: r.has_rollup === 1,
+    hasUserOverride: r.has_user_override === 1,
+    summary: r.summary,
+    topDomains: r.top_domains ? safeParseStringArray(r.top_domains) : [],
+    language: r.language,
+  }));
+}
+
 function safeParseLanguages(raw: string): Record<string, number> {
   try {
     const parsed = JSON.parse(raw);

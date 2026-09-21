@@ -1123,6 +1123,26 @@
       "deleteFailed": "Error al eliminar",
       "deleted": "Eliminado {domain}",
       "confirmDelete": "¿Eliminar dominio '{domain}'? También lo quita de cada video que lo menciona."
+    },
+    "folders": {
+      "heading": "Carpetas IA",
+      "title": "Conocimiento por carpeta",
+      "subtitle": "Todas las carpetas que el analizador ha resumido. Haz clic para sobrescribir resumen, dominios e idioma.",
+      "empty": "Ninguna carpeta tiene resumen IA todavía — analiza algunos videos primero.",
+      "analyzed": "analizados",
+      "overrideBadge": "sobreescritura",
+      "summary": "Resumen actual",
+      "yourOverride": "Tu versión",
+      "noSummary": "Esta carpeta aún no tiene resumen IA.",
+      "summaryPlaceholder": "Sobrescribe el resumen IA (vacío = usar IA)",
+      "domains": "Dominios personalizados",
+      "domainsPlaceholder": "musica/reggaeton, politica/puerto-rico, comedia/memes",
+      "language": "Idioma personalizado",
+      "languagePlaceholder": "es",
+      "add": "Añadir",
+      "resetOverride": "Restablecer a IA",
+      "saveFailed": "Error al guardar",
+      "saved": "Guardado"
     }
   },
   "explore": {

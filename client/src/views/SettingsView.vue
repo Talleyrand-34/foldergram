@@ -10,6 +10,7 @@
 
     <AiAnalysisStatus v-if="authStore.canManageLibrary" />
     <AiDomainManager v-if="authStore.canManageLibrary" />
+    <AiFolderKnowledgeManager v-if="authStore.canManageLibrary" />
 
     <section
       v-if="showScanErrorNotice"
@@ -1246,6 +1247,7 @@ import { useRoute } from 'vue-router';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import AiAnalysisStatus from '../components/AiAnalysisStatus.vue';
 import AiDomainManager from '../components/AiDomainManager.vue';
+import AiFolderKnowledgeManager from '../components/AiFolderKnowledgeManager.vue';
 import {
   fetchAdminStats,
   triggerLibraryRebuild,

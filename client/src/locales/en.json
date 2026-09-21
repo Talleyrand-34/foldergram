@@ -1123,6 +1123,26 @@
       "deleteFailed": "Delete failed",
       "deleted": "Deleted {domain}",
       "confirmDelete": "Delete domain '{domain}'? This also strips it from every video that mentions it."
+    },
+    "folders": {
+      "heading": "AI folders",
+      "title": "Folder knowledge",
+      "subtitle": "All folders the analyzer has summarized. Click one to override its AI summary, domains, and language.",
+      "empty": "No folders have AI rollups yet — analyze some videos first.",
+      "analyzed": "analyzed",
+      "overrideBadge": "override",
+      "summary": "Current summary",
+      "yourOverride": "Your override",
+      "noSummary": "No AI summary yet for this folder.",
+      "summaryPlaceholder": "Override the AI summary (leave empty to use AI)",
+      "domains": "Custom domains",
+      "domainsPlaceholder": "music/reggaeton, politics/puerto-rico, comedy/memes",
+      "language": "Custom language",
+      "languagePlaceholder": "es",
+      "add": "Add",
+      "resetOverride": "Reset to AI",
+      "saveFailed": "Save failed",
+      "saved": "Saved"
     }
   },
   "explore": {

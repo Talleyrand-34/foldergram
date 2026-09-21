@@ -149,6 +149,20 @@ export async function fetchImageAiStatus(imageId: number): Promise<AiImageStatus
   }
 }
 
+export interface FolderKnowledgeRow {
+  folderId: number;
+  folderSlug: string;
+  folderName: string;
+  folderPath: string;
+  videoCount: number;
+  analyzedCount: number;
+  hasRollup: boolean;
+  hasUserOverride: boolean;
+  summary: string | null;
+  topDomains: string[];
+  language: string | null;
+}
+
 export async function fetchFolderRollup(folderId: number): Promise<FolderRollup | null> {
   try {
     return await requestJson<FolderRollup>(
@@ -159,6 +173,36 @@ export async function fetchFolderRollup(folderId: number): Promise<FolderRollup 
       return null;
     }
     throw e;
+  }
+}
+
+export async function fetchFoldersWithRollup(
+  limit = 200,
+  offset = 0,
+): Promise<FolderKnowledgeRow[]> {
+  try {
+    const r = await requestJson<{ folders: FolderKnowledgeRow[] }>(
+      `/api/plugins/ai-analysis/knowledge/folders?limit=${limit}&offset=${offset}`,
+    );
+    return r.folders ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function updateFolderProfileAiOverride(
+  folderSlug: string,
+  override: FolderRollupOverride,
+): Promise<boolean> {
+  try {
+    await requestJson(`/api/folders/${encodeURIComponent(folderSlug)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: undefined as unknown as string, aiOverride: override } as Record<string, unknown>),
+    });
+    return true;
+  } catch {
+    return false;
   }
 }
 
