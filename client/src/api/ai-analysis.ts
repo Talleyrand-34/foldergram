@@ -215,6 +215,9 @@ export interface AiDomainNode {
   languages: Record<string, number>;
   /** Human-authored description of what this domain represents. */
   description: string | null;
+  /** Recently-tagged videos — loaded on demand when opening the knowledge
+   *  modal. Not returned by the list endpoint; populated separately. */
+  recentVideos?: DomainVideo[];
 }
 
 export async function fetchTopDomains(limit = 200): Promise<AiDomainNode[]> {
@@ -301,6 +304,30 @@ export async function updateDomainDescription(
     return true;
   } catch {
     return false;
+  }
+}
+
+export interface DomainVideo {
+  id: number;
+  filename: string;
+  relativePath: string;
+  folderName: string;
+  folderSlug: string;
+  aiSummary: string | null;
+  aiLanguage: string | null;
+}
+
+export async function fetchVideosForDomain(
+  domain: string,
+  limit = 50,
+): Promise<DomainVideo[]> {
+  try {
+    const r = await requestJson<{ videos: DomainVideo[] }>(
+      `/api/plugins/ai-analysis/knowledge/domains/${encodeURIComponent(domain)}/videos?limit=${limit}`,
+    );
+    return r.videos ?? [];
+  } catch {
+    return [];
   }
 }
 

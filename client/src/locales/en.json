@@ -1152,6 +1152,21 @@
       "tabStatus": "Status",
       "tabDomains": "Domains",
       "tabFolders": "Folders"
+    },
+    "domainKnowledge": {
+      "heading": "AI domain knowledge",
+      "subtitle": "Edit the human-authored description and see what videos the analyzer tagged with this domain.",
+      "open": "Edit knowledge",
+      "stats": "Stats",
+      "videos": "Videos",
+      "folders": "Folders",
+      "languages": "Languages",
+      "knowledge": "Domain knowledge",
+      "knowledgePlaceholder": "What does this domain mean? When should the analyzer tag a video with it? When should it NOT?",
+      "tagged": "Videos tagged with this domain",
+      "noTagged": "No videos tagged with this domain yet.",
+      "saveFailed": "Could not save knowledge",
+      "saved": "Knowledge saved"
     }
   },
   "explore": {

@@ -774,6 +774,65 @@ export async function updateDomainDescription(
   return true;
 }
 
+/** Lightweight video row used by the Domain Knowledge modal. */
+export interface DomainVideoRow {
+  id: number;
+  filename: string;
+  relativePath: string;
+  folderName: string;
+  folderSlug: string;
+  aiSummary: string | null;
+  aiLanguage: string | null;
+}
+
+/**
+ * List videos that mention a given domain in their ai_domains array.
+ * Bounded by `limit`. Used by the Domain Knowledge modal in Settings so
+ * the admin can see what the analyzer has been tagging with this label.
+ */
+export async function getVideosForDomain(
+  domain: string,
+  limit = 50,
+): Promise<DomainVideoRow[]> {
+  const d = domain.trim().toLowerCase();
+  if (!d) return [];
+  const rows = (await all(
+    `SELECT
+       images.id            AS id,
+       images.filename      AS filename,
+       images.relative_path AS relative_path,
+       folders.name         AS folder_name,
+       folders.slug         AS folder_slug,
+       images.ai_summary     AS ai_summary,
+       images.ai_language    AS ai_language
+     FROM images
+     INNER JOIN folders ON folders.id = images.folder_id
+     WHERE images.media_type::text = 'video'
+       AND images.is_deleted = 0
+       AND images.ai_domains LIKE '%"' || ? || '"%'
+     ORDER BY images.ai_analyzed_at DESC NULLS LAST, images.id DESC
+     LIMIT ?`,
+    [d, limit],
+  )) as Array<{
+    id: number;
+    filename: string;
+    relative_path: string;
+    folder_name: string;
+    folder_slug: string;
+    ai_summary: string | null;
+    ai_language: string | null;
+  }>;
+  return rows.map((r) => ({
+    id: r.id,
+    filename: r.filename,
+    relativePath: r.relative_path,
+    folderName: r.folder_name,
+    folderSlug: r.folder_slug,
+    aiSummary: r.ai_summary,
+    aiLanguage: r.ai_language,
+  }));
+}
+
 function safeParseLanguages(raw: string): Record<string, number> {
   try {
     const parsed = JSON.parse(raw);

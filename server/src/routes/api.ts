@@ -677,6 +677,28 @@ router.delete('/plugins/ai-analysis/knowledge/domains/:domain', async (request, 
   }
 });
 
+router.get('/plugins/ai-analysis/knowledge/domains/:domain/videos', async (request, response) => {
+  const domain = decodeURIComponent(request.params.domain).trim().toLowerCase();
+  try {
+    const getVideos = pluginHost.getExpose<
+      (d: string, limit?: number) => Promise<unknown>
+    >('ai-analysis', 'getVideosForDomain');
+    if (!getVideos) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const limit = Number(request.query.limit ?? 50);
+    const safeLimit = Number.isFinite(limit) && limit > 0 && limit <= 200
+      ? Math.floor(limit)
+      : 50;
+    const videos = await getVideos(domain, safeLimit);
+    response.json({ videos });
+  } catch (e) {
+    log.error('ai-analysis videos-for-domain failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
 router.get('/plugins/ai-analysis/knowledge/languages', async (request, response) => {
   try {
     const getDistinctLanguages = pluginHost.getExpose<

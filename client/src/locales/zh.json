@@ -1152,6 +1152,21 @@
       "tabStatus": "状态",
       "tabDomains": "领域",
       "tabFolders": "文件夹"
+    },
+    "domainKnowledge": {
+      "heading": "AI 领域知识",
+      "subtitle": "编辑人工描述并查看分析器标记此领域的视频。",
+      "open": "编辑知识",
+      "stats": "统计",
+      "videos": "视频",
+      "folders": "文件夹",
+      "languages": "语言",
+      "knowledge": "领域知识",
+      "knowledgePlaceholder": "此领域代表什么？分析器应在何时给视频打此标签？何时不应？",
+      "tagged": "已标记此领域的视频",
+      "noTagged": "尚无标记此领域的视频。",
+      "saveFailed": "保存知识失败",
+      "saved": "知识已保存"
     }
   },
   "explore": {

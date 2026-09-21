@@ -74,45 +74,11 @@
             {{ d.folderCount }} {{ t('ai.domains.folders') }} ·
             {{ formatLangs(d.languages) }}
           </span>
-          <p
-            v-if="d.description && editingDescriptionDomain !== d.domain"
-            class="m-0 mt-[0.15rem] text-[0.78rem] text-text/85 leading-[1.4] line-clamp-2 italic"
-          >
-            {{ d.description }}
-          </p>
-          <textarea
-            v-if="editingDescriptionDomain === d.domain"
-            ref="descriptionEl"
-            v-model="editingDescriptionValue"
-            class="mt-[0.25rem] w-full min-h-[3rem] rounded-lg border border-border bg-surface px-[0.6rem] py-[0.45rem] text-[0.82rem] text-text placeholder-muted resize-y focus:border-text focus:outline-none focus:ring-1 focus:ring-text"
-            :placeholder="t('ai.domains.descriptionPlaceholder')"
-            maxlength="500"
-            @keydown="onDescriptionKey($event, d.domain)"
-          ></textarea>
-          <div
-            v-if="editingDescriptionDomain === d.domain"
-            class="flex items-center gap-[0.4rem] mt-[0.3rem]"
-          >
-            <button
-              type="button"
-              class="inline-flex items-center justify-center px-[0.5rem] py-[0.25rem] text-[0.74rem] font-semibold border border-border rounded bg-text text-bg cursor-pointer hover:opacity-90"
-              :disabled="descriptionBusy"
-              @click="commitDescription(d.domain)"
-            >
-              {{ t('common.save') }}
-            </button>
-            <button
-              type="button"
-              class="inline-flex items-center justify-center px-[0.5rem] py-[0.25rem] text-[0.74rem] font-semibold border border-border rounded bg-transparent text-text cursor-pointer hover:bg-surface-hover"
-              @click="cancelEditDescription"
-            >
-              {{ t('common.cancel') }}
-            </button>
-          </div>
+
         </div>
         <div class="flex items-center gap-[0.3rem]">
           <button
-            v-if="editingDomain !== d.domain && editingDescriptionDomain !== d.domain"
+            v-if="editingDomain !== d.domain"
             type="button"
             class="inline-flex items-center justify-center w-7 h-7 rounded-full border-0 bg-transparent text-muted cursor-pointer hover:text-text"
             :aria-label="t('ai.domains.rename')"
@@ -122,14 +88,14 @@
             <span class="i-fluent-edit-16-regular w-[0.95rem] h-[0.95rem]" aria-hidden="true" />
           </button>
           <button
-            v-if="editingDomain !== d.domain && editingDescriptionDomain !== d.domain"
+            v-if="editingDomain !== d.domain"
             type="button"
-            class="inline-flex items-center justify-center w-7 h-7 rounded-full border-0 bg-transparent text-muted cursor-pointer hover:text-text"
-            :aria-label="t('ai.domains.editDescription')"
-            :title="t('ai.domains.editDescription')"
-            @click="startEditDescription(d)"
+            class="inline-flex items-center justify-center w-7 h-7 rounded-full border-0 bg-transparent text-accent cursor-pointer hover:text-text"
+            :aria-label="t('ai.domainKnowledge.open')"
+            :title="t('ai.domainKnowledge.open')"
+            @click="openKnowledge(d)"
           >
-            <span class="i-fluent-note-16-regular w-[0.95rem] h-[0.95rem]" aria-hidden="true" />
+            <span class="i-fluent-book-16-regular w-[0.95rem] h-[0.95rem]" aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -165,6 +131,13 @@
 
     <p v-if="actionError" class="m-0 text-[0.78rem] text-[#b42318]">{{ actionError }}</p>
     <p v-if="actionOk" class="m-0 text-[0.78rem] text-[#1f7a3a]">{{ actionOk }}</p>
+
+    <AiDomainKnowledgeEditor
+      :open="knowledgeTarget !== null"
+      :domain="knowledgeTarget"
+      @close="knowledgeTarget = null"
+      @saved="onKnowledgeSaved"
+    />
   </section>
 </template>
 
@@ -176,9 +149,9 @@ import {
   deleteDomain,
   fetchTopDomains,
   renameDomain,
-  updateDomainDescription,
   type AiDomainNode,
 } from '../api/ai-analysis';
+import AiDomainKnowledgeEditor from './AiDomainKnowledgeEditor.vue';
 
 const { t } = useI18n();
 
@@ -186,13 +159,21 @@ const domains = ref<AiDomainNode[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
+const knowledgeTarget = ref<AiDomainNode | null>(null);
+
+function openKnowledge(d: AiDomainNode) {
+  knowledgeTarget.value = d;
+}
+
+async function onKnowledgeSaved() {
+  await refresh();
+}
+
 const editingDomain = ref<string | null>(null);
 const editingValue = ref('');
 const editBusy = ref(false);
 
-const editingDescriptionDomain = ref<string | null>(null);
-const editingDescriptionValue = ref('');
-const descriptionBusy = ref(false);
+
 
 const newDomainName = ref('');
 const addBusy = ref(false);
@@ -223,53 +204,6 @@ function startEdit(d: AiDomainNode) {
 function cancelEdit() {
   editingDomain.value = null;
   editingValue.value = '';
-}
-
-function startEditDescription(d: AiDomainNode) {
-  actionError.value = null;
-  actionOk.value = null;
-  editingDescriptionDomain.value = d.domain;
-  editingDescriptionValue.value = d.description ?? '';
-}
-
-function cancelEditDescription() {
-  editingDescriptionDomain.value = null;
-  editingDescriptionValue.value = '';
-}
-
-function onDescriptionKey(event: KeyboardEvent, original: string) {
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault();
-    void commitDescription(original);
-  } else if (event.key === 'Escape') {
-    cancelEditDescription();
-  }
-}
-
-async function commitDescription(domain: string) {
-  if (editingDescriptionDomain.value !== domain) return;
-  descriptionBusy.value = true;
-  actionError.value = null;
-  actionOk.value = null;
-  try {
-    const text = editingDescriptionValue.value.trim();
-    const ok = await updateDomainDescription(
-      domain,
-      text === '' ? null : text,
-    );
-    if (!ok) {
-      actionError.value = t('ai.domains.descriptionFailed');
-    } else {
-      actionOk.value = t('ai.domains.descriptionSaved');
-      await refresh();
-      editingDescriptionDomain.value = null;
-      editingDescriptionValue.value = '';
-    }
-  } catch {
-    actionError.value = t('ai.domains.descriptionFailed');
-  } finally {
-    descriptionBusy.value = false;
-  }
 }
 
 function onEditKey(event: KeyboardEvent, original: string) {

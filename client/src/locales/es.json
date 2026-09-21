@@ -1152,6 +1152,21 @@
       "tabStatus": "Estado",
       "tabDomains": "Dominios",
       "tabFolders": "Carpetas"
+    },
+    "domainKnowledge": {
+      "heading": "Conocimiento de dominio IA",
+      "subtitle": "Edita la descripción humana y mira qué videos etiquetó el analizador con este dominio.",
+      "open": "Editar conocimiento",
+      "stats": "Estadísticas",
+      "videos": "Videos",
+      "folders": "Carpetas",
+      "languages": "Idiomas",
+      "knowledge": "Conocimiento del dominio",
+      "knowledgePlaceholder": "¿Qué significa este dominio? ¿Cuándo debería etiquetar un video? ¿Cuándo NO?",
+      "tagged": "Videos etiquetados con este dominio",
+      "noTagged": "Aún no hay videos etiquetados con este dominio.",
+      "saveFailed": "No se pudo guardar el conocimiento",
+      "saved": "Conocimiento guardado"
     }
   },
   "explore": {
