@@ -21,12 +21,15 @@
 import { registerRoutes } from "./api.js";
 import { startBackgroundWorker } from "./worker.js";
 import {
+  addDomainNode,
+  deleteDomain,
   getAnalysisStats,
   getDistinctLanguages,
   getDomainEdges,
   getFolderRollup,
   getTopDomains,
   getVideoStats,
+  renameDomain,
   updateFolderRollupOverride,
 } from "./storage.js";
 
@@ -79,4 +82,7 @@ export const exposes = {
   getDomainEdges,
   getDistinctLanguages,
   updateFolderRollupOverride,
+  addDomainNode,
+  renameDomain,
+  deleteDomain,
 };

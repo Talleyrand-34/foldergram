@@ -1103,6 +1103,26 @@
       "oldest": "Oldest queued:",
       "queueEmpty": "No videos in queue.",
       "openSettings": "View in Settings"
+    },
+    "domains": {
+      "heading": "AI domains",
+      "title": "Domain manager",
+      "subtitle": "All domains the analyzer has produced across the library. Rename or delete to clean up the knowledge graph.",
+      "empty": "No domains yet — analyze some videos first.",
+      "videos": "videos",
+      "folders": "folders",
+      "rename": "Rename domain",
+      "delete": "Delete domain",
+      "add": "Add domain",
+      "addPlaceholder": "e.g. music/reggaeton",
+      "invalidName": "Use lowercase letters, digits, /, -",
+      "renameFailed": "Rename failed",
+      "renamed": "Renamed {from} → {to}",
+      "addFailed": "Add failed (maybe already exists or invalid name)",
+      "added": "Added {domain}",
+      "deleteFailed": "Delete failed",
+      "deleted": "Deleted {domain}",
+      "confirmDelete": "Delete domain '{domain}'? This also strips it from every video that mentions it."
     }
   },
   "explore": {

@@ -1103,6 +1103,26 @@
       "oldest": "En cola desde hace:",
       "queueEmpty": "Sin videos en cola.",
       "openSettings": "Ver en Ajustes"
+    },
+    "domains": {
+      "heading": "Dominios de IA",
+      "title": "Gestor de dominios",
+      "subtitle": "Todos los dominios que el analizador ha producido. Renombra o elimina para limpiar el grafo.",
+      "empty": "Aún no hay dominios — analiza algunos videos primero.",
+      "videos": "videos",
+      "folders": "carpetas",
+      "rename": "Renombrar",
+      "delete": "Eliminar",
+      "add": "Añadir",
+      "addPlaceholder": "p. ej. musica/reggaeton",
+      "invalidName": "Usa letras minúsculas, dígitos, /, -",
+      "renameFailed": "Error al renombrar",
+      "renamed": "Renombrado {from} → {to}",
+      "addFailed": "Error al añadir (¿ya existe o nombre inválido?)",
+      "added": "Añadido {domain}",
+      "deleteFailed": "Error al eliminar",
+      "deleted": "Eliminado {domain}",
+      "confirmDelete": "¿Eliminar dominio '{domain}'? También lo quita de cada video que lo menciona."
     }
   },
   "explore": {

@@ -590,6 +590,90 @@ export async function getDistinctLanguages(limit = 50): Promise<string[]> {
   return rows.map((r) => r.language);
 }
 
+/**
+ * Add a custom domain to the knowledge graph with zero counts. Used by
+ * the Settings "Domain manager" for manual entries. No-op (returns false)
+ * if the domain already exists or the name fails validation.
+ */
+export async function addDomainNode(domain: string): Promise<boolean> {
+  const d = domain.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9/-]*$/.test(d)) return false;
+  const nowExpr = await nowLiteral();
+  await run(
+    `INSERT INTO ai_domain_nodes (domain, video_count, folder_count, first_seen_at, last_seen_at, languages)
+     VALUES (?, 0, 0, ${nowExpr}, ${nowExpr}, NULL)
+     ON CONFLICT(domain) DO NOTHING`,
+    [d],
+  );
+  return true;
+}
+
+/**
+ * Rename a domain. Cascades to:
+ *   - ai_domain_nodes: row renamed
+ *   - ai_domain_edges: both source and target references renamed
+ *   - images.ai_domains: every video that had the old name gets the new
+ *     name in its JSON array
+ *
+ * The four statements are not wrapped in a transaction (the driver layer
+ * doesn't expose begin/commit). For a manual admin action this is fine —
+ * a partial rename is recoverable by re-running with the same args.
+ */
+export async function renameDomain(oldName: string, newName: string): Promise<boolean> {
+  const oldD = oldName.trim().toLowerCase();
+  const newD = newName.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9/-]*$/.test(newD)) return false;
+  if (oldD === newD) return false;
+
+  await run(`UPDATE ai_domain_nodes SET domain = ? WHERE domain = ?`, [newD, oldD]);
+  await run(
+    `UPDATE ai_domain_edges SET source_domain = ? WHERE source_domain = ?`,
+    [newD, oldD],
+  );
+  await run(
+    `UPDATE ai_domain_edges SET target_domain = ? WHERE target_domain = ?`,
+    [newD, oldD],
+  );
+  // Rewrite the JSON array in every image that mentions the old name.
+  // Plain text replace is portable (no jsonb_set in SQLite) and safe because
+  // the match is a quoted JSON string token — it never collides with a
+  // substring of another domain name.
+  await run(
+    `UPDATE images
+     SET ai_domains = REPLACE(ai_domains, '"' || ? || '"', '"' || ? || '"')
+     WHERE media_type::text = 'video' AND is_deleted = 0
+       AND ai_domains LIKE '%"' || ? || '"%'`,
+    [oldD, newD, oldD],
+  );
+  return true;
+}
+
+/**
+ * Delete a domain. Cascades:
+ *   - ai_domain_nodes: row removed
+ *   - ai_domain_edges: edges referencing it (either side) removed
+ *   - images.ai_domains: every video that had the name has it stripped
+ *     from its JSON array (text replace; same portability caveat as rename)
+ */
+export async function deleteDomain(name: string): Promise<boolean> {
+  const d = name.trim().toLowerCase();
+  if (!d) return false;
+  await run(`DELETE FROM ai_domain_nodes WHERE domain = ?`, [d]);
+  await run(
+    `DELETE FROM ai_domain_edges WHERE source_domain = ? OR target_domain = ?`,
+    [d, d],
+  );
+  // Strip the domain from every video that mentioned it.
+  await run(
+    `UPDATE images
+     SET ai_domains = REPLACE(ai_domains, '"' || ? || '"', '')
+     WHERE media_type::text = 'video' AND is_deleted = 0
+       AND ai_domains LIKE '%"' || ? || '"%'`,
+    [d, d],
+  );
+  return true;
+}
+
 function safeParseLanguages(raw: string): Record<string, number> {
   try {
     const parsed = JSON.parse(raw);

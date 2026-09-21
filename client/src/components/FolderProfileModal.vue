@@ -140,7 +140,7 @@ import EditableChipInput from './EditableChipInput.vue';
 import {
   fetchDistinctLanguages,
   fetchFolderRollup,
-  fetchTopDomains,
+  fetchTopDomainStrings as fetchTopDomains,
   updateFolderRollup,
   type FolderRollup,
 } from '../api/ai-analysis';

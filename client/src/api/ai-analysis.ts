@@ -162,15 +162,29 @@ export async function fetchFolderRollup(folderId: number): Promise<FolderRollup 
   }
 }
 
-export async function fetchTopDomains(limit = 200): Promise<string[]> {
+export interface AiDomainNode {
+  domain: string;
+  videoCount: number;
+  folderCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  languages: Record<string, number>;
+}
+
+export async function fetchTopDomains(limit = 200): Promise<AiDomainNode[]> {
   try {
-    const r = await requestJson<{ domains: Array<{ domain: string }> }>(
+    const r = await requestJson<{ domains: AiDomainNode[] }>(
       `/api/plugins/ai-analysis/knowledge/domains?limit=${limit}`,
     );
-    return r.domains.map((d) => d.domain);
+    return r.domains ?? [];
   } catch {
     return [];
   }
+}
+
+export async function fetchTopDomainStrings(limit = 200): Promise<string[]> {
+  const rows = await fetchTopDomains(limit);
+  return rows.map((d) => d.domain);
 }
 
 export async function fetchDistinctLanguages(limit = 50): Promise<string[]> {
@@ -181,6 +195,47 @@ export async function fetchDistinctLanguages(limit = 50): Promise<string[]> {
     return r.languages;
   } catch {
     return [];
+  }
+}
+
+export async function addDomain(domain: string): Promise<boolean> {
+  try {
+    await requestJson(`/api/plugins/ai-analysis/knowledge/domains`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ domain }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function renameDomain(oldDomain: string, newDomain: string): Promise<boolean> {
+  try {
+    await requestJson(
+      `/api/plugins/ai-analysis/knowledge/domains/${encodeURIComponent(oldDomain)}`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ newDomain }),
+      },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteDomain(domain: string): Promise<boolean> {
+  try {
+    await requestJson(
+      `/api/plugins/ai-analysis/knowledge/domains/${encodeURIComponent(domain)}`,
+      { method: 'DELETE' },
+    );
+    return true;
+  } catch {
+    return false;
   }
 }
 

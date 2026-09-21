@@ -549,6 +549,85 @@ router.get('/plugins/ai-analysis/knowledge/domains', async (request, response) =
   }
 });
 
+router.post('/plugins/ai-analysis/knowledge/domains', async (request, response) => {
+  const body = request.body as { domain?: string } | undefined;
+  const domain = body?.domain?.trim() ?? '';
+  if (!domain) {
+    response.status(400).json({ error: 'domain required' });
+    return;
+  }
+  try {
+    const addDomain = pluginHost.getExpose<(d: string) => Promise<unknown>>(
+      'ai-analysis',
+      'addDomainNode',
+    );
+    if (!addDomain) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const ok = await addDomain(domain);
+    if (!ok) {
+      response.status(400).json({ error: 'invalid domain or already exists' });
+      return;
+    }
+    response.json({ domain: domain.trim().toLowerCase(), created: true });
+  } catch (e) {
+    log.error('ai-analysis domain add failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
+router.put('/plugins/ai-analysis/knowledge/domains/:domain', async (request, response) => {
+  const oldName = decodeURIComponent(request.params.domain).trim().toLowerCase();
+  const body = request.body as { newDomain?: string } | undefined;
+  const newName = body?.newDomain?.trim() ?? '';
+  if (!newName) {
+    response.status(400).json({ error: 'newDomain required' });
+    return;
+  }
+  try {
+    const rename = pluginHost.getExpose<
+      (oldName: string, newName: string) => Promise<unknown>
+    >('ai-analysis', 'renameDomain');
+    if (!rename) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const ok = await rename(oldName, newName);
+    if (!ok) {
+      response.status(400).json({ error: 'invalid new name or same as old' });
+      return;
+    }
+    response.json({ from: oldName, to: newName.trim().toLowerCase() });
+  } catch (e) {
+    log.error('ai-analysis domain rename failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
+router.delete('/plugins/ai-analysis/knowledge/domains/:domain', async (request, response) => {
+  const name = decodeURIComponent(request.params.domain).trim().toLowerCase();
+  try {
+    const remove = pluginHost.getExpose<(d: string) => Promise<unknown>>(
+      'ai-analysis',
+      'deleteDomain',
+    );
+    if (!remove) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const ok = await remove(name);
+    if (!ok) {
+      response.status(400).json({ error: 'invalid domain' });
+      return;
+    }
+    response.json({ deleted: name });
+  } catch (e) {
+    log.error('ai-analysis domain delete failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
 router.get('/plugins/ai-analysis/knowledge/languages', async (request, response) => {
   try {
     const getDistinctLanguages = pluginHost.getExpose<

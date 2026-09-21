@@ -1103,6 +1103,26 @@
       "oldest": "最早排队:",
       "queueEmpty": "队列中没有视频。",
       "openSettings": "在设置中查看"
+    },
+    "domains": {
+      "heading": "AI 领域",
+      "title": "领域管理",
+      "subtitle": "分析器在所有库中生成的所有领域。可重命名或删除以清理知识图谱。",
+      "empty": "尚无领域 — 先分析一些视频。",
+      "videos": "个视频",
+      "folders": "个文件夹",
+      "rename": "重命名",
+      "delete": "删除",
+      "add": "添加",
+      "addPlaceholder": "例如 音乐/reggaeton",
+      "invalidName": "使用小写字母、数字、/、-",
+      "renameFailed": "重命名失败",
+      "renamed": "已重命名 {from} → {to}",
+      "addFailed": "添加失败(可能已存在或名称无效)",
+      "added": "已添加 {domain}",
+      "deleteFailed": "删除失败",
+      "deleted": "已删除 {domain}",
+      "confirmDelete": "删除领域 '{domain}'?同时会从每个提到它的视频中移除。"
     }
   },
   "explore": {
