@@ -659,6 +659,50 @@ router.post('/plugins/ai-analysis/knowledge/domains', async (request, response) 
   }
 });
 
+router.get('/plugins/ai-analysis/knowledge/synonyms', async (request, response) => {
+  try {
+    const listPending = pluginHost.getExpose<(limit?: number) => Promise<unknown>>('ai-analysis', 'listPendingSynonyms');
+    if (!listPending) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    const limit = Number(request.query.limit ?? 100);
+    const safeLimit = Number.isFinite(limit) && limit > 0 && limit <= 500
+      ? Math.floor(limit)
+      : 100;
+    const items = await listPending(safeLimit);
+    response.json({ items });
+  } catch (e) {
+    log.error('ai-analysis synonyms list failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
+router.post('/plugins/ai-analysis/knowledge/synonyms/:id/resolve', async (request, response) => {
+  const id = Number(request.params.id);
+  if (!Number.isFinite(id)) {
+    response.status(400).json({ error: 'invalid id' });
+    return;
+  }
+  const body = request.body as { resolution?: 'approved' | 'rejected' } | undefined;
+  if (!body?.resolution || (body.resolution !== 'approved' && body.resolution !== 'rejected')) {
+    response.status(400).json({ error: 'resolution must be approved or rejected' });
+    return;
+  }
+  try {
+    const resolve = pluginHost.getExpose<(id: number, resolution: 'approved' | 'rejected') => Promise<unknown>>('ai-analysis', 'resolvePendingSynonym');
+    if (!resolve) {
+      response.status(503).json({ error: 'ai-analysis plugin not loaded' });
+      return;
+    }
+    await resolve(id, body.resolution);
+    response.json({ id, resolution: body.resolution });
+  } catch (e) {
+    log.error('ai-analysis synonym resolve failed', e instanceof Error ? e.message : String(e));
+    response.status(500).json({ error: 'internal' });
+  }
+});
+
 router.patch('/plugins/ai-analysis/knowledge/domains/:domain/description', async (request, response) => {
   const domain = decodeURIComponent(request.params.domain).trim().toLowerCase();
   const body = request.body as { description?: string | null } | undefined;

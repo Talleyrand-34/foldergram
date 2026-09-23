@@ -1179,6 +1179,16 @@
       "queued": "已在 {folders} 个文件夹中排队 {videos} 个视频。",
       "nothingToQueue": "所有视频都已分析。",
       "failed": "无法触发 backfill。"
+    },
+    "synonyms": {
+      "heading": "AI 同义词",
+      "title": "领域同义词审核",
+      "subtitle": "laya 有时会判定 M3 提出的领域字符串是现有规范领域的同义词。我们对视频使用规范形式；请在此审核并批准/拒绝以更新别名注册表。",
+      "empty": "没有待处理的同义词 — 一切正常。",
+      "confidence": "置信度 {n}",
+      "video": "视频 {id}",
+      "approve": "批准为别名",
+      "reject": "拒绝"
     }
   },
   "explore": {

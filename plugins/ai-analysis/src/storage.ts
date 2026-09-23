@@ -1319,3 +1319,165 @@ export async function getAnalysisStats(windowDays = 7): Promise<AnalysisStatsSum
     _totalCalls: totalCalls,
   } as AnalysisStatsSummary & { _totalCalls: number };
 }
+
+
+/** A single synonym/alias awaiting admin confirmation in the Settings UI. */
+export interface PendingSynonym {
+  id: number;
+  canonicalDomain: string;
+  proposedAlias: string;
+  sourceVideoId: number | null;
+  confidence: number | null;
+  reason: string | null;
+  detectedAt: string;
+  status: 'pending' | 'approved' | 'rejected';
+  resolvedAt: string | null;
+}
+
+/** Existing domains (just names + counts) for the laya prompt context. */
+export async function getExistingDomainsForCanonicalization(
+  limit = 500,
+): Promise<{ name: string; videoCount: number }[]> {
+  const rows = (await all(
+    `SELECT domain AS name, video_count AS video_count
+     FROM ai_domain_nodes
+     ORDER BY video_count DESC, domain ASC
+     LIMIT ?`,
+    [limit],
+  )) as Array<{ name: string; video_count: number }>;
+  return rows.map((r) => ({ name: r.name, videoCount: r.video_count }));
+}
+
+/** Distinct languages used in analyzed videos. */
+export async function getExistingLanguagesForCanonicalization(): Promise<string[]> {
+  const rows = (await all(
+    `SELECT DISTINCT ai_language AS language
+     FROM images
+     WHERE ai_language IS NOT NULL AND ai_language <> ''`,
+  )) as Array<{ language: string }>;
+  return rows.map((r) => r.language);
+}
+
+/** Insert a new domain that laya classified as novel. */
+export async function registerNewDomain(name: string): Promise<void> {
+  const d = name.trim().toLowerCase();
+  if (!d) return;
+  const nowExpr = await nowLiteral();
+  await run(
+    `INSERT INTO ai_domain_nodes
+       (domain, video_count, folder_count, first_seen_at, last_seen_at, languages, description, first_seen_via_laya)
+     VALUES (?, 1, 0, ${nowExpr}, ${nowExpr}, NULL, NULL, 'new')
+     ON CONFLICT(domain) DO NOTHING`,
+    [d],
+  );
+}
+
+/** Touch an existing domain (laya confirmed it was a match). */
+export async function touchExistingDomain(name: string): Promise<void> {
+  const d = name.trim().toLowerCase();
+  if (!d) return;
+  const nowExpr = await nowLiteral();
+  await run(
+    `UPDATE ai_domain_nodes SET last_seen_at = ${nowExpr} WHERE domain = ?`,
+    [d],
+  );
+}
+
+/**
+ * Persist laya's canonicalization decision on a single video.
+ * Sets images.ai_domains and images.ai_language to the canonical values,
+ * and writes the JSON blob on the most recent ai_analysis_events row.
+ */
+export async function applyCanonicalization(
+  imageId: number,
+  domains: string[],
+  language: string | null,
+  layaBlob: string,
+): Promise<void> {
+  await run(
+    `UPDATE images
+     SET ai_domains = ?, ai_language = ?
+     WHERE id = ?`,
+    [JSON.stringify(domains), language, imageId],
+  );
+  await run(
+    `UPDATE ai_analysis_events
+     SET laya_classification = ?
+     WHERE id = (
+       SELECT id FROM ai_analysis_events
+       WHERE image_id = ?
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1
+     )`,
+    [layaBlob, imageId],
+  );
+}
+
+/** Record a pending synonym awaiting admin confirmation. */
+export async function recordPendingSynonym(
+  canonicalDomain: string,
+  proposedAlias: string,
+  sourceVideoId: number | null,
+  confidence: number | null,
+  reason: string | null,
+): Promise<void> {
+  await run(
+    `INSERT INTO ai_synonym_pending
+       (canonical_domain, proposed_alias, source_video_id, confidence, reason)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (canonical_domain, proposed_alias) DO NOTHING`,
+    [
+      canonicalDomain.trim().toLowerCase(),
+      proposedAlias.trim().toLowerCase(),
+      sourceVideoId,
+      confidence,
+      reason,
+    ],
+  );
+}
+
+export async function listPendingSynonyms(limit = 100): Promise<PendingSynonym[]> {
+  const rows = (await all(
+    `SELECT id, canonical_domain, proposed_alias, source_video_id,
+            confidence, reason, detected_at, status, resolved_at
+     FROM ai_synonym_pending
+     WHERE status = 'pending'
+     ORDER BY detected_at DESC
+     LIMIT ?`,
+    [limit],
+  )) as Array<{
+    id: number;
+    canonical_domain: string;
+    proposed_alias: string;
+    source_video_id: number | null;
+    confidence: number | null;
+    reason: string | null;
+    detected_at: string;
+    status: 'pending';
+    resolved_at: string | null;
+  }>;
+  return rows.map((r) => ({
+    id: r.id,
+    canonicalDomain: r.canonical_domain,
+    proposedAlias: r.proposed_alias,
+    sourceVideoId: r.source_video_id,
+    confidence: r.confidence,
+    reason: r.reason,
+    detectedAt: r.detected_at,
+    status: r.status,
+    resolvedAt: r.resolved_at,
+  }));
+}
+
+export async function resolvePendingSynonym(
+  id: number,
+  resolution: 'approved' | 'rejected',
+): Promise<void> {
+  const nowExpr = await nowLiteral();
+  await run(
+    `UPDATE ai_synonym_pending
+     SET status = ?, resolved_at = ${nowExpr}
+     WHERE id = ?`,
+    [resolution, id],
+  );
+}

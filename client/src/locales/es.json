@@ -1179,6 +1179,16 @@
       "queued": "Encolados {videos} video(s) en {folders} carpeta(s).",
       "nothingToQueue": "Todos los videos ya están analizados.",
       "failed": "No se pudo iniciar el backfill."
+    },
+    "synonyms": {
+      "heading": "SINÓNIMOS IA",
+      "title": "Revisión de sinónimos de dominio",
+      "subtitle": "laya a veces decide que un dominio propuesto por M3 es sinónimo de uno canónico existente. Usamos el canónico para el video; revisa y aprueba/rechaza para actualizar el registro de sinónimos.",
+      "empty": "Sin sinónimos pendientes — todo limpio.",
+      "confidence": "confianza {n}",
+      "video": "video {id}",
+      "approve": "Aprobar como alias",
+      "reject": "Rechazar"
     }
   },
   "explore": {

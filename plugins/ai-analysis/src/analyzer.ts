@@ -14,13 +14,20 @@ import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { chat, transcribe, AUDIO_MODEL, RateLimitedError, VISION_MODEL } from "./lib/litellm-client.js";
+import { canonicalize, type CanonicalResult } from "./lib/laya-client.js";
 import { extractAudio, extractSampleFrames, probeVideo } from "./lib/ffmpeg.js";
 import {
+  applyCanonicalization,
   bumpDomainEdges,
   bumpDomainNodes,
+  getExistingDomainsForCanonicalization,
+  getExistingLanguagesForCanonicalization,
   recomputeFolderRollup,
   recordAnalysisEvent,
+  recordPendingSynonym,
+  registerNewDomain,
   saveAnalysis,
+  touchExistingDomain,
   updateCaptionIfNull,
 } from "./storage.js";
 import type { IndexedVideoAsset } from "../../../server/dist/plugins/types.js";
@@ -220,6 +227,59 @@ Return ONLY the JSON object. No prose, no markdown.`;
     domainsCount = parsed.domains.length;
     detectedLanguage = parsed.language;
 
+    // Laya canonicalization: turn M3's free-form domain suggestions into
+    // either existing canonical nodes, synonyms awaiting admin approval, or
+    // newly-registered domains. Also normalize the language code. This is
+    // best-effort — if laya is unreachable, M3's raw suggestions stand.
+    let canonicalDomains = parsed.domains;
+    let canonicalLanguage: string | null = parsed.language;
+    let canonicalDecision: CanonicalResult | null = null;
+    try {
+      const [existingDomains, existingLanguages] = await Promise.all([
+        getExistingDomainsForCanonicalization(),
+        getExistingLanguagesForCanonicalization(),
+      ]);
+      const layaResp = await canonicalize({
+        state: transcript,
+        suggestedDomains: parsed.domains,
+        suggestedLanguage: parsed.language,
+        existingDomains,
+        existingLanguages,
+      });
+      // laya returns CanonicalFailure when the service is unavailable
+      // (disabled, unreachable, bad response). In that case keep M3's
+      // raw values and continue as if nothing happened.
+      if (layaResp.ok !== false && layaResp.domains.length > 0) {
+        canonicalDomains = layaResp.domains.map((d) => d.canonical);
+        for (let i = 0; i < layaResp.domains.length; i++) {
+          const d = layaResp.domains[i];
+          if (d.status === 'new') {
+            await registerNewDomain(d.canonical);
+          } else if (d.status === 'match') {
+            await touchExistingDomain(d.canonical);
+          } else if (d.status === 'alias') {
+            await recordPendingSynonym(
+              d.canonical,
+              d.original,
+              asset.imageId,
+              d.confidence,
+              d.reason || null,
+            );
+          }
+        }
+        domainsCount = layaResp.domains.length;
+      }
+      if (layaResp.ok !== false && layaResp.language) {
+        canonicalLanguage = layaResp.language.canonical;
+      }
+      if (layaResp.ok !== false) {
+        canonicalDecision = layaResp;
+      }
+    } catch (e) {
+      console.error('[ai-analysis] laya canonicalization failed:',
+        e instanceof Error ? e.message : String(e));
+    }
+
     await saveAnalysis(asset.imageId, asset.mtimeMs, {
       summary: parsed.summary,
       summaryEn: parsed.summary_en?.trim() || null,
@@ -240,11 +300,20 @@ Return ONLY the JSON object. No prose, no markdown.`;
     await updateCaptionIfNull(asset.imageId, parsed.summary);
 
     // Roll up into folder knowledge + bump the domain graph. These are
-    // best-effort — a failure here must not fail the analysis.
+    // best-effort — a failure here must not fail the analysis. We now use
+    // the canonicalized names from laya rather than M3's raw output.
     try {
-      await bumpDomainNodes(parsed.domains, parsed.language);
-      await bumpDomainEdges(parsed.domains);
+      await bumpDomainNodes(canonicalDomains, canonicalLanguage);
+      await bumpDomainEdges(canonicalDomains);
       await recomputeFolderRollup(asset.folderId);
+      if (canonicalDecision) {
+        await applyCanonicalization(
+          asset.imageId,
+          canonicalDomains,
+          canonicalLanguage,
+          JSON.stringify(canonicalDecision),
+        );
+      }
     } catch (e) {
       // Logged but not fatal — knowledge graph maintenance is a background concern.
       console.error('[ai-analysis] knowledge graph update failed:',

@@ -1179,6 +1179,16 @@
       "queued": "Queued {videos} video(s) across {folders} folder(s).",
       "nothingToQueue": "All videos are already analyzed.",
       "failed": "Could not trigger backfill."
+    },
+    "synonyms": {
+      "heading": "AI SYNONYMS",
+      "title": "Domain synonym review",
+      "subtitle": "laya sometimes decides that an M3-proposed domain string is a synonym for an existing canonical domain. We use the canonical one for the video; review and approve/reject here to update the alias registry.",
+      "empty": "No pending synonyms — all clean.",
+      "confidence": "{n} confidence",
+      "video": "video {id}",
+      "approve": "Approve as alias",
+      "reject": "Reject"
     }
   },
   "explore": {

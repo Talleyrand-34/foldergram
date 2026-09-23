@@ -39,6 +39,7 @@
 
     <AiAnalysisStatus v-show="activeTab === 'status'" />
     <AiDomainManager v-show="activeTab === 'domains'" />
+    <AiSynonymReview v-show="activeTab === 'domains'" />
     <AiFolderKnowledgeManager v-show="activeTab === 'folders'" />
   </section>
 </template>
@@ -49,6 +50,7 @@ import { useI18n } from 'vue-i18n';
 import { useRoute, RouterLink } from 'vue-router';
 import AiAnalysisStatus from '../components/AiAnalysisStatus.vue';
 import AiDomainManager from '../components/AiDomainManager.vue';
+import AiSynonymReview from '../components/AiSynonymReview.vue';
 import AiFolderKnowledgeManager from '../components/AiFolderKnowledgeManager.vue';
 
 const { t } = useI18n();

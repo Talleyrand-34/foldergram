@@ -1,0 +1,22 @@
+[Unit]
+Description=laya-classifier — canonicalization HTTP service for the AI plugin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai/laya-classifier
+Environment=LAYA_PORT=4001
+Environment=LAYA_HOST=0.0.0.0
+Environment=USE_TF=0
+Environment=HF_HOME=/opt/ai/laya-classifier/cache
+ExecStart=/usr/bin/python3 -m uvicorn server:app --host 0.0.0.0 --port 4001
+# Or: ExecStart=/usr/bin/python3 server.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -391,3 +391,46 @@ export async function analyzeFolder(
     { method: 'POST' },
   );
 }
+
+
+export interface PendingSynonym {
+  id: number;
+  canonicalDomain: string;
+  proposedAlias: string;
+  sourceVideoId: number | null;
+  confidence: number | null;
+  reason: string | null;
+  detectedAt: string;
+  status: 'pending' | 'approved' | 'rejected';
+  resolvedAt: string | null;
+}
+
+export async function fetchPendingSynonyms(limit = 100): Promise<PendingSynonym[]> {
+  try {
+    const r = await requestJson<{ items: PendingSynonym[] }>(
+      `/api/plugins/ai-analysis/knowledge/synonyms?limit=${limit}`,
+    );
+    return r.items ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function resolvePendingSynonym(
+  id: number,
+  resolution: 'approved' | 'rejected',
+): Promise<boolean> {
+  try {
+    await requestJson(
+      `/api/plugins/ai-analysis/knowledge/synonyms/${id}/resolve`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ resolution }),
+      },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
