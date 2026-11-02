@@ -126,6 +126,32 @@ async function probeVersion(packageDir: string): Promise<string | null> {
 }
 
 /**
+ * Move an extracted `gallery_dl` package into its version directory.
+ *
+ * The version directory must CONTAIN the package — `PYTHONPATH` points at the
+ * version directory and Python looks for `<versionDir>/gallery_dl/`. Renaming
+ * the package onto the version directory itself puts it one level too high and
+ * breaks the import.
+ */
+export async function installExtractedPackage(
+  scratchDir: string,
+  versionDir: string
+): Promise<string> {
+  const packageDir = path.join(scratchDir, "gallery_dl");
+  try {
+    await fs.access(packageDir);
+  } catch {
+    throw new Error(`extracted archive has no gallery_dl package`);
+  }
+
+  const installedPackageDir = path.join(versionDir, "gallery_dl");
+  await fs.rm(versionDir, { recursive: true, force: true });
+  await fs.mkdir(versionDir, { recursive: true });
+  await fs.rename(packageDir, installedPackageDir);
+  return installedPackageDir;
+}
+
+/**
  * Install a release and make it active.
  * Returns the version that is now active.
  */
@@ -135,31 +161,22 @@ export async function installRelease(release: PyPIRelease, root: string): Promis
 
   const versionDir = galleryDlVersionDir(root, release.version);
   const tarballPath = path.join(root, `.gallery-dl-${release.version}.tar.gz`);
+  const scratchDir = path.join(root, `.extract-${release.version}`);
 
   try {
     await downloadVerified(release, tarballPath);
 
     // Extract into a scratch dir first so a failed extraction never leaves a
     // half-written version directory behind.
-    const scratchDir = path.join(root, `.extract-${release.version}`);
     await fs.rm(scratchDir, { recursive: true, force: true });
     await fs.mkdir(scratchDir, { recursive: true });
     await extractSdist(tarballPath, scratchDir);
 
-    const packageDir = path.join(scratchDir, "gallery_dl");
-    try {
-      await fs.access(packageDir);
-    } catch {
-      throw new Error(`extracted archive for ${release.version} has no gallery_dl package`);
-    }
-
-    await fs.rm(versionDir, { recursive: true, force: true });
-    await fs.mkdir(path.dirname(versionDir), { recursive: true });
-    await fs.rename(packageDir, versionDir);
+    await installExtractedPackage(scratchDir, versionDir);
 
     // Smoke-test before activating. A version that cannot even report its own
     // version is not worth switching to.
-    const probed = await probeVersion(galleryDlVersionDir(root, release.version));
+    const probed = await probeVersion(versionDir);
     if (!probed) {
       await fs.rm(versionDir, { recursive: true, force: true });
       throw new Error(`gallery-dl ${release.version} failed its version smoke test`);
@@ -169,6 +186,7 @@ export async function installRelease(release: PyPIRelease, root: string): Promis
     return release.version;
   } finally {
     await fs.rm(tarballPath, { force: true }).catch(() => undefined);
+    await fs.rm(scratchDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 

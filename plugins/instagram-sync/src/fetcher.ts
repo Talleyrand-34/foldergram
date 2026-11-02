@@ -40,7 +40,7 @@ export interface FetchOptions {
 }
 
 /**
- * Build the gallery-dl argv.
+ * Build the gallery-dl argv (everything after `python3 -m gallery_dl`).
  *
  * Two details are easy to get wrong:
  *  - `-o extractor.instagram.directory=["{username}"]` is ONE argv element. If
@@ -51,8 +51,6 @@ export interface FetchOptions {
 export function buildArgs(opts: FetchOptions): string[] {
   const { config } = opts;
   return [
-    "-m",
-    "gallery_dl",
     "--config-ignore",
     "--download-archive",
     config.archiveFile,
@@ -86,22 +84,94 @@ export function parseStdout(stdout: string): { downloaded: string[]; skipped: nu
   return { downloaded, skipped };
 }
 
-/** Map gallery-dl's stderr onto a status the plugin can act on. */
+/**
+ * Decide the outcome of a gallery-dl run that exited 0.
+ *
+ * The steady state is "everything already downloaded": no downloads, no
+ * stderr. That is a SUCCESS. A run that exited 0 but logged per-file
+ * failures (a permission problem, say) is reported as an error so a broken
+ * sync is never hidden behind a partial success.
+ */
+export function statusForSuccessfulRun(
+  stdout: string,
+  stderr: string
+): { status: FetchStatus; downloaded: string[]; skipped: number; error: string | null } {
+  const { downloaded, skipped } = parseStdout(stdout);
+  const partial = summariseFailures(stderr);
+  return {
+    status: partial ? "error" : "ok",
+    downloaded,
+    skipped,
+    error: partial
+  };
+}
+
+/**
+ * Map gallery-dl's stderr onto a status the plugin can act on.
+ *
+ * Only *specific* upstream faults are recognised here; anything else is a
+ * generic error. This is for the FAILURE path — a run that exited non-zero.
+ */
 export function classifyError(stderr: string): FetchStatus {
   const text = stderr.toLowerCase();
+  if (!text.trim()) {
+    return "error";
+  }
   if (text.includes("topsearch") || text.includes("not found' for 'https://www.instagram.com/web/search")) {
     return "gallery-dl-too-old";
   }
   if (
     text.includes("login_required") ||
-    text.includes("401") ||
-    text.includes("403") ||
-    text.includes("challenge") ||
-    text.includes("cookie")
+    text.includes("invalid api key") ||
+    text.includes("401 unauthorized") ||
+    text.includes("403 forbidden") ||
+    text.includes("challenge")
   ) {
     return "session-expired";
   }
   return "error";
+}
+
+/**
+ * Summarise the per-file failures in gallery-dl's stderr.
+ *
+ * gallery-dl keeps going after a file fails, so a run can download most of
+ * the batch and still fail on the rest. The distinct failure reasons are
+ * counted so the operator sees what broke without a wall of log noise.
+ *
+ * The reason is normalised first — media ids and paths vary per file, so
+ * without that every failure would count as its own reason.
+ */
+export function summariseFailures(stderr: string): string | null {
+  if (!stderr.trim()) return null;
+
+  const counts = new Map<string, number>();
+  for (const line of stderr.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    // "Cannot import yt-dlp" is gallery-dl saying it will use its fallback
+    // downloader, not a file failing.
+    if (trimmed.includes("Cannot import yt-dlp")) continue;
+    const isError = trimmed.includes("[error]");
+    const isPermission = trimmed.includes("PermissionError");
+    if (!isError && !isPermission) continue;
+
+    const reason = trimmed
+      .replace(/^.*\[(error|warning)\]\s*/, "")
+      .replace(/'[^']*'/g, "<path>")
+      .replace(/\b\d{6,}\b/g, "<id>")
+      .slice(0, 160);
+    if (!reason) continue;
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+
+  if (counts.size === 0) return null;
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([reason, count]) => `${reason} (×${count})`)
+    .join("; ");
 }
 
 /** Run gallery-dl once and report what changed. */
@@ -145,23 +215,15 @@ export async function runGalleryDl(opts: FetchOptions): Promise<FetchResult> {
       }
     );
 
-    const { downloaded, skipped } = parseStdout(stdout);
-    const failure = classifyError(stderr);
-    if (failure !== "ok" && downloaded.length === 0) {
-      return {
-        status: failure,
-        downloadedPaths: [],
-        skippedCount: skipped,
-        error: stderr.trim().slice(0, 500) || null,
-        durationMs: Date.now() - startedAt
-      };
-    }
-
+    // gallery-dl exited 0, so the extractor completed. The steady state —
+    // everything already downloaded, every file skipped — produces no
+    // downloads and no stderr, and that is a SUCCESS, not a failure.
+    const outcome = statusForSuccessfulRun(stdout, stderr);
     return {
-      status: "ok",
-      downloadedPaths: downloaded,
-      skippedCount: skipped,
-      error: null,
+      status: outcome.status,
+      downloadedPaths: outcome.downloaded,
+      skippedCount: outcome.skipped,
+      error: outcome.error,
       durationMs: Date.now() - startedAt
     };
   } catch (error) {
@@ -183,11 +245,12 @@ export async function runGalleryDl(opts: FetchOptions): Promise<FetchResult> {
     // extractor after the `-A` budget, which is a normal, successful outcome.
     const { downloaded, skipped } = parseStdout(stdout);
     if (downloaded.length > 0) {
+      const partial = summariseFailures(stderr);
       return {
-        status: "ok",
+        status: partial ? "error" : "ok",
         downloadedPaths: downloaded,
         skippedCount: skipped,
-        error: null,
+        error: partial,
         durationMs: Date.now() - startedAt
       };
     }
