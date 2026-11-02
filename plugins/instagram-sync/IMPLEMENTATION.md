@@ -408,6 +408,55 @@ ssh -i ~/.ssh/localinfra root@10.0.36.37 "systemctl restart foldergram"
 
 ---
 
+## Saved collections (added after the first deploy)
+
+Instagram keeps saved posts in named sub-collections. The plugin mirrors them
+into library collections of the same name.
+
+### The three pieces
+
+1. **Listing the collections** — Instagram's GraphQL query
+   `PolarisProfileSavedTabContentQuery`. gallery-dl has no extractor for it
+   (it has one for saved posts and one for a collection's contents), and its
+   doc_id discovery cannot find it because the query's registration lives in a
+   lazily-loaded JS chunk.
+
+   `python/list_collections.py` drives the query through gallery-dl's own
+   machinery — cookie handling, `lsd`/`fb_dtsg` extraction, request signing —
+   and falls back to a constant doc_id when discovery raises. The build copies
+   `python/` into `dist/python/` (`copy-python.mjs`) so the deploy carries it.
+
+2. **A collection's media** — gallery-dl's own
+   `InstagramCollectionExtractor` (`USER/saved/<name>/<id>/`) with
+   `--no-download`. It enumerates the media and prints the paths it would
+   download, without fetching anything.
+
+3. **The mirror** — `src/collectionMirror.ts`. gallery-dl's layout
+   (`<author>/<media_id>.<ext>`) is exactly the library's
+   `images.relative_path`, so the mapping needs no translation.
+
+### Two bugs found by running it
+
+- **Folder paths instead of file paths.** The first version passed
+  `"<author>/"` to `scanChangedPaths`. The scanner filters on the *file*
+  extension (`isSupportedMediaFile(path.basename(relativePath))`), so a
+  directory path was rejected and the folder was never scanned — the media
+  stayed unindexed and the mirror reported them missing. Passing the real
+  file paths fixed it: the "repo" collection went from 147 to 167 matched.
+
+- **The mirror was not self-healing.** The startup scan is skipped when the
+  library already has folders, so media that arrived outside the plugin (a
+  manual gallery-dl run, a copy into the gallery) sit on disk unindexed. The
+  mirror now scans the affected folders first, then looks them up again.
+
+### Known limitation
+
+Three media of the "repo" collection are recorded in the archive but are
+**absent from disk**. gallery-dl skips them because the archive says they are
+done, so the sync will never re-fetch them. That is a pre-existing
+archive/library inconsistency, not something the mirror introduces — the mirror
+reports them as missing, which is accurate.
+
 ## What was NOT done, and why
 
 - **No staging directory.** Direct download into the gallery is safe (see

@@ -1264,6 +1264,21 @@
       "cookieHint": "Sube el archivo cookies.txt exportado de tu navegador con la sesión iniciada. Se guarda en el servidor y nunca se muestra aquí.",
       "cookieUploaded": "Cookie subida.",
       "cookieFailed": "No se pudo subir la cookie."
+    },
+    "collections": {
+      "heading": "Colecciones guardadas",
+      "subtitle": "Replica tus subcolecciones guardadas de Instagram en colecciones con el mismo nombre.",
+      "refresh": "Cargar colecciones",
+      "loading": "Cargando…",
+      "empty": "No se encontraron colecciones guardadas de Instagram. Carga la lista para ver las disponibles.",
+      "loadFailed": "No se pudieron leer las colecciones guardadas de Instagram.",
+      "mirror": "Replicar",
+      "mirrorAll": "Replicar todas",
+      "mirroring": "Replicando…",
+      "mirrorFailed": "No se pudo replicar la colección de Instagram.",
+      "mirrored": "{added} de {total} medios añadidos a la colección.",
+      "done": "Colecciones replicadas.",
+      "someMissing": "Replicado, pero {missing} medios aún no están en la biblioteca: ejecuta una sincronización primero."
     }
   },
   "explore": {

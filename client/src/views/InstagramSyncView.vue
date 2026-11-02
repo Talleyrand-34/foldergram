@@ -232,6 +232,90 @@
         <span class="text-[0.78rem] text-muted">{{ t('instagramSync.actions.cookieHint') }}</span>
       </div>
     </section>
+
+    <section class="card p-5 md:p-6 flex flex-col gap-4">
+      <header class="flex items-start justify-between gap-4 max-sm:flex-col max-sm:items-stretch">
+        <div>
+          <h2 class="m-0 text-[1.05rem]">{{ t('instagramSync.collections.heading') }}</h2>
+          <p class="m-0 mt-[0.15rem] text-[0.82rem] text-muted">{{ t('instagramSync.collections.subtitle') }}</p>
+        </div>
+        <div class="flex items-center gap-[0.6rem]">
+          <button
+            type="button"
+            class="inline-flex items-center gap-[0.35rem] px-3 py-[0.5rem] text-[0.78rem] font-semibold leading-none rounded-[0.55rem] border border-border bg-surface-hover text-text hover:bg-border transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="loadingCollections"
+            @click="handleLoadCollections"
+          >
+            <span
+              :class="loadingCollections ? 'i-fluent-arrow-sync-16-filled animate-spin' : 'i-fluent-arrow-sync-16-regular'"
+              class="w-[0.95rem] h-[0.95rem]"
+              aria-hidden="true"
+            />
+            {{ loadingCollections ? t('instagramSync.collections.loading') : t('instagramSync.collections.refresh') }}
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center gap-[0.35rem] px-3 py-[0.5rem] text-[0.78rem] font-semibold leading-none rounded-[0.55rem] border border-border bg-surface-hover text-text hover:bg-border transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="mirroring || !mirrorableCollections.length"
+            @click="handleMirrorAll"
+          >
+            <span
+              :class="mirroring ? 'i-fluent-arrow-sync-16-filled animate-spin' : 'i-fluent-folder-link-16-regular'"
+              class="w-[0.95rem] h-[0.95rem]"
+              aria-hidden="true"
+            />
+            {{ mirroring ? t('instagramSync.collections.mirroring') : t('instagramSync.collections.mirrorAll') }}
+          </button>
+        </div>
+      </header>
+
+      <p
+        v-if="collectionsError"
+        class="m-0 px-3 py-2 rounded-[0.55rem] border border-[rgba(217,48,37,0.24)] text-[0.86rem] text-[#b42318] bg-[rgba(217,48,37,0.08)]"
+      >
+        {{ collectionsError }}
+      </p>
+
+      <p
+        v-if="collectionsNotice"
+        class="m-0 px-3 py-2 rounded-[0.55rem] border border-[rgba(214,48,49,0.32)] text-[0.84rem] bg-[rgba(214,48,49,0.06)]"
+      >
+        {{ collectionsNotice }}
+      </p>
+
+      <p v-if="!loadingCollections && !collections.length" class="m-0 text-[0.84rem] text-muted">
+        {{ t('instagramSync.collections.empty') }}
+      </p>
+
+      <ul v-if="collections.length" class="m-0 p-0 list-none grid gap-[0.6rem]">
+        <li
+          v-for="collection in collections"
+          :key="collection.id"
+          class="flex items-center justify-between gap-3 px-3 py-[0.6rem] rounded-[0.55rem] border border-border"
+        >
+          <div class="flex min-w-0 flex-col gap-[0.1rem]">
+            <span class="truncate text-[0.9rem] font-semibold">{{ collection.name }}</span>
+            <span class="truncate text-[0.76rem] text-muted">
+              <template v-if="mirrorResults[collection.name]">
+                {{ t('instagramSync.collections.mirrored', {
+                  added: formatNumber(mirrorResults[collection.name].addedCount),
+                  total: formatNumber(mirrorResults[collection.name].mediaCount)
+                }) }}
+              </template>
+              <template v-else>{{ collection.id }}</template>
+            </span>
+          </div>
+          <button
+            type="button"
+            class="inline-flex items-center gap-[0.35rem] shrink-0 px-3 py-[0.5rem] text-[0.78rem] font-semibold leading-none rounded-[0.55rem] border border-border bg-surface-hover text-text hover:bg-border transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="mirroring"
+            @click="handleMirrorOne(collection.name)"
+          >
+            {{ t('instagramSync.collections.mirror') }}
+          </button>
+        </li>
+      </ul>
+    </section>
   </section>
 </template>
 
@@ -240,10 +324,14 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   checkGalleryDl,
+  fetchInstagramCollections,
   fetchInstagramSyncStatus,
   runInstagramSync,
+  syncInstagramCollections,
   updateGalleryDl,
   uploadInstagramCookie,
+  type InstagramCollection,
+  type InstagramCollectionMirrorResult,
   type InstagramGalleryDlCheck,
   type InstagramSyncRun,
   type InstagramSyncStatus,
@@ -263,6 +351,13 @@ const updating = ref(false);
 const running = ref(false);
 const checking = ref(false);
 const uploading = ref(false);
+
+const collections = ref<InstagramCollection[]>([]);
+const mirrorResults = ref<Record<string, InstagramCollectionMirrorResult>>({});
+const loadingCollections = ref(false);
+const mirroring = ref(false);
+const collectionsError = ref<string | null>(null);
+const collectionsNotice = ref<string | null>(null);
 
 /** True while a sync run is in progress, so gallery-dl must not be swapped. */
 const runInProgress = ref(false);
@@ -327,6 +422,9 @@ const galleryDlMinRequired = computed(() => {
   const minRequired = status.value?.galleryDl.minRequired;
   return minRequired ?? '—';
 });
+
+/** Instagram's catch-all "All posts" is not a real collection to mirror. */
+const mirrorableCollections = computed(() => collections.value.filter((c) => !c.isAuto));
 
 const cookieState = computed(() => {
   const cookie = status.value?.cookie;
@@ -582,6 +680,47 @@ async function handleCookieFile(event: Event) {
     uploading.value = false;
     input.value = '';
   }
+}
+
+async function handleLoadCollections() {
+  loadingCollections.value = true;
+  collectionsError.value = null;
+  try {
+    const result = await fetchInstagramCollections();
+    collections.value = result.collections ?? [];
+  } catch (e) {
+    collectionsError.value = messageOf(e, t('instagramSync.collections.loadFailed'));
+  } finally {
+    loadingCollections.value = false;
+  }
+}
+
+async function runMirror(name?: string) {
+  mirroring.value = true;
+  collectionsError.value = null;
+  collectionsNotice.value = null;
+  try {
+    const result = await syncInstagramCollections(name);
+    for (const item of result.results ?? []) {
+      mirrorResults.value = { ...mirrorResults.value, [item.name]: item };
+    }
+    const missing = (result.results ?? []).reduce((sum, item) => sum + item.missingCount, 0);
+    collectionsNotice.value = missing
+      ? t('instagramSync.collections.someMissing', { missing: formatNumber(missing) })
+      : t('instagramSync.collections.done');
+  } catch (e) {
+    collectionsError.value = messageOf(e, t('instagramSync.collections.mirrorFailed'));
+  } finally {
+    mirroring.value = false;
+  }
+}
+
+function handleMirrorOne(name: string) {
+  void runMirror(name);
+}
+
+function handleMirrorAll() {
+  void runMirror();
 }
 
 onMounted(() => {

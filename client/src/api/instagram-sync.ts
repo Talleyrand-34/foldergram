@@ -100,6 +100,44 @@ export interface InstagramCookieUploadResult {
   ok: boolean;
 }
 
+/** One of the user's Instagram saved collections ("sub-folders" of saved). */
+export interface InstagramCollection {
+  id: string;
+  name: string;
+  /** Instagram's own type, e.g. "MediaCollection". */
+  type: string;
+  /** True for Instagram's catch-all "All posts" pseudo-collection. */
+  isAuto: boolean;
+}
+
+export interface InstagramCollectionList {
+  collections: InstagramCollection[];
+}
+
+/** What one mirrored collection ended up containing. */
+export interface InstagramCollectionMirrorResult {
+  name: string;
+  instagramId: string;
+  /** The Foldergram collection the media was put into. */
+  collectionSlug: string | null;
+  /** True when the Foldergram collection was created by the mirror. */
+  collectionCreated: boolean;
+  /** Media the collection holds according to Instagram. */
+  mediaCount: number;
+  /** How many of those are indexed in the library. */
+  matchedCount: number;
+  /** Media that is not in the library (not downloaded, or not indexed yet). */
+  missingCount: number;
+  /** A sample of the relative paths that could not be matched. */
+  missingPaths: string[];
+  /** How many images were added to the collection. */
+  addedCount: number;
+}
+
+export interface InstagramCollectionSyncResult {
+  results: InstagramCollectionMirrorResult[];
+}
+
 export async function fetchInstagramSyncStatus(): Promise<InstagramSyncStatus> {
   return await requestJson<InstagramSyncStatus>(`${INSTAGRAM_SYNC_BASE_PATH}/status`);
 }
@@ -127,6 +165,28 @@ export async function uploadInstagramCookie(
 export async function checkGalleryDl(): Promise<InstagramGalleryDlCheck> {
   return await requestJson<InstagramGalleryDlCheck>(
     `${INSTAGRAM_SYNC_BASE_PATH}/gallery-dl/check`,
+  );
+}
+
+/**
+ * The user's Instagram saved collections. The server reads them through
+ * Instagram's saved-collections API.
+ */
+export async function fetchInstagramCollections(): Promise<InstagramCollectionList> {
+  return await requestJson<InstagramCollectionList>(`${INSTAGRAM_SYNC_BASE_PATH}/collections`);
+}
+
+/**
+ * Mirror Instagram saved collections into Foldergram collections of the same
+ * name. Pass `name` to mirror a single collection; omit it to mirror all of them.
+ */
+export async function syncInstagramCollections(
+  name?: string,
+): Promise<InstagramCollectionSyncResult> {
+  const query = name ? `?name=${encodeURIComponent(name)}` : '';
+  return await requestJson<InstagramCollectionSyncResult>(
+    `${INSTAGRAM_SYNC_BASE_PATH}/collections/sync${query}`,
+    { method: 'POST' },
   );
 }
 

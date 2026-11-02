@@ -63,6 +63,41 @@ Mutating routes require the `canManageLibrary` capability.
 | `POST` | `/cookie` | upload a fresh session cookie — **raw `text/plain` body** |
 | `GET` | `/gallery-dl/check` | ask PyPI for the latest gallery-dl |
 | `POST` | `/gallery-dl/update` | download, verify and activate a newer gallery-dl |
+| `GET` | `/collections` | the user's Instagram saved collections |
+| `POST` | `/collections/sync[?name=…]` | mirror them into library collections |
+
+## Saved collections → library collections
+
+Instagram keeps saved posts in named sub-collections (`/saved/<name>/<id>/`).
+The plugin mirrors them into library collections of the same name.
+
+1. **Listing the collections** needs Instagram's GraphQL query
+   `PolarisProfileSavedTabContentQuery`, which gallery-dl has no extractor for.
+   A small Python helper (`python/list_collections.py`) drives it through
+   gallery-dl's own machinery — cookie handling, `lsd`/`fb_dtsg` extraction,
+   request signing — so it stays in step with the vendored version. The
+   query's `doc_id` is a constant fallback: gallery-dl normally discovers it by
+   scanning Instagram's JS, but this query lives in a lazily-loaded chunk, so
+   discovery raises. If Instagram rotates the id the helper fails with a clear
+   message and the constant has to be updated.
+2. **A collection's media** is listed with gallery-dl's own collection
+   extractor and `--no-download`: it enumerates the media and prints the paths
+   it *would* download, without fetching anything. The archive is not consulted
+   at all, so the already-downloaded files are simply listed.
+3. **The mapping is exact**: gallery-dl lays media out as
+   `<author>/<media_id>.<ext>`, which is precisely the library's
+   `images.relative_path`. No translation is needed.
+4. The media go into a library collection of the same name — an existing one is
+   reused, otherwise it is created.
+5. Media that is on disk but not indexed yet are indexed first (the startup
+   scan is skipped when the library already has folders), so the mirror is
+   self-healing.
+
+The mirror reports what it did: how many media the collection holds, how many
+matched, and the relative paths of the ones that are not in the library yet.
+
+Mirroring one collection takes a couple of minutes — most of it is Instagram
+enumerating the collection's media, not the copy.
 
 ## Two things worth knowing
 

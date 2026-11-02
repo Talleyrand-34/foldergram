@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "npm run build && tsx src/scripts/migrate.ts && tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json && tsc -p ../plugins/ai-analysis/tsconfig.json && tsc -p ../plugins/instagram-sync/tsconfig.json",
+    "build": "tsc -p tsconfig.json && tsc -p ../plugins/ai-analysis/tsconfig.json && tsc -p ../plugins/instagram-sync/tsconfig.json && node ../plugins/instagram-sync/copy-python.mjs",
     "build:server": "tsc -p tsconfig.json",
-    "build:plugins": "tsc -p ../plugins/ai-analysis/tsconfig.json && tsc -p ../plugins/instagram-sync/tsconfig.json",
+    "build:plugins": "tsc -p ../plugins/ai-analysis/tsconfig.json && tsc -p ../plugins/instagram-sync/tsconfig.json && node ../plugins/instagram-sync/copy-python.mjs",
     "migrate": "tsx src/scripts/migrate.ts",
     "migrate:prod": "node dist/scripts/migrate.js",
     "start": "node dist/scripts/migrate.js && node dist/index.js",

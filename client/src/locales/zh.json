@@ -1264,6 +1264,21 @@
       "cookieHint": "请上传从已登录的浏览器导出的 cookies.txt 文件。它会保存在服务器上，且不会在此处显示。",
       "cookieUploaded": "Cookie 已上传。",
       "cookieFailed": "无法上传 Cookie。"
+    },
+    "collections": {
+      "heading": "已保存的合集",
+      "subtitle": "将 Instagram 保存的子合集镜像为同名合集。",
+      "refresh": "加载合集",
+      "loading": "加载中…",
+      "empty": "未找到 Instagram 已保存的合集。加载列表以查看可用的合集。",
+      "loadFailed": "无法读取 Instagram 已保存的合集。",
+      "mirror": "镜像",
+      "mirrorAll": "全部镜像",
+      "mirroring": "镜像中…",
+      "mirrorFailed": "无法镜像该 Instagram 合集。",
+      "mirrored": "已向合集添加 {total} 个媒体中的 {added} 个。",
+      "done": "合集已镜像。",
+      "someMissing": "已镜像，但有 {missing} 个媒体尚未入库——请先运行一次同步。"
     }
   },
   "explore": {

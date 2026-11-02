@@ -28,6 +28,12 @@ import {
   latestKnownVersion,
   pruneVersions
 } from "./galleryDlUpdater.js";
+import {
+  listCollectionMedia,
+  listInstagramCollections,
+  type InstagramCollection
+} from "./instagramCollections.js";
+import { mirrorCollection, type CollectionMirrorResult } from "./collectionMirror.js";
 import { isRunning, runSyncNow, schedulerState } from "./scheduler.js";
 
 interface RouteDeps {
@@ -238,6 +244,61 @@ export function registerRoutes(ctx: PluginContext, deps: RouteDeps): void {
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             ctx.log(`gallery-dl update failed: ${message}`);
+            res.status(500).json({ message });
+          }
+        }
+      )
+    },
+    {
+      method: "get",
+      path: "/collections",
+      handler: async (_req: Request, res: Response) => {
+        try {
+          const collections = await listInstagramCollections(config);
+          res.json({ collections });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          ctx.log(`collection list failed: ${message}`);
+          res.status(502).json({ message });
+        }
+      }
+    },
+    {
+      method: "post",
+      path: "/collections/sync",
+      handler: withCapability(
+        "canManageLibrary",
+        "Library management access required",
+        async (req: Request, res: Response) => {
+          try {
+            const requested = typeof req.query.name === "string" ? req.query.name : null;
+            const collections = await listInstagramCollections(config);
+            const selected = requested
+              ? collections.filter(
+                  (collection) =>
+                    collection.name.toLocaleLowerCase() === requested.toLocaleLowerCase()
+                )
+              : collections.filter((collection) => !collection.isAuto);
+
+            if (requested && selected.length === 0) {
+              res.status(404).json({ message: `no Instagram collection named "${requested}"` });
+              return;
+            }
+
+            const results: CollectionMirrorResult[] = [];
+            for (const collection of selected) {
+              const media = await listCollectionMedia(config, collection);
+              const result = await mirrorCollection(collection, media, galleryRoot);
+              ctx.log(
+                `mirrored collection "${collection.name}": ${result.addedCount}/${result.mediaCount} media, ${result.missingCount} missing`
+              );
+              results.push(result);
+            }
+
+            res.json({ results });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            ctx.log(`collection sync failed: ${message}`);
             res.status(500).json({ message });
           }
         }

@@ -1264,6 +1264,21 @@
       "cookieHint": "Upload the cookies.txt file exported from your logged-in browser session. It is stored on the server and never shown here.",
       "cookieUploaded": "Cookie uploaded.",
       "cookieFailed": "Could not upload the cookie."
+    },
+    "collections": {
+      "heading": "Saved collections",
+      "subtitle": "Mirror your Instagram saved sub-collections into collections of the same name.",
+      "refresh": "Load collections",
+      "loading": "Loading…",
+      "empty": "No Instagram saved collections found. Load them to see what is available.",
+      "loadFailed": "Could not read the Instagram saved collections.",
+      "mirror": "Mirror",
+      "mirrorAll": "Mirror all",
+      "mirroring": "Mirroring…",
+      "mirrorFailed": "Could not mirror the Instagram collection.",
+      "mirrored": "{added} of {total} media added to the collection.",
+      "done": "Collections mirrored.",
+      "someMissing": "Mirrored, but {missing} media are not in the library yet — run a sync first."
     }
   },
   "explore": {
