@@ -112,3 +112,35 @@ ssh root@10.0.36.37 "systemctl restart foldergram"
 
 The first run also needs the cookie and the archive in place — see
 `IMPLEMENTATION.md`, step 12.
+
+### ⚠️ The gallery must be writable by the server
+
+The gallery is a **shared** btrfs volume: `pvei` writes to it over NFS and
+the server mounts the same storage at `/opt/foldergram-data/gallery`. The two
+hosts see the same files with **different owners**, because they have
+different uid mappings:
+
+| Host | uid_map | Can write dirs owned by uid 0? | By uid 100000? |
+|---|---|---|---|
+| `pvei` (bare metal) | identity — root is host root | ✅ | ✅ |
+| `10.0.36.37` (LXC) | `0 100000 65536` | ❌ (uid 0 is unmapped → `nobody`) | ✅ |
+
+So any author directory created by `pvei`'s root is **unwritable** from the
+server, and gallery-dl fails on it with `PermissionError … .mp4.part`.
+
+The fix is to give the shared tree to the uid the server maps to its root:
+
+```bash
+# on the storage owner (pved1), once
+cd /mnt/6T/offline/reels/gallery-dl/instagram
+find . -maxdepth 1 -mindepth 1 -type d -uid 0 -print0 | xargs -0 -r chown -R 100000:100000
+```
+
+After that both hosts see the directories as owned by their own root, and the
+server can write into every author folder. The plugin creates new directories
+itself, so this only has to be re-run if `pvei`'s gallery-dl is used by hand
+again.
+
+`yt-dlp` is also worth installing on the server (`apt-get install -y yt-dlp`):
+gallery-dl logs a fallback notice without it, and some Instagram CDN
+variants are only reachable through the yt-dlp downloader.

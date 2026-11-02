@@ -359,6 +359,30 @@ ssh -i ~/.ssh/localinfra root@10.0.36.37 \
 gallery-dl itself is installed by the Web UI's **Update gallery-dl** button (the
 same code path the updater uses), so there is no separate install step.
 
+### 12c. The gallery must be writable by the server
+
+The gallery is a shared btrfs volume (see `README.md` for the full picture):
+`pvei` writes to it over NFS as real host root, while the server is an LXC
+container whose uid map is `0 → 100000`. The 10,457 author directories that
+`pvei` created as uid 0 are therefore **unwritable** from the server — gallery-dl
+fails on them with `PermissionError … .mp4.part`, and the sync silently
+downloads nothing for those authors.
+
+The fix is one metadata operation on the storage owner:
+
+```bash
+# on pved1
+cd /mnt/6T/offline/reels/gallery-dl/instagram
+find . -maxdepth 1 -mindepth 1 -type d -uid 0 -print0 | xargs -0 -r chown -R 100000:100000
+```
+
+After that every author directory is owned by the uid the server maps to its
+own root, and the server can write into all of them.
+
+`yt-dlp` is installed on the server as well (`apt-get install -y yt-dlp`):
+without it gallery-dl logs a fallback notice on every run, and some Instagram
+CDN variants are only reachable through the yt-dlp downloader.
+
 **No archive back-fill is needed.** gallery-dl's `skip: true` also skips files
 that already exist on disk, even when they are absent from the archive —
 verified by planting a file with a 2020 mtime and confirming it was skipped
@@ -392,3 +416,40 @@ ssh -i ~/.ssh/localinfra root@10.0.36.37 "systemctl restart foldergram"
 - **No DB migration for the plugin.** Run state lives in `app_settings`.
 - **No source CRUD API.** v1 has one configured source.
 - **No per-source run history.** The state blob is enough for one source.
+
+---
+
+## Bugs found by running it against the live server
+
+Each of these was found by deploying and running, not by reading the code.
+Every one now has a regression test.
+
+1. **The updater put the package one level too high.** It renamed the
+   extracted `gallery_dl` package *onto* the version directory, so the package
+   landed at `versions/<v>/__init__.py` instead of
+   `versions/<v>/gallery_dl/__init__.py`. `PYTHONPATH` points at the version
+   directory, so the import failed and the smoke test rejected every install.
+   The package must live **inside** the version directory.
+   → `installExtractedPackage()` extracted and tested.
+
+2. **`-m gallery_dl` was passed twice** — once by `buildArgs()` and once by
+   the spawn. gallery-dl exited with `unrecognized arguments: -m …`.
+   → `buildArgs()` now returns only gallery-dl's own arguments; asserted by a test.
+
+3. **A fully-skipped run was reported as failed.** The steady state — every
+   file already downloaded, nothing new, empty stderr — went through
+   `classifyError()`, which returns a generic error for anything it does not
+   recognise. The success path now decides on the per-file failures alone.
+   → `statusForSuccessfulRun()` extracted and tested.
+
+4. **Partial failures were reported as success.** gallery-dl keeps going after
+   a file fails, so a run could download most of a batch and still fail on the
+   rest — and the plugin called that `ok`. The permission problem in §12c was
+   invisible because of this.
+   → `summariseFailures()` groups the failures and the run is reported as an
+   error when there are any.
+
+5. **`text/plain` bodies were never parsed.** `server/src/app.ts` only mounted
+   `express.json()`, and Express 5's `json()` only parses `application/json`,
+   so the plugin's cookie upload always arrived as `req.body === undefined`.
+   → a scoped `express.text()` for `/api/plugins`.
