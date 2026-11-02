@@ -27,6 +27,13 @@ export function createApp() {
 
   app.use(express.json());
 
+  // Plugin routes may accept a raw text/plain body (the instagram-sync
+  // plugin's cookie upload posts the Netscape cookie file verbatim).
+  // express.json() only parses application/json, so without this the body
+  // arrives as undefined. Scoped to the plugin mount point and bounded, so
+  // it cannot be used to push an unbounded payload at the server.
+  app.use('/api/plugins', express.text({ type: 'text/plain', limit: '256kb' }));
+
   if (appConfig.derivativeMode === 'lazy') {
     app.use('/thumbnails', requireMediaAuthentication, lazyThumbnailsRouter);
     app.use('/previews', requireMediaAuthentication, lazyPreviewsRouter);

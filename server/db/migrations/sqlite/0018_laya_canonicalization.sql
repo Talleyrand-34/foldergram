@@ -16,16 +16,18 @@ ALTER TABLE ai_analysis_events ADD COLUMN laya_classification TEXT;
 ALTER TABLE ai_domain_nodes ADD COLUMN first_seen_via_laya TEXT;
 -- NULL = added by analyzer before laya existed; "match" = recognized; "new" = registered by laya
 
+-- SQLite has no BIGSERIAL/BIGINT/TIMESTAMPTZ; the repo's SQLite migrations
+-- use INTEGER ids and TEXT timestamps with a CURRENT_TIMESTAMP default.
 CREATE TABLE ai_synonym_pending (
-  id BIGSERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   canonical_domain TEXT NOT NULL,
   proposed_alias TEXT NOT NULL,
-  source_video_id BIGINT,
+  source_video_id INTEGER,
   confidence REAL,
   reason TEXT,
-  detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  detected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   status TEXT NOT NULL DEFAULT 'pending',  -- pending | approved | rejected
-  resolved_at TIMESTAMPTZ,
+  resolved_at TEXT,
   UNIQUE (canonical_domain, proposed_alias)
 );
 

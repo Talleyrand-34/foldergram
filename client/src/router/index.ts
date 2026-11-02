@@ -18,6 +18,7 @@ import { useAuthStore } from '../stores/auth';
 import { pinia } from '../stores/pinia';
 import SettingsView from '../views/SettingsView.vue';
 import AiSettingsView from '../views/AiSettingsView.vue';
+import InstagramSyncView from '../views/InstagramSyncView.vue';
 import type { AuthCapabilities } from '../types/api';
 
 type RouteCapability = keyof AuthCapabilities;
@@ -120,6 +121,14 @@ export const router = createRouter({
       component: AiSettingsView,
       meta: {
         requiredCapability: 'canManageLibrary'
+      }
+    },
+    {
+      path: '/settings/instagram',
+      name: 'settings-instagram',
+      component: InstagramSyncView,
+      meta: {
+        requiredCapability: 'canAccessSettings'
       }
     },
     {

@@ -21,6 +21,19 @@
       <span class="i-fluent-arrow-right-16-regular w-[1.15rem] h-[1.15rem] text-muted" aria-hidden="true" />
     </RouterLink>
 
+    <RouterLink
+      v-if="authStore.canAccessSettings"
+      :to="{ name: 'settings-instagram' }"
+      class="card flex items-center justify-between gap-4 px-5 py-4 no-underline transition-colors hover:bg-surface-hover"
+    >
+      <div>
+        <span class="eyebrow">{{ t('instagramSync.eyebrow') }}</span>
+        <h2 class="m-0 text-[1.05rem] mt-[0.1rem]">{{ t('instagramSync.title') }}</h2>
+        <p class="m-0 text-muted text-[0.82rem] mt-[0.05rem]">{{ t('instagramSync.subtitle') }}</p>
+      </div>
+      <span class="i-fluent-arrow-right-16-regular w-[1.15rem] h-[1.15rem] text-muted" aria-hidden="true" />
+    </RouterLink>
+
     <section
       v-if="showScanErrorNotice"
       class="card grid gap-[1rem] p-8 border-[color-mix(in_srgb,#d2a133_45%,var(--border)_55%)]"

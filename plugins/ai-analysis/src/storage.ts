@@ -80,6 +80,75 @@ export async function saveAnalysis(
   await run(sql, params);
 }
 
+/**
+ * Persist the high-quality (re-analysis) result alongside the original.
+ * The original 3-frame analysis is preserved; this writes into the *_hq
+ * columns. Increments ai_reanalysis_count and updates ai_reanalyzed_at +
+ * ai_frames_used. Does NOT touch the primary ai_summary / ai_domains /
+ * ai_language columns — those still reflect the first analysis.
+ */
+export async function saveHighQualityReanalysis(
+  imageId: number,
+  sourceMtimeMs: number,
+  data: AiMetadata,
+  framesUsed: number,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await run(
+    `UPDATE images
+     SET ai_summary_hq = ?, ai_summary_hq_en = ?, ai_summary_hq_es = ?,
+         ai_domains_hq = ?, ai_reanalyzed_at = ?, ai_frames_used = ?,
+         ai_reanalysis_count = ai_reanalysis_count + 1
+     WHERE id = ?`,
+    [
+      data.summary,
+      data.summaryEn,
+      data.summaryEs,
+      JSON.stringify(data.domains),
+      now,
+      framesUsed,
+      imageId,
+    ],
+  );
+  await recordAnalysisEvent({
+    eventType: 'completed',
+    imageId,
+    folderId: 0,
+    language: data.language,
+    domainCount: data.domains.length,
+    timings: {
+      durationMs: 0,
+      frameExtractMs: 0,
+      audioExtractMs: 0,
+      whisperMs: 0,
+      llmMs: 0,
+      inputTokens: data.usageTokens,
+      outputTokens: 0,
+      model: data.model,
+    },
+    errorKind: null,
+    errorMessage: null,
+  });
+}
+
+/**
+ * Update only the frame-quality fields (no summary/domain change). Called
+ * when detection runs but HQ re-analysis isn't triggered (e.g. quality=high).
+ */
+export async function saveFrameQuality(
+  imageId: number,
+  quality: 'high' | 'medium' | 'low',
+  similarity: number,
+  framesUsed: number,
+): Promise<void> {
+  await run(
+    `UPDATE images
+     SET ai_frame_quality = ?, ai_frame_similarity = ?, ai_frames_used = ?
+     WHERE id = ?`,
+    [quality, similarity, framesUsed, imageId],
+  );
+}
+
 /** Mark a video as failed with an error message. */
 export async function markFailed(imageId: number, error: string): Promise<void> {
   await run(
@@ -130,6 +199,78 @@ export async function markPendingIfFresh(
 /** Mark as running while the analyzer is in flight. */
 export async function markRunning(imageId: number): Promise<void> {
   await run(`UPDATE images SET ai_status = ?, ai_error = NULL WHERE id = ?`, ["running", imageId]);
+}
+
+/**
+ * Put an in-flight video back into the queue.
+ *
+ * Used when the analysis could not finish because of the *upstream* (rate
+ * limit, expired key, unreachable gateway): the video itself is fine, so it
+ * must go back to 'pending' instead of being burned as 'failed'. This is a
+ * direct reset — markPendingIfFresh() refuses to move a 'running' row.
+ */
+export async function resetToPending(imageId: number): Promise<void> {
+  await run(`UPDATE images SET ai_status = 'pending', ai_error = NULL WHERE id = ?`, [imageId]);
+}
+
+/**
+ * Error-text prefixes that mark a failure as caused by the upstream service
+ * (expired key, DNS failure, gateway 5xx, rate limit) instead of by the video
+ * itself.
+ *
+ * Since the upstream-fault fix an upstream error never reaches
+ * ai_status='failed' at all, so these patterns only ever match rows written
+ * by the old, destructive behaviour — exactly the rows worth retrying.
+ */
+const UPSTREAM_OPERATIONS = ["chat", "transcribe", "embed"];
+const UPSTREAM_STATUSES = ["401", "402", "403", "404", "429", "5"];
+const UPSTREAM_ERROR_PATTERNS = [
+  "upstream unavailable:%",
+  "fetch failed%",
+  ...UPSTREAM_OPERATIONS.flatMap((op) => UPSTREAM_STATUSES.map((status) => `${op} ${status}%`)),
+];
+
+/**
+ * Reclaim videos that a crash — or the old upstream-failure bug — left behind:
+ *   - ai_status = 'running' → orphaned by a crash, never finished
+ *   - ai_status = 'failed' with an upstream-caused ai_error → wrongly burned
+ *
+ * Two bounded UPDATE statements, no per-row loop, idempotent. Genuine
+ * per-video failures (corrupt file, ffmpeg error, unparseable model output)
+ * keep their 'failed' state and are never retried in a loop.
+ *
+ * `excludeImageIds` protects the video the worker is analysing right now.
+ */
+export async function reclaimStuckVideos(
+  excludeImageIds: number[] = [],
+): Promise<{ running: number; upstreamFailed: number }> {
+  const excludeClause =
+    excludeImageIds.length > 0
+      ? ` AND id NOT IN (${excludeImageIds.map(() => "?").join(", ")})`
+      : "";
+  const running = await run(
+    `UPDATE images SET ai_status = 'pending', ai_error = NULL
+     WHERE media_type = 'video' AND is_deleted = 0 AND ai_status = 'running'${excludeClause}`,
+    [...excludeImageIds],
+  );
+  const upstreamFailed = await run(
+    `UPDATE images SET ai_status = 'pending', ai_error = NULL
+     WHERE media_type = 'video' AND is_deleted = 0 AND ai_status = 'failed'
+       AND (${UPSTREAM_ERROR_PATTERNS.map(() => "ai_error LIKE ?").join(" OR ")})${excludeClause}`,
+    [...UPSTREAM_ERROR_PATTERNS, ...excludeImageIds],
+  );
+  const count = (result: unknown): number => {
+    if (
+      result &&
+      typeof result === "object" &&
+      "rowCount" in result &&
+      typeof result.rowCount === "number"
+    ) {
+      return result.rowCount;
+    }
+    return 0;
+  };
+  return { running: count(running), upstreamFailed: count(upstreamFailed) };
 }
 
 /** Mark every video in a folder as pending. Returns the number of rows marked. */

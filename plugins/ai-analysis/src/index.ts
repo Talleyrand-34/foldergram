@@ -20,7 +20,7 @@
 
 import { registerRoutes } from "./api.js";
 import { startBackgroundWorker } from "./worker.js";
-import { getRateLimitState } from "./worker.js";
+import { getPauseState, getRateLimitState } from "./worker.js";
 import {
   addDomainNode,
   applyCanonicalization,
@@ -100,6 +100,7 @@ export const exposes = {
   getDistinctFolderIdsWithPendingOrUnanalyzedVideos,
   markFolderUnanalyzedAsPending,
   getRateLimitState,
+  getPauseState,
   updateFolderRollupOverride,
   addDomainNode,
   renameDomain,

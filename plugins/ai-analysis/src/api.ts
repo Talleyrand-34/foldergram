@@ -3,16 +3,33 @@
  *
  * Mounted under /api/plugins/ai-analysis by the host (see server/dist/plugins/host.ts).
  *
- *   GET  /status                       — overall progress
+ *   GET  /status                       — overall progress + worker pause state
  *   GET  /search?q=&domain=&tag=&limit= — search analyzed videos
  *   POST /analyze/:imageId             — manually trigger analysis for one video
+ *   POST /pause                        — admin: stop the worker from claiming work
+ *   POST /resume                       — admin: start the worker again
  */
 
-import type { Request, Response } from "express";
+import type { Request, RequestHandler, Response } from "express";
 import { databaseManager } from "../../../server/dist/db/database.js";
+import { requireCapability } from "../../../server/dist/middleware/auth-protection.js";
 import type { PluginContext } from "../../../server/dist/plugins/types.js";
-import { enqueueAnalysis } from "./worker.js";
+import { enqueueAnalysis, getPauseState, pauseWorker, resumeWorker } from "./worker.js";
 import { getImageAiStatus, getStatusSummary, markAllPendingInFolder, markPendingIfFresh, searchVideos } from "./storage.js";
+
+/** Queue control is an admin action: it decides what the worker analyses. */
+const requireLibraryAdmin = requireCapability("canManageLibrary", "Admin access is required.");
+
+/** Wrap a handler so only admins (canManageLibrary) can reach it. */
+function adminOnly(handler: (req: Request, res: Response) => Promise<void>): RequestHandler {
+  return (req, res, next) => {
+    requireLibraryAdmin(req, res, () => {
+      void handler(req, res).catch((err: unknown) => {
+        next(err);
+      });
+    });
+  };
+}
 
 export function registerRoutes(ctx: PluginContext): void {
   ctx.addRoutes([
@@ -22,12 +39,37 @@ export function registerRoutes(ctx: PluginContext): void {
       handler: async (_req: Request, res: Response) => {
         try {
           const summary = await getStatusSummary();
-          res.json(summary);
+          // The pause state rides along with the counters so the client can
+          // render it from the same poll it already does.
+          res.json({ ...summary, worker: getPauseState() });
         } catch (e) {
           ctx.log(`status failed: ${e instanceof Error ? e.message : String(e)}`);
           res.status(500).json({ error: "internal" });
         }
       },
+    },
+    {
+      method: "post",
+      path: "/pause",
+      handler: adminOnly(async (req: Request, res: Response) => {
+        const body: unknown = req.body;
+        const reason =
+          typeof body === "object" && body !== null && "reason" in body && typeof body.reason === "string"
+            ? body.reason
+            : undefined;
+        const worker = pauseWorker(reason);
+        ctx.log(`pause requested${reason ? `: ${reason}` : ""}`);
+        res.json({ worker });
+      }),
+    },
+    {
+      method: "post",
+      path: "/resume",
+      handler: adminOnly(async (_req: Request, res: Response) => {
+        const worker = resumeWorker();
+        ctx.log("resume requested");
+        res.json({ worker });
+      }),
     },
     {
       method: "get",

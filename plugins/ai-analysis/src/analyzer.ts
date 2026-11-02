@@ -13,7 +13,14 @@
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { chat, transcribe, AUDIO_MODEL, RateLimitedError, VISION_MODEL } from "./lib/litellm-client.js";
+import {
+  chat,
+  transcribe,
+  AUDIO_MODEL,
+  RateLimitedError,
+  UpstreamUnavailableError,
+  VISION_MODEL,
+} from "./lib/litellm-client.js";
 import { canonicalize, type CanonicalResult } from "./lib/laya-client.js";
 import { extractAudio, extractSampleFrames, probeVideo } from "./lib/ffmpeg.js";
 import {
@@ -160,6 +167,15 @@ Return ONLY the JSON object. No prose, no markdown.`;
       inputTokens = llmResult.usage.prompt_tokens;
       outputTokens = llmResult.usage.completion_tokens;
     } catch (e) {
+      // A rate limit or an upstream outage is not a failure of this video:
+      // rethrow so the worker can pause the queue and retry later instead of
+      // burning through the library marking every video failed.
+      const upstreamKind =
+        e instanceof UpstreamUnavailableError
+          ? "upstream_unavailable"
+          : e instanceof RateLimitedError
+            ? "rate_limited"
+            : null;
       await recordAnalysisEvent({
         eventType: "failed",
         imageId: asset.imageId,
@@ -176,9 +192,10 @@ Return ONLY the JSON object. No prose, no markdown.`;
           outputTokens: 0,
           model: VISION_MODEL,
         },
-        errorKind: "llm_request_failed",
+        errorKind: upstreamKind ?? "llm_request_failed",
         errorMessage: e instanceof Error ? e.message.slice(0, 500) : String(e).slice(0, 500),
       });
+      if (upstreamKind) throw e;
       return {
         imageId: asset.imageId,
         status: "failed",
@@ -352,10 +369,14 @@ Return ONLY the JSON object. No prose, no markdown.`;
       durationMs: Date.now() - totalStart,
     };
   } catch (e) {
-    // Rate-limit errors must propagate to the worker so it can pause
-    // the queue; they are not a "failed" outcome for the video itself.
+    // Rate-limit and upstream-outage errors must propagate to the worker so
+    // it can pause the queue; they are not a "failed" outcome for the video.
     if (e instanceof RateLimitedError) {
       console.log(`[ai-analysis] rate-limited during id=${asset.imageId}: ${e.message}`);
+      throw e;
+    }
+    if (e instanceof UpstreamUnavailableError) {
+      console.log(`[ai-analysis] upstream unavailable during id=${asset.imageId}: ${e.message}`);
       throw e;
     }
     await recordAnalysisEvent({

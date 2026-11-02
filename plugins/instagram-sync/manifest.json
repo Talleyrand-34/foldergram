@@ -1,0 +1,8 @@
+{
+  "name": "instagram-sync",
+  "version": "0.1.0",
+  "description": "Scheduled Instagram saved-posts sync into the library, with a self-updating gallery-dl.",
+  "entry": "dist/index.js",
+  "hooks": [],
+  "requireAuth": true
+}

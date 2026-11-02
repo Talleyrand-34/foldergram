@@ -22,6 +22,156 @@ export interface VideoInfo {
   hasAudio: boolean;
 }
 
+/**
+ * Perceptual hash (dHash, 8x8) of an image file. 64-bit string derived
+ * from horizontal-gradient differences after down-scaling to 9x8 grayscale.
+ * Used to cheaply measure frame-to-frame similarity for the quality check.
+ */
+export async function dHash(imagePath: string): Promise<string> {
+  // Use ImageMagick (preferred) or fall back to a tiny Python helper.
+  // ImageMagick syntax: convert to 9x8 grayscale, compute the 64-bit hash.
+  const { spawn } = await import('node:child_process');
+  const tmp = imagePath + '.pgm';
+  const args = ['convert', imagePath, '-resize', '9x8!', '-colorspace', 'Gray', '-depth', '8', tmp];
+  const child = spawn('magick', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  await new Promise<void>((resolve, reject) => {
+    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`magick exit ${code}`)));
+    child.on('error', reject);
+  });
+  const fs = await import('node:fs/promises');
+  const buf = await fs.readFile(tmp);
+  await fs.unlink(tmp).catch(() => {});
+  // 9x8 grayscale = 72 bytes. Compare each byte to the previous: bit=1 if
+  // current > previous, else 0. Drop the last row (8th) since there's no
+  // neighbor for column 7.
+  let bits = '';
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const cur = buf[row * 9 + col];
+      const next = buf[row * 9 + col + 1];
+      bits += cur > next ? '1' : '0';
+    }
+  }
+  return bits;
+}
+
+/** Hamming distance between two dHash strings of equal length. */
+export function hamming(a: string, b: string): number {
+  if (a.length !== b.length) return Math.max(a.length, b.length);
+  let d = 0;
+  for (let i = 0; i < a.length; i++) if (a.charCodeAt(i) !== b.charCodeAt(i)) d++;
+  return d;
+}
+
+/**
+ * Sample N frames uniformly across a video, returning their paths and a
+ * dHash per frame. Used by the analyzer to detect "low quality" videos
+ * (where 3 sparse samples miss the point) and to pick the most-diverse
+ * subset when re-analyzing.
+ */
+export interface SampledFrame {
+  path: string;
+  hash: string;
+  index: number;       // 0..N-1 in the timeline
+  timeSec: number;     // timestamp in the source video
+}
+
+export async function sampleFrames(
+  videoPath: string,
+  count: number,
+  outDir?: string,
+): Promise<SampledFrame[]> {
+  const dir: string = outDir ?? (await import('node:fs/promises').then((m) => m.mkdtemp(
+    join(tmpdir(), '/aia-frames-'),
+  )) as string);
+  await mkdir(dir, { recursive: true });
+  const pattern = join(dir, 'f%03d.jpg');
+  const args = ['-nostdin', '-v', 'error', '-i', videoPath, '-vf', `fps=1/${Math.max(1, Math.ceil(60 / count))},scale=480:-2`, '-frames:v', String(count), '-q:v', '3', pattern];
+  const child = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  await new Promise<void>((resolve, reject) => {
+    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}`)));
+    child.on('error', reject);
+  });
+  // Read the produced files (they're named f001.jpg, f002.jpg, ...)
+  const fs = await import('node:fs/promises');
+  const items: SampledFrame[] = [];
+  for (let i = 1; i <= count; i++) {
+    const fp = join(dir, `f${String(i).padStart(3, '0')}.jpg`);
+    try {
+      const stat = await fs.stat(fp);
+      if (!stat.isFile()) continue;
+      const hash = await dHash(fp);
+      items.push({ path: fp, hash, index: i - 1, timeSec: (i - 1) * (60 / count) });
+    } catch {
+      // file might be missing if video is shorter than count
+    }
+  }
+  return items;
+}
+
+/**
+ * Pick `k` most-diverse frames using a greedy k-center on the dHash
+ * Hamming-distance graph. Frames are picked in order of maximum average
+ * distance to whatever has been selected so far.
+ */
+export function pickMostDiverse(
+  frames: SampledFrame[],
+  k: number,
+): SampledFrame[] {
+  if (frames.length <= k) return frames.slice();
+  const picked: SampledFrame[] = [frames[0]];
+  while (picked.length < k) {
+    let bestIdx = -1;
+    let bestScore = -1;
+    for (let i = 0; i < frames.length; i++) {
+      if (picked.includes(frames[i])) continue;
+      let avg = 0;
+      for (const p of picked) avg += hamming(frames[i].hash, p.hash);
+      const score = avg / picked.length;
+      if (score > bestScore) { bestScore = score; bestIdx = i; }
+    }
+    picked.push(frames[bestIdx]);
+  }
+  return picked;
+}
+
+/**
+ * Aggregate quality verdict from a set of dHashes. If the average pairwise
+ * Hamming distance is very low the frames are near-duplicates (static /
+ * fixed camera / slow motion) and a 3-frame sample is fine. If the spread
+ * is high, frames are wildly different (montage / cuts) and 3 samples
+ * might miss the topic.
+ *
+ * Returns:
+ *   quality: 'high' | 'medium' | 'low'
+ *   avgDist: average pairwise Hamming distance (normalized to 0..1)
+ */
+export function assessFrameQuality(
+  frames: SampledFrame[],
+): { quality: 'high' | 'medium' | 'low'; avgDist: number } {
+  if (frames.length < 2) return { quality: 'high', avgDist: 0 };
+  let total = 0, pairs = 0;
+  for (let i = 0; i < frames.length; i++) {
+    for (let j = i + 1; j < frames.length; j++) {
+      total += hamming(frames[i].hash, frames[j].hash);
+      pairs++;
+    }
+  }
+  const avgDist = pairs > 0 ? total / pairs / 64 : 0;
+  // 'high'  = frames are similar (sparse 3-frame is fine)
+  // 'medium' = mixed (re-analysis optional)
+  // 'low'    = wildly different (re-analysis strongly recommended)
+  const quality = avgDist < 0.10 ? 'high' : avgDist < 0.30 ? 'medium' : 'low';
+  return { quality, avgDist };
+}
+export interface VideoInfo {
+  duration: number; // seconds
+  fps: number;
+  width: number;
+  height: number;
+  hasAudio: boolean;
+}
+
 export async function probeVideo(path: string): Promise<VideoInfo> {
   const args = [
     "-v",
