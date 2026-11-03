@@ -138,6 +138,22 @@ export interface InstagramCollectionSyncResult {
   results: InstagramCollectionMirrorResult[];
 }
 
+/** Acknowledgement of `POST /collections/sync` — the mirror runs in the background. */
+export interface InstagramCollectionSyncStarted {
+  started: boolean;
+}
+
+/** The state of the background mirror job. */
+export interface InstagramMirrorJob {
+  running: boolean;
+  /** The collection being mirrored, or null when idle. */
+  name: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  results: InstagramCollectionMirrorResult[];
+  error: string | null;
+}
+
 export async function fetchInstagramSyncStatus(): Promise<InstagramSyncStatus> {
   return await requestJson<InstagramSyncStatus>(`${INSTAGRAM_SYNC_BASE_PATH}/status`);
 }
@@ -182,12 +198,17 @@ export async function fetchInstagramCollections(): Promise<InstagramCollectionLi
  */
 export async function syncInstagramCollections(
   name?: string,
-): Promise<InstagramCollectionSyncResult> {
+): Promise<InstagramCollectionSyncStarted> {
   const query = name ? `?name=${encodeURIComponent(name)}` : '';
-  return await requestJson<InstagramCollectionSyncResult>(
+  return await requestJson<InstagramCollectionSyncStarted>(
     `${INSTAGRAM_SYNC_BASE_PATH}/collections/sync${query}`,
     { method: 'POST' },
   );
+}
+
+/** The state of the background mirror job. Poll this while a mirror is running. */
+export async function fetchInstagramMirrorJob(): Promise<InstagramMirrorJob> {
+  return await requestJson<InstagramMirrorJob>(`${INSTAGRAM_SYNC_BASE_PATH}/collections/sync`);
 }
 
 export async function updateGalleryDl(): Promise<InstagramGalleryDlUpdateResult> {

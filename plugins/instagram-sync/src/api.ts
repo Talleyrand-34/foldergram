@@ -33,7 +33,11 @@ import {
   listInstagramCollections,
   type InstagramCollection
 } from "./instagramCollections.js";
-import { mirrorCollection, type CollectionMirrorResult } from "./collectionMirror.js";
+import {
+  getMirrorJob,
+  isMirrorRunning,
+  runMirrorJob
+} from "./collectionMirror.js";
 import { isRunning, runSyncNow, schedulerState } from "./scheduler.js";
 
 interface RouteDeps {
@@ -270,39 +274,36 @@ export function registerRoutes(ctx: PluginContext, deps: RouteDeps): void {
         "canManageLibrary",
         "Library management access required",
         async (req: Request, res: Response) => {
-          try {
-            const requested = typeof req.query.name === "string" ? req.query.name : null;
-            const collections = await listInstagramCollections(config);
-            const selected = requested
-              ? collections.filter(
-                  (collection) =>
-                    collection.name.toLocaleLowerCase() === requested.toLocaleLowerCase()
-                )
-              : collections.filter((collection) => !collection.isAuto);
-
-            if (requested && selected.length === 0) {
-              res.status(404).json({ message: `no Instagram collection named "${requested}"` });
-              return;
-            }
-
-            const results: CollectionMirrorResult[] = [];
-            for (const collection of selected) {
-              const media = await listCollectionMedia(config, collection);
-              const result = await mirrorCollection(collection, media, galleryRoot);
-              ctx.log(
-                `mirrored collection "${collection.name}": ${result.addedCount}/${result.mediaCount} media, ${result.missingCount} missing`
-              );
-              results.push(result);
-            }
-
-            res.json({ results });
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            ctx.log(`collection sync failed: ${message}`);
-            res.status(500).json({ message });
+          if (isMirrorRunning()) {
+            res.status(409).json({ message: "a collection mirror is already running" });
+            return;
           }
+
+          const requested = typeof req.query.name === "string" ? req.query.name : null;
+
+          // The work happens in the background: mirroring one collection takes
+          // minutes, and a request that long just looks like a failure.
+          void runMirrorJob(
+            () => listInstagramCollections(config),
+            (collection) => listCollectionMedia(config, collection),
+            galleryRoot,
+            requested,
+            (result) =>
+              ctx.log(
+                `mirrored collection "${result.name}": ${result.addedCount}/${result.mediaCount} media, ${result.missingCount} missing`
+              )
+          );
+
+          res.json({ started: true });
         }
       )
+    },
+    {
+      method: "get",
+      path: "/collections/sync",
+      handler: async (_req: Request, res: Response) => {
+        res.json(getMirrorJob());
+      }
     }
   ]);
 }

@@ -325,6 +325,7 @@ import { useI18n } from 'vue-i18n';
 import {
   checkGalleryDl,
   fetchInstagramCollections,
+  fetchInstagramMirrorJob,
   fetchInstagramSyncStatus,
   runInstagramSync,
   syncInstagramCollections,
@@ -340,6 +341,8 @@ import { RequestError } from '../api/http';
 
 const { t, locale } = useI18n();
 const POLL_INTERVAL_MS = 10_000;
+/** The mirror job is polled more often — it is the thing the user is waiting on. */
+const MIRROR_POLL_INTERVAL_MS = 2_000;
 
 const status = ref<InstagramSyncStatus | null>(null);
 const check = ref<InstagramGalleryDlCheck | null>(null);
@@ -695,23 +698,60 @@ async function handleLoadCollections() {
   }
 }
 
+/**
+ * Mirroring runs on the server in the background — one collection takes
+ * minutes — so the request returns immediately and the result is polled.
+ */
 async function runMirror(name?: string) {
-  mirroring.value = true;
   collectionsError.value = null;
   collectionsNotice.value = null;
   try {
-    const result = await syncInstagramCollections(name);
-    for (const item of result.results ?? []) {
+    await syncInstagramCollections(name);
+    mirroring.value = true;
+    await pollMirrorJob();
+  } catch (e) {
+    if (isConflict(e)) {
+      // A mirror is already running on the server — join it rather than
+      // treating it as a failure.
+      mirroring.value = true;
+      void pollMirrorJob();
+      return;
+    }
+
+    mirroring.value = false;
+    collectionsError.value = messageOf(e, t('instagramSync.collections.mirrorFailed'));
+  }
+}
+
+async function pollMirrorJob() {
+  while (mirroring.value) {
+    await new Promise((resolve) => setTimeout(resolve, MIRROR_POLL_INTERVAL_MS));
+    if (!mirroring.value) return;
+
+    let job;
+    try {
+      job = await fetchInstagramMirrorJob();
+    } catch {
+      // A transient poll failure is not a mirror failure; keep trying.
+      continue;
+    }
+
+    for (const item of job.results ?? []) {
       mirrorResults.value = { ...mirrorResults.value, [item.name]: item };
     }
-    const missing = (result.results ?? []).reduce((sum, item) => sum + item.missingCount, 0);
+
+    if (job.running) continue;
+
+    mirroring.value = false;
+    if (job.error) {
+      collectionsError.value = job.error;
+      return;
+    }
+
+    const missing = (job.results ?? []).reduce((sum, item) => sum + item.missingCount, 0);
     collectionsNotice.value = missing
       ? t('instagramSync.collections.someMissing', { missing: formatNumber(missing) })
       : t('instagramSync.collections.done');
-  } catch (e) {
-    collectionsError.value = messageOf(e, t('instagramSync.collections.mirrorFailed'));
-  } finally {
-    mirroring.value = false;
   }
 }
 
@@ -726,15 +766,37 @@ function handleMirrorAll() {
 onMounted(() => {
   void refresh();
   void loadCheck(false);
+  void adoptRunningMirror();
   pollTimer = setInterval(() => {
     void refresh();
   }, POLL_INTERVAL_MS);
 });
+
+/**
+ * A mirror may already be running — the user can navigate away and back, or
+ * press the button twice. Pick up its state instead of showing idle buttons
+ * that would only fail with a conflict.
+ */
+async function adoptRunningMirror() {
+  try {
+    const job = await fetchInstagramMirrorJob();
+    if (!job.running) return;
+
+    mirroring.value = true;
+    for (const item of job.results ?? []) {
+      mirrorResults.value = { ...mirrorResults.value, [item.name]: item };
+    }
+    await pollMirrorJob();
+  } catch {
+    // The server may be unreachable; the buttons still work.
+  }
+}
 
 onBeforeUnmount(() => {
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
   }
+  mirroring.value = false;
 });
 </script>

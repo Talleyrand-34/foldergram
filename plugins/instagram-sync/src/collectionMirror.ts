@@ -115,6 +115,102 @@ async function indexMissingMedia(galleryRoot: string, relativePaths: string[]): 
 }
 
 /**
+ * The mirror's job state.
+ *
+ * Mirroring one collection takes minutes — Instagram enumerating the
+ * collection's media is the slow part — so the work runs in the background and
+ * the client polls for the result. A synchronous request that takes three
+ * minutes just looks like a failure.
+ */
+export interface MirrorJobState {
+  running: boolean;
+  /** The collection being mirrored, or null when idle. */
+  name: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  results: CollectionMirrorResult[];
+  error: string | null;
+}
+
+const idleMirrorJob: MirrorJobState = {
+  running: false,
+  name: null,
+  startedAt: null,
+  finishedAt: null,
+  results: [],
+  error: null
+};
+
+let mirrorJob: MirrorJobState = { ...idleMirrorJob };
+
+export function getMirrorJob(): MirrorJobState {
+  return mirrorJob;
+}
+
+export function isMirrorRunning(): boolean {
+  return mirrorJob.running;
+}
+
+/**
+ * Mirror collections in the background.
+ * Resolves when the job is done; the state is polled via `getMirrorJob()`.
+ */
+export async function runMirrorJob(
+  listCollections: () => Promise<InstagramCollection[]>,
+  listMedia: (collection: InstagramCollection) => Promise<string[]>,
+  galleryRoot: string,
+  requestedName: string | null,
+  onCollectionDone?: (result: CollectionMirrorResult) => void
+): Promise<void> {
+  mirrorJob = {
+    ...idleMirrorJob,
+    running: true,
+    name: requestedName,
+    startedAt: new Date().toISOString()
+  };
+
+  const results: CollectionMirrorResult[] = [];
+
+  try {
+    const collections = await listCollections();
+    const selected = requestedName
+      ? collections.filter(
+          (collection) =>
+            collection.name.toLocaleLowerCase() === requestedName.toLocaleLowerCase()
+        )
+      : collections.filter((collection) => !collection.isAuto);
+
+    if (requestedName && selected.length === 0) {
+      throw new Error(`no Instagram collection named "${requestedName}"`);
+    }
+
+    for (const collection of selected) {
+      const media = await listMedia(collection);
+      const result = await mirrorCollection(collection, media, galleryRoot);
+      results.push(result);
+      onCollectionDone?.(result);
+      // Publish partial results as they arrive so the UI can show progress.
+      mirrorJob = { ...mirrorJob, results: [...results] };
+    }
+
+    mirrorJob = {
+      ...mirrorJob,
+      running: false,
+      results,
+      finishedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    mirrorJob = {
+      ...mirrorJob,
+      running: false,
+      results,
+      error: error instanceof Error ? error.message : String(error),
+      finishedAt: new Date().toISOString()
+    };
+  }
+}
+
+/**
  * Merge a second lookup into the first.
  *
  * The mirror looks the media up twice: once for what is already indexed, and
