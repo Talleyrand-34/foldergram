@@ -265,6 +265,9 @@
               aria-hidden="true"
             />
             {{ mirroring ? t('instagramSync.collections.mirroring') : t('instagramSync.collections.mirrorAll') }}
+            <span v-if="mirrorableCollections.length" class="text-muted font-normal">
+              ({{ formatNumber(mirrorableCollections.length) }})
+            </span>
           </button>
         </div>
       </header>
@@ -278,7 +281,7 @@
 
       <p
         v-if="collectionsNotice"
-        class="m-0 px-3 py-2 rounded-[0.55rem] border border-[rgba(214,48,49,0.32)] text-[0.84rem] bg-[rgba(214,48,49,0.06)]"
+        class="m-0 px-3 py-2 rounded-[0.55rem] border border-[rgba(31,122,58,0.28)] text-[0.84rem] bg-[rgba(31,122,58,0.06)]"
       >
         {{ collectionsNotice }}
       </p>
@@ -286,6 +289,32 @@
       <p v-if="!loadingCollections && !collections.length" class="m-0 text-[0.84rem] text-muted">
         {{ t('instagramSync.collections.empty') }}
       </p>
+
+      <!-- Live progress while a mirror runs -->
+      <div
+        v-if="mirrorJob && mirrorJob.running"
+        class="px-3 py-2.5 rounded-[0.55rem] border border-border bg-surface-alt flex flex-col gap-[0.35rem]"
+      >
+        <div class="flex items-center gap-[0.45rem] text-[0.84rem]">
+          <span class="i-fluent-arrow-sync-16-filled animate-spin w-[0.95rem] h-[0.95rem]" aria-hidden="true" />
+          <span class="font-semibold">{{ mirrorProgressLabel }}</span>
+        </div>
+        <div
+          v-if="mirrorJob.currentCollection && mirrorJob.mediaFound !== null"
+          class="text-[0.8rem] text-muted"
+        >
+          {{ t('instagramSync.collections.foundMedia', { count: formatNumber(mirrorJob.mediaFound) }) }}
+        </div>
+        <ul v-if="mirrorJob.log.length" class="m-0 p-0 list-none flex flex-col gap-[0.1rem]">
+          <li
+            v-for="(line, index) in mirrorJob.log.slice(-6)"
+            :key="index"
+            class="text-[0.76rem] text-muted font-mono truncate"
+          >
+            {{ line }}
+          </li>
+        </ul>
+      </div>
 
       <ul v-if="collections.length" class="m-0 p-0 list-none grid gap-[0.6rem]">
         <li
@@ -333,6 +362,7 @@ import {
   uploadInstagramCookie,
   type InstagramCollection,
   type InstagramCollectionMirrorResult,
+  type InstagramMirrorJob,
   type InstagramGalleryDlCheck,
   type InstagramSyncRun,
   type InstagramSyncStatus,
@@ -357,6 +387,7 @@ const uploading = ref(false);
 
 const collections = ref<InstagramCollection[]>([]);
 const mirrorResults = ref<Record<string, InstagramCollectionMirrorResult>>({});
+const mirrorJob = ref<InstagramMirrorJob | null>(null);
 const loadingCollections = ref(false);
 const mirroring = ref(false);
 const collectionsError = ref<string | null>(null);
@@ -428,6 +459,19 @@ const galleryDlMinRequired = computed(() => {
 
 /** Instagram's catch-all "All posts" is not a real collection to mirror. */
 const mirrorableCollections = computed(() => collections.value.filter((c) => !c.isAuto));
+
+const mirrorProgressLabel = computed(() => {
+  const job = mirrorJob.value;
+  if (!job?.running) return t('instagramSync.collections.mirroring');
+
+  const current = job.currentCollection;
+  const counter =
+    job.totalCount !== null ? ` (${job.completedCount}/${job.totalCount})` : '';
+
+  return current
+    ? t('instagramSync.collections.progressCollection', { name: current }) + counter
+    : t('instagramSync.collections.progress') + counter;
+});
 
 const cookieState = computed(() => {
   const cookie = status.value?.cookie;
@@ -561,6 +605,7 @@ function applyRunState(next: InstagramSyncStatus) {
 }
 
 async function refresh() {
+  void refreshMirrorJob();
   loading.value = true;
   try {
     const next = await fetchInstagramSyncStatus();
@@ -685,6 +730,19 @@ async function handleCookieFile(event: Event) {
   }
 }
 
+async function refreshMirrorJob() {
+  try {
+    const job = await fetchInstagramMirrorJob();
+    mirrorJob.value = job;
+    if (job.running && !mirroring.value) {
+      mirroring.value = true;
+      void pollMirrorJob();
+    }
+  } catch {
+    // The server may be unreachable; the buttons still work.
+  }
+}
+
 async function handleLoadCollections() {
   loadingCollections.value = true;
   collectionsError.value = null;
@@ -736,6 +794,7 @@ async function pollMirrorJob() {
       continue;
     }
 
+    mirrorJob.value = job;
     for (const item of job.results ?? []) {
       mirrorResults.value = { ...mirrorResults.value, [item.name]: item };
     }
@@ -780,6 +839,7 @@ onMounted(() => {
 async function adoptRunningMirror() {
   try {
     const job = await fetchInstagramMirrorJob();
+    mirrorJob.value = job;
     if (!job.running) return;
 
     mirroring.value = true;

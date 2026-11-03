@@ -1278,7 +1278,10 @@
       "mirrorFailed": "No se pudo replicar la colección de Instagram.",
       "mirrored": "{added} de {total} medios añadidos a la colección.",
       "done": "Colecciones replicadas.",
-      "someMissing": "Replicado, pero {missing} medios aún no están en la biblioteca: ejecuta una sincronización primero."
+      "someMissing": "Replicado, pero {missing} medios aún no están en la biblioteca: ejecuta una sincronización primero.",
+      "progress": "Replicando colecciones",
+      "progressCollection": "Replicando {name}",
+      "foundMedia": "{count} medios encontrados hasta ahora"
     }
   },
   "explore": {

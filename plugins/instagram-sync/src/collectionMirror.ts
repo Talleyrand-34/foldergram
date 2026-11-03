@@ -126,20 +126,37 @@ export interface MirrorJobState {
   running: boolean;
   /** The collection being mirrored, or null when idle. */
   name: string | null;
+  /** The collection currently being enumerated. */
+  currentCollection: string | null;
+  /** Media found so far in the current collection. */
+  mediaFound: number | null;
+  /** Collections finished so far. */
+  completedCount: number;
+  /** Collections to mirror in this job, once they are known. */
+  totalCount: number | null;
   startedAt: string | null;
   finishedAt: string | null;
   results: CollectionMirrorResult[];
   error: string | null;
+  /** Recent activity, oldest first. */
+  log: string[];
 }
 
 const idleMirrorJob: MirrorJobState = {
   running: false,
   name: null,
+  currentCollection: null,
+  mediaFound: null,
+  completedCount: 0,
+  totalCount: null,
   startedAt: null,
   finishedAt: null,
   results: [],
-  error: null
+  error: null,
+  log: []
 };
+
+const MAX_LOG_LINES = 40;
 
 let mirrorJob: MirrorJobState = { ...idleMirrorJob };
 
@@ -151,13 +168,24 @@ export function isMirrorRunning(): boolean {
   return mirrorJob.running;
 }
 
+/** Append a line to the activity log, keeping the tail bounded. */
+function logLine(message: string): void {
+  mirrorJob = {
+    ...mirrorJob,
+    log: [...mirrorJob.log, message].slice(-MAX_LOG_LINES)
+  };
+}
+
 /**
  * Mirror collections in the background.
  * Resolves when the job is done; the state is polled via `getMirrorJob()`.
  */
 export async function runMirrorJob(
   listCollections: () => Promise<InstagramCollection[]>,
-  listMedia: (collection: InstagramCollection) => Promise<string[]>,
+  listMedia: (
+    collection: InstagramCollection,
+    onProgress?: (found: number) => void
+  ) => Promise<string[]>,
   galleryRoot: string,
   requestedName: string | null,
   onCollectionDone?: (result: CollectionMirrorResult) => void
@@ -184,13 +212,40 @@ export async function runMirrorJob(
       throw new Error(`no Instagram collection named "${requestedName}"`);
     }
 
+    mirrorJob = { ...mirrorJob, totalCount: selected.length };
+    logLine(
+      selected.length === 1
+        ? `Mirroring ${selected[0].name}`
+        : `Mirroring ${selected.length} collections`
+    );
+
     for (const collection of selected) {
-      const media = await listMedia(collection);
+      mirrorJob = {
+        ...mirrorJob,
+        currentCollection: collection.name,
+        mediaFound: 0,
+        completedCount: results.length
+      };
+
+      const media = await listMedia(collection, (found) => {
+        mirrorJob = { ...mirrorJob, mediaFound: found };
+      });
+      logLine(`${collection.name}: ${media.length} media listed`);
+
       const result = await mirrorCollection(collection, media, galleryRoot);
       results.push(result);
       onCollectionDone?.(result);
-      // Publish partial results as they arrive so the UI can show progress.
-      mirrorJob = { ...mirrorJob, results: [...results] };
+
+      mirrorJob = {
+        ...mirrorJob,
+        completedCount: results.length,
+        currentCollection: null,
+        mediaFound: null,
+        results: [...results]
+      };
+      logLine(
+        `${collection.name}: ${result.addedCount} added, ${result.missingCount} not in the library`
+      );
     }
 
     mirrorJob = {
@@ -199,14 +254,17 @@ export async function runMirrorJob(
       results,
       finishedAt: new Date().toISOString()
     };
+    logLine(`Done — ${results.length} collections mirrored`);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     mirrorJob = {
       ...mirrorJob,
       running: false,
       results,
-      error: error instanceof Error ? error.message : String(error),
+      error: message,
       finishedAt: new Date().toISOString()
     };
+    logLine(`Failed: ${message}`);
   }
 }
 

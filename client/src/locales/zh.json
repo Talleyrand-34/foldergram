@@ -1278,7 +1278,10 @@
       "mirrorFailed": "无法镜像该 Instagram 合集。",
       "mirrored": "已向合集添加 {total} 个媒体中的 {added} 个。",
       "done": "合集已镜像。",
-      "someMissing": "已镜像，但有 {missing} 个媒体尚未入库——请先运行一次同步。"
+      "someMissing": "已镜像，但有 {missing} 个媒体尚未入库——请先运行一次同步。",
+      "progress": "正在镜像合集",
+      "progressCollection": "正在镜像 {name}",
+      "foundMedia": "目前已找到 {count} 个媒体"
     }
   },
   "explore": {

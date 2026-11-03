@@ -19,7 +19,7 @@
  * library rows without any translation.
  */
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -118,46 +118,82 @@ export async function listInstagramCollections(
  *
  * gallery-dl is run with `--no-download`, so nothing is fetched: the archive
  * is irrelevant here and the already-downloaded files are simply listed.
+ *
+ * The listing is streamed, because enumerating a collection is the slow part
+ * (minutes) and the caller wants to report progress while it happens.
  */
 export async function listCollectionMedia(
   config: InstagramSyncConfig,
-  collection: InstagramCollection
+  collection: InstagramCollection,
+  onProgress?: (found: number) => void
 ): Promise<string[]> {
   const url = collectionUrl(config.sourceUrl, collection);
   const listingDir = path.join(config.workDir, "listing");
-
-  const { stdout } = await execFileAsync(
-    "python3",
-    [
-      "-m",
-      "gallery_dl",
-      "--no-download",
-      "--config-ignore",
-      "--cookies",
-      config.cookieFile,
-      "-d",
-      listingDir,
-      "-o",
-      'extractor.instagram.directory=["{username}"]',
-      url
-    ],
-    {
-      env: { ...process.env, PYTHONPATH: galleryDlPackageDir(config.galleryDlDir) },
-      cwd: config.workDir,
-      maxBuffer: 32 * 1024 * 1024,
-      timeout: config.timeoutMinutes * 60_000
-    }
-  );
-
   const prefix = listingDir.endsWith(path.sep) ? listingDir : `${listingDir}${path.sep}`;
-  const paths: string[] = [];
 
-  for (const rawLine of stdout.split("\n")) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("# ")) continue;
-    if (!line.startsWith(prefix)) continue;
-    paths.push(line.slice(prefix.length).replace(/\\/g, "/"));
-  }
+  const paths = await new Promise<string[]>((resolve, reject) => {
+    const child = spawn(
+      "python3",
+      [
+        "-m",
+        "gallery_dl",
+        "--no-download",
+        "--config-ignore",
+        "--cookies",
+        config.cookieFile,
+        "-d",
+        listingDir,
+        "-o",
+        'extractor.instagram.directory=["{username}"]',
+        url
+      ],
+      {
+        env: { ...process.env, PYTHONPATH: galleryDlPackageDir(config.galleryDlDir) },
+        cwd: config.workDir,
+        stdio: ["ignore", "pipe", "pipe"]
+      }
+    );
+
+    let pending = "";
+    let stderr = "";
+    let found = 0;
+    const collected: string[] = [];
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      pending += chunk.toString("utf8");
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        // "# " marks a file gallery-dl skipped; only real media count.
+        if (!trimmed || trimmed.startsWith("# ")) continue;
+        found += 1;
+        if (trimmed.startsWith(prefix)) {
+          collected.push(trimmed.slice(prefix.length).replace(/\\/g, "/"));
+        }
+        onProgress?.(found);
+      }
+    });
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    child.on("error", reject);
+    child.on("close", (code: number | null) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim().slice(0, 500) || `gallery-dl exited with ${code}`));
+        return;
+      }
+
+      // The last line may not have been terminated.
+      const trimmed = pending.trim();
+      if (trimmed && !trimmed.startsWith("# ") && trimmed.startsWith(prefix)) {
+        collected.push(trimmed.slice(prefix.length).replace(/\\/g, "/"));
+      }
+      resolve(collected);
+    });
+  });
 
   return paths;
 }

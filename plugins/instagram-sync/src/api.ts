@@ -285,7 +285,7 @@ export function registerRoutes(ctx: PluginContext, deps: RouteDeps): void {
           // minutes, and a request that long just looks like a failure.
           void runMirrorJob(
             () => listInstagramCollections(config),
-            (collection) => listCollectionMedia(config, collection),
+            (collection, onProgress) => listCollectionMedia(config, collection, onProgress),
             galleryRoot,
             requested,
             (result) =>

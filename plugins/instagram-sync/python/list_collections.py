@@ -39,7 +39,7 @@ VARIABLES = {
         "MEDIA",
         "AUDIO_AUTO_COLLECTION",
     ],
-    "first": 100,
+    "first": 50,
 }
 
 # Instagram's auto-collection for everything the user saved.
@@ -64,26 +64,47 @@ class CollectionListExtractor(InstagramExtractor):
     pattern = r"instagram:(collections)"
 
     def items(self):
-        data = self.api._call_graphql(OPNAME, VARIABLES)
-        edges = (
-            data.get("viewer", {})
-            .get("collections_unified_with_auto_collections", {})
-            .get("edges", [])
-        )
-
+        # The listing is paginated: Instagram caps a page at a dozen or so
+        # collections and hands back an `end_cursor`. Without following the
+        # cursor, every collection past the first page is invisible.
         collections = []
-        for edge in edges:
-            node = edge.get("node", {})
-            collection_id = node.get("collection_id")
-            name = node.get("collection_name")
-            if not collection_id or not name:
-                continue
-            collections.append({
-                "id": str(collection_id),
-                "name": name,
-                "type": node.get("__typename") or "",
-                "isAuto": collection_id == ALL_MEDIA,
-            })
+        seen = set()
+        after = None
+
+        while True:
+            variables = dict(VARIABLES)
+            if after is not None:
+                variables["after"] = after
+
+            data = self.api._call_graphql(OPNAME, variables)
+            node = (
+                data.get("viewer", {})
+                .get("collections_unified_with_auto_collections", {})
+            )
+
+            for edge in node.get("edges", []):
+                item = edge.get("node", {})
+                collection_id = item.get("collection_id")
+                name = item.get("collection_name")
+                if not collection_id or not name:
+                    continue
+                if collection_id in seen:
+                    continue
+                seen.add(collection_id)
+                collections.append({
+                    "id": str(collection_id),
+                    "name": name,
+                    "type": item.get("__typename") or "",
+                    "isAuto": collection_id == ALL_MEDIA,
+                })
+
+            page_info = node.get("page_info", {})
+            if not page_info.get("has_next_page"):
+                break
+
+            after = page_info.get("end_cursor")
+            if after is None:
+                break
 
         sys.stdout.write("COLLECTIONS_JSON=" + json.dumps(collections))
         return iter(())

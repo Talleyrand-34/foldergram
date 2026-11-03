@@ -148,10 +148,20 @@ export interface InstagramMirrorJob {
   running: boolean;
   /** The collection being mirrored, or null when idle. */
   name: string | null;
+  /** The collection currently being enumerated. */
+  currentCollection: string | null;
+  /** Media found so far in the current collection. */
+  mediaFound: number | null;
+  /** Collections finished so far. */
+  completedCount: number;
+  /** Collections to mirror in this job, once they are known. */
+  totalCount: number | null;
   startedAt: string | null;
   finishedAt: string | null;
   results: InstagramCollectionMirrorResult[];
   error: string | null;
+  /** Recent activity, oldest first. */
+  log: string[];
 }
 
 export async function fetchInstagramSyncStatus(): Promise<InstagramSyncStatus> {

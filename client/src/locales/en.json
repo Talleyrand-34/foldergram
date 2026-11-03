@@ -1278,7 +1278,10 @@
       "mirrorFailed": "Could not mirror the Instagram collection.",
       "mirrored": "{added} of {total} media added to the collection.",
       "done": "Collections mirrored.",
-      "someMissing": "Mirrored, but {missing} media are not in the library yet — run a sync first."
+      "someMissing": "Mirrored, but {missing} media are not in the library yet — run a sync first.",
+      "progress": "Mirroring collections",
+      "progressCollection": "Mirroring {name}",
+      "foundMedia": "{count} media found so far"
     }
   },
   "explore": {
