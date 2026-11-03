@@ -115,6 +115,25 @@ async function indexMissingMedia(galleryRoot: string, relativePaths: string[]): 
 }
 
 /**
+ * Merge a second lookup into the first.
+ *
+ * The mirror looks the media up twice: once for what is already indexed, and
+ * again for what it just indexed. The second lookup must be MERGED — replacing
+ * the map would drop everything that was already matched, and the mirror would
+ * then add only the freshly indexed media.
+ */
+export function mergeImageLookups(
+  base: Map<string, number>,
+  extra: Map<string, number>
+): Map<string, number> {
+  const merged = new Map(base);
+  for (const [relativePath, imageId] of extra) {
+    merged.set(relativePath, imageId);
+  }
+  return merged;
+}
+
+/**
  * Mirror one Instagram collection into a Foldergram collection.
  *
  * The Foldergram collection is matched by name, case-insensitively — that is
@@ -132,9 +151,14 @@ export async function mirrorCollection(
   // Media that is on disk but not indexed yet: index it, then look again.
   if (missingPaths.length > 0) {
     await indexMissingMedia(galleryRoot, missingPaths);
-    images = await findImagesByRelativePaths(missingPaths);
-    missingPaths = missingPaths.filter((relativePath) => !images.has(relativePath));
+
+    // MERGE the newly indexed rows into the map. Replacing it would drop
+    // everything that was already matched, and the mirror would then add
+    // only the freshly indexed media and under-report the rest.
+    images = mergeImageLookups(images, await findImagesByRelativePaths(missingPaths));
   }
+
+  missingPaths = relativePaths.filter((relativePath) => !images.has(relativePath));
 
   const summaries = await collectionRepository.listSummaries();
   const existing = summaries.find(
