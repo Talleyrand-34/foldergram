@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type express from 'express';
 
 import {
@@ -47,7 +47,15 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
     generatePreviewDerivativeMock.mockReset();
     readMediaMetadataMock.mockReset();
 
-    await fs.rm(tempRoot, { recursive: true, force: true });
+    // The database directory is deliberately kept: it holds the schema and
+    // the applied-migration state, so the migrations only run for the first
+    // test of this file instead of for every one of them. The rows are
+    // cleared below instead.
+    await Promise.all(
+      ['data', 'gallery', 'thumbnails', 'previews'].map((directory) =>
+        fs.rm(path.join(tempRoot, directory), { recursive: true, force: true })
+      )
+    );
     await fs.mkdir(tempRoot, { recursive: true });
 
     vi.resetModules();
@@ -73,6 +81,11 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
     ({ scannerService } = await import('../src/services/scanner-service.js'));
     ({folderRepository, imageRepository, maintenanceRepository, appSettingsRepository} = await import('../src/db/repositories.js'));
     await (await import('../src/db/repositories.js')).initRepositories();
+
+    // Start every test with an empty library. The schema survives, the rows
+    // do not.
+    await maintenanceRepository.resetLibraryIndex();
+    await appSettingsRepository.clear();
 
     await Promise.all([
       fs.mkdir(appConfig.galleryRoot, { recursive: true }),
@@ -158,12 +171,16 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
       headers: Map<string, string>;
       jsonCalls: number;
       statusCode: number;
+      redirectCode: number | null;
+      redirectLocation: string | null;
     }>((resolve, reject) => {
       const headers = new Map<string, string>();
       const responseState = {
         body: null as unknown,
         jsonCalls: 0,
-        statusCode: 200
+        statusCode: 200,
+        redirectCode: null as number | null,
+        redirectLocation: null as string | null
       };
       let settled = false;
 
@@ -227,8 +244,16 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
         status(code: number) {
           responseState.statusCode = code;
           return this;
+        },
+        redirect(code: number, location: string) {
+          responseState.statusCode = code;
+          responseState.redirectCode = code;
+          responseState.redirectLocation = location;
+          this.headersSent = true;
+          finish();
+          return this;
         }
-      } satisfies Pick<express.Response, 'json' | 'sendFile' | 'setHeader' | 'status'>;
+      } satisfies Pick<express.Response, 'json' | 'sendFile' | 'setHeader' | 'status' | 'redirect'>;
 
       const request = {
         get() {
@@ -258,7 +283,13 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
     mtimeMs: number,
     playbackStrategy: PlaybackStrategy,
     durationMs: number | null = null,
-    options: { storedGalleryRoot?: string; isAnimated?: boolean | null } = {}
+    options: {
+      storedGalleryRoot?: string;
+      isAnimated?: boolean | null;
+      width?: number;
+      height?: number;
+      fileSize?: number;
+    } = {}
   ) {
     const relativePath = `${folder.folder_path}/${filename}`;
     const absolutePath = options.storedGalleryRoot
@@ -268,7 +299,7 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
     const mediaType = getMediaTypeFromExtension(extension);
     const previewRelativePath = getPreviewRelativePath(relativePath, mediaType);
     const thumbnailRelativePath = getThumbnailRelativePath(relativePath);
-    const fileSize = 2_048 + mtimeMs;
+    const fileSize = options.fileSize ?? 2_048 + mtimeMs;
 
     return await imageRepository.upsert({
       folderId: folder.id,
@@ -277,8 +308,8 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
       relativePath,
       absolutePath,
       fileSize,
-      width: mediaType === 'video' ? 1080 : 1600,
-      height: mediaType === 'video' ? 1920 : 1200,
+      width: options.width ?? (mediaType === 'video' ? 1080 : 1600),
+      height: options.height ?? (mediaType === 'video' ? 1920 : 1200),
       mediaType,
       mimeType: getMimeTypeFromExtension(extension),
       durationMs,
@@ -302,6 +333,25 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
     await fs.writeFile(absolutePath, `source:${relativePath}`);
   }
 
+  /**
+   * Wait until the scanner of the current module instance is idle.
+   *
+   * `reset()` calls `vi.resetModules()`, which installs a *new* scanner
+   * instance while the previous one may still be running. A scan that is still
+   * in flight then calls the shared derivative mocks after the next test has
+   * reset them, which makes "generateDerivatives was not called" assertions
+   * fail depending on machine load.
+   */
+  async function waitForScannerIdle(): Promise<void> {
+    for (let attempt = 0; attempt < 400; attempt += 1) {
+      if (!scannerService || !scannerService.getProgress().isScanning) {
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+
   beforeAll(async () => {
     tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'insta-lazy-derivatives-'));
   });
@@ -314,6 +364,12 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
 
   beforeEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  afterEach(async () => {
+    // Never let a scan outlive its test: the next test resets the module
+    // registry and the shared mocks, and a late call would leak into it.
+    await waitForScannerIdle();
   });
 
   it('does not call generateDerivatives for new files when DERIVATIVE_MODE=lazy', async () => {
@@ -474,7 +530,8 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
 
     await maintenanceRepository.resetLibraryIndex();
     const folder = await folderRepository.upsert({ slug: 'videos', name: 'Videos', folderPath: 'videos' });
-    const video = await createIndexedMedia(folder, 'clip.mp4', 4000, 'original', 5000);
+    // A video that cannot be streamed directly still gets a generated preview.
+    const video = await createIndexedMedia(folder, 'clip.mp4', 4000, 'preview', 5000);
     let releaseGeneration: (() => void) | null = null;
     const generationStarted = new Promise<void>((resolve) => {
       generatePreviewDerivativeMock.mockImplementationOnce(async (_src: string, relativePath: string, _force = false, overrides?: { previewPath?: string }) => {
@@ -591,7 +648,7 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
 
     await maintenanceRepository.resetLibraryIndex();
     const folder = await folderRepository.upsert({ slug: 'abort', name: 'Abort', folderPath: 'abort' });
-    const video = await createIndexedMedia(folder, 'clip.mp4', 4500, 'original', 5000);
+    const video = await createIndexedMedia(folder, 'clip.mp4', 4500, 'preview', 5000);
     const previewAbsolutePath = path.join(appConfig.previewsDir, video.preview_path);
 
     await fs.mkdir(path.dirname(previewAbsolutePath), { recursive: true });
@@ -617,5 +674,62 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
     const response = await dispatchRoute(lazyThumbnailsRouter, '/%2E%2E/outside.webp');
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({ message: 'Invalid derivative path.' });
+  });
+
+  it('redirects a directly playable MP4 preview request to the original file', async () => {
+    await reset('lazy');
+
+    await maintenanceRepository.resetLibraryIndex();
+    const folder = await folderRepository.upsert({ slug: 'direct', name: 'Direct', folderPath: 'direct' });
+    // mp4, original strategy, well under 24 MiB and 1500 px wide -> served as-is.
+    const video = await createIndexedMedia(folder, 'clip.mp4', 4000, 'original', 5000, {
+      width: 1280,
+      height: 720,
+      fileSize: 5 * 1024 * 1024
+    });
+
+    const response = await dispatchRoute(lazyPreviewsRouter, `/${encodeRelativePath(video.preview_path)}`);
+
+    expect(response.redirectCode).toBe(302);
+    expect(response.redirectLocation).toBe(`/api/originals/${video.id}`);
+    expect(generatePreviewDerivativeMock).not.toHaveBeenCalled();
+  });
+
+  it('generates a preview for a video that is too wide to play directly', async () => {
+    await reset('lazy');
+
+    await maintenanceRepository.resetLibraryIndex();
+    const folder = await folderRepository.upsert({ slug: 'wide', name: 'Wide', folderPath: 'wide' });
+    // 4K is over the 1500 px display width budget, so a preview is generated.
+    const video = await createIndexedMedia(folder, 'clip.mp4', 4000, 'original', 5000, {
+      width: 3840,
+      height: 2160,
+      fileSize: 5 * 1024 * 1024
+    });
+
+    const response = await dispatchRoute(lazyPreviewsRouter, `/${encodeRelativePath(video.preview_path)}`);
+
+    expect(response.redirectCode).toBeNull();
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe('video-preview:' + path.basename(video.preview_path));
+    expect(generatePreviewDerivativeMock).toHaveBeenCalledOnce();
+  });
+
+  it('generates a preview for a video that is over the direct playback size budget', async () => {
+    await reset('lazy');
+
+    await maintenanceRepository.resetLibraryIndex();
+    const folder = await folderRepository.upsert({ slug: 'huge', name: 'Huge', folderPath: 'huge' });
+    const video = await createIndexedMedia(folder, 'clip.mp4', 4000, 'original', 5000, {
+      width: 1280,
+      height: 720,
+      fileSize: 25 * 1024 * 1024
+    });
+
+    const response = await dispatchRoute(lazyPreviewsRouter, `/${encodeRelativePath(video.preview_path)}`);
+
+    expect(response.redirectCode).toBeNull();
+    expect(response.statusCode).toBe(200);
+    expect(generatePreviewDerivativeMock).toHaveBeenCalledOnce();
   });
 });

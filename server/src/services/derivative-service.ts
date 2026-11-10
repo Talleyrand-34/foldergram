@@ -4,6 +4,9 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 import sharp from 'sharp';
+// The type is imported by name: a default import of an `export =` entity
+// does not carry the namespace's types.
+import type { Metadata as SharpMetadata } from 'sharp';
 
 import type { ImageExifData, MediaType, PlaybackStrategy } from '../types/models.js';
 import { appConfig } from '../config/env.js';
@@ -16,6 +19,8 @@ import {
   getThumbnailRelativePath
 } from '../utils/image-utils.js';
 import { safeJoin } from '../utils/path-utils.js';
+import { isNonemptyDerivative } from '../utils/derivative-cache.js';
+import { shouldGenerateVideoPreview } from '../utils/video-playback-policy.js';
 
 const execFileAsync = promisify(execFile);
 const DIRECT_VIDEO_PLAYBACK_ALLOWED_AUDIO_CODECS = new Set(['aac']);
@@ -204,7 +209,7 @@ function normalizeImageOrientation(orientation: number | null | undefined): numb
 }
 
 function resolveImageDisplayDimensions(
-  metadata: sharp.Metadata,
+  metadata: SharpMetadata,
   displayOrientation: number
 ): Pick<MediaMetadata, 'width' | 'height'> {
   const width = metadata.width ?? THUMBNAIL_SIZE;
@@ -631,20 +636,57 @@ function requireAnimatedAvifVideoStreamIndex(descriptor: AvifSourceDescriptor): 
   return descriptor.animatedVideoStreamIndex;
 }
 
+/**
+ * Decide whether a video needs a generated preview.
+ *
+ * Videos that can be streamed straight from the original file (compatible MP4
+ * profile within the size/resolution budget) are served without a preview so
+ * no transcoding is wasted. Everything else - oversized files, exotic codecs,
+ * non-MP4 containers - gets a preview so remote viewers never have to pull
+ * the raw file over the wire.
+ */
+async function resolveVideoPreviewRequirement(
+  sourcePath: string,
+  relativePath: string,
+  metadata: MediaMetadata
+): Promise<boolean> {
+  const sourceStats = await fs.stat(sourcePath);
+
+  return shouldGenerateVideoPreview({
+    mediaType: 'video',
+    extension: path.extname(relativePath),
+    fileSize: sourceStats.size,
+    width: metadata.width,
+    height: metadata.height,
+    playbackStrategy: metadata.playbackStrategy
+  });
+}
+
 async function generateVideoDerivatives(
   sourcePath: string,
   thumbnailAbsolutePath: string,
-  force: boolean
+  previewAbsolutePath: string,
+  force: boolean,
+  generatePreview: boolean
 ): Promise<Pick<DerivativeResult, 'generatedThumbnail' | 'generatedPreview'>> {
-  const shouldWriteThumbnail = force || !(await fileExists(thumbnailAbsolutePath));
+  if (force && !generatePreview) {
+    await fs.rm(previewAbsolutePath, { force: true });
+  }
+
+  const shouldWriteThumbnail = force || !(await isNonemptyDerivative(thumbnailAbsolutePath));
+  const shouldWritePreview = generatePreview && (force || !(await isNonemptyDerivative(previewAbsolutePath)));
 
   if (shouldWriteThumbnail) {
     await writeVideoThumbnail(sourcePath, thumbnailAbsolutePath);
   }
 
+  if (shouldWritePreview) {
+    await writeVideoPreview(sourcePath, previewAbsolutePath);
+  }
+
   return {
     generatedThumbnail: shouldWriteThumbnail,
-    generatedPreview: false
+    generatedPreview: shouldWritePreview
   };
 }
 
@@ -658,7 +700,7 @@ export async function generateThumbnailDerivative(
   const isAvif = path.extname(relativePath).toLowerCase() === '.avif';
   const thumbnailPath = overrides.thumbnailPath ?? getThumbnailRelativePath(relativePath);
   const thumbnailAbsolutePath = safeJoin(appConfig.thumbnailsDir, thumbnailPath);
-  const shouldWriteThumbnail = force || !(await fileExists(thumbnailAbsolutePath));
+  const shouldWriteThumbnail = force || !(await isNonemptyDerivative(thumbnailAbsolutePath));
 
   if (shouldWriteThumbnail) {
     if (mediaType === 'video') {
@@ -698,7 +740,7 @@ export async function generatePreviewDerivative(
   const isAvif = path.extname(relativePath).toLowerCase() === '.avif';
   const previewPath = overrides.previewPath ?? getPreviewRelativePath(relativePath, mediaType);
   const previewAbsolutePath = safeJoin(appConfig.previewsDir, previewPath);
-  const shouldWritePreview = force || !(await fileExists(previewAbsolutePath));
+  const shouldWritePreview = force || !(await isNonemptyDerivative(previewAbsolutePath));
 
   if (shouldWritePreview) {
     if (mediaType === 'video') {
@@ -745,7 +787,14 @@ export async function generateDerivatives(
 
   if (mediaType === 'video') {
     metadata = await readVideoMetadata(sourcePath);
-    generated = await generateVideoDerivatives(sourcePath, thumbnailAbsolutePath, force);
+    const generatePreview = await resolveVideoPreviewRequirement(sourcePath, relativePath, metadata);
+    generated = await generateVideoDerivatives(
+      sourcePath,
+      thumbnailAbsolutePath,
+      previewAbsolutePath,
+      force,
+      generatePreview
+    );
   } else if (isAvif) {
     const avifSource = await inspectAvifSource(sourcePath, {
       requireAnimatedVideoStreamIndex: true

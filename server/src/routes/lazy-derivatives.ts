@@ -1,4 +1,4 @@
-import fs from 'node:fs/promises';
+import path from 'node:path';
 
 import express from 'express';
 import pLimit from 'p-limit';
@@ -11,6 +11,8 @@ import { scannerService } from '../services/scanner-service.js';
 import { resolveOriginalPath } from '../utils/media-paths.js';
 import { applyDerivativeErrorHeaders, applyProtectedMediaHeaders } from '../utils/media-response.js';
 import { normalizePath, safeJoin } from '../utils/path-utils.js';
+import { isNonemptyDerivative } from '../utils/derivative-cache.js';
+import { resolveVideoPlaybackSource } from '../utils/video-playback-policy.js';
 
 // In-memory map to deduplicate concurrent generation requests for the same derivative path.
 const inflightGenerations = new Map<string, Promise<void>>();
@@ -84,9 +86,7 @@ async function serveOrGenerate(
   }
 
   // Fast path: file already exists and is non-empty.
-  try {
-    const stat = await fs.stat(absoluteOutputPath);
-    if (stat.size === 0) throw new Error('empty');
+  if (await isNonemptyDerivative(absoluteOutputPath)) {
     try {
       const result = await sendDerivativeFile(response, absoluteOutputPath);
       if (result === 'aborted') {
@@ -101,8 +101,6 @@ async function serveOrGenerate(
       response.status(500).json({ message: 'Failed to serve derivative.' });
     }
     return;
-  } catch {
-    // File does not exist — fall through to generation.
   }
 
   if (await scannerService.isLibraryRebuildRequired()) {
@@ -123,10 +121,23 @@ async function serveOrGenerate(
     return;
   }
 
-  // Video previews are never served — always redirect to the original file.
+  // Videos that can be streamed straight from the original file are redirected
+  // there instead of being transcoded. Everything else falls through and gets a
+  // generated preview so remote viewers never download the raw file.
   if (kind === 'preview' && imageRecord.media_type === 'video') {
-    response.redirect(302, `/api/originals/${imageRecord.id}`);
-    return;
+    const playbackSource = resolveVideoPlaybackSource({
+      mediaType: imageRecord.media_type,
+      extension: imageRecord.extension || path.extname(imageRecord.relative_path),
+      fileSize: imageRecord.file_size,
+      width: imageRecord.width,
+      height: imageRecord.height,
+      playbackStrategy: imageRecord.playback_strategy
+    });
+
+    if (playbackSource === 'original') {
+      response.redirect(302, `/api/originals/${imageRecord.id}`);
+      return;
+    }
   }
 
   let generationPromise = inflightGenerations.get(absoluteOutputPath);
@@ -140,6 +151,15 @@ async function serveOrGenerate(
 
     generationPromise = generationLimit(async () => {
       try {
+        // Re-check inside the critical section. A concurrent request may have
+        // passed the "does the file exist" check before this generation
+        // finished and may have found the in-flight entry already removed.
+        // The derivative is on disk by now, so generating it again would be
+        // pure duplicated work.
+        if (await isNonemptyDerivative(absoluteOutputPath)) {
+          return;
+        }
+
         const sourcePath = resolveOriginalPath(imageRecord.relative_path);
 
         if (kind === 'thumbnail') {
