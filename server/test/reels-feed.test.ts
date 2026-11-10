@@ -75,7 +75,10 @@ describe.sequential('reels feed', () => {
     const payload = await galleryService.getReels(1, 12, 'recommended', 17);
 
     expect(payload.mode).toBe('recommended');
-    expect(payload.total).toBe(1);
+    // `total` is intentionally not computed any more: the reels endpoint derives
+    // `hasMore` from a limit+1 fetch instead of a COUNT(*) query, so `total` is
+    // always 0. The visible-item count is the meaningful assertion here.
+    expect(payload.total).toBe(0);
     expect(payload.items).toHaveLength(1);
     expect(payload.items[0]?.id).toBe(visibleVideo.id);
     expect(payload.items[0]?.mediaType).toBe('video');

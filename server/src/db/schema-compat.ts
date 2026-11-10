@@ -1,5 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 
+import { sqliteAll, sqliteGet } from './driver/sqlite-raw.js';
+
 interface ForeignKeyRecord {
   table: string;
   from: string;
@@ -8,9 +10,9 @@ interface ForeignKeyRecord {
 }
 
 export function tableExists(database: DatabaseSync, name: string): boolean {
-  const row = database
-    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`)
-    .get(name) as { name: string } | undefined;
+  const row = sqliteGet(database, `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, name) as
+    | { name: string }
+    | undefined;
 
   return row?.name === name;
 }
@@ -20,7 +22,7 @@ export function tableHasColumn(database: DatabaseSync, tableName: string, column
     return false;
   }
 
-  const columns = database.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  const columns = sqliteAll(database, `PRAGMA table_info(${tableName})`) as Array<{ name: string }>;
   return columns.some((column) => column.name === columnName);
 }
 
@@ -34,7 +36,7 @@ function tableHasForeignKey(database: DatabaseSync, tableName: string, options: 
     return false;
   }
 
-  const foreignKeys = database.prepare(`PRAGMA foreign_key_list(${tableName})`).all() as unknown as ForeignKeyRecord[];
+  const foreignKeys = sqliteAll(database, `PRAGMA foreign_key_list(${tableName})`) as unknown as ForeignKeyRecord[];
   return foreignKeys.some((foreignKey) =>
     foreignKey.from === options.from &&
     foreignKey.table === options.toTable &&
@@ -373,7 +375,7 @@ export function rebuildBaselineForeignKeys(database: DatabaseSync): boolean {
     return false;
   }
 
-  const foreignKeyState = database.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number };
+  const foreignKeyState = sqliteGet(database, 'PRAGMA foreign_keys') as { foreign_keys: number };
   database.exec('PRAGMA foreign_keys = OFF');
 
   try {

@@ -4,6 +4,18 @@
 -- Columns live on `images` so a video inherits them just by being indexed.
 -- In Postgres we expose GIN indexes on the parsed shape via generated columns.
 
+-- The trigram indexes below need `pg_trgm`. The migration runner creates the
+-- required extensions before it applies the migrations, because
+-- `CREATE EXTENSION` takes a catalog lock and would serialise the migrations
+-- of every process that migrates the same database at the same time.
+--
+-- The extension's operator classes live in the schema it is installed in, and
+-- `public` is the schema that stays on the search path of every connection
+-- (test runs use a private schema first and `public` second).
+--
+-- The SQLite twin of this migration does not need the extension: SQLite has
+-- no trigram indexes, the lookups there use LIKE.
+
 ALTER TABLE images ADD COLUMN IF NOT EXISTS ai_status TEXT;
 ALTER TABLE images ADD COLUMN IF NOT EXISTS ai_summary TEXT;
 ALTER TABLE images ADD COLUMN IF NOT EXISTS ai_domains TEXT;

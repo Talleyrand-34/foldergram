@@ -26,6 +26,7 @@ describe.sequential('moment rail localization data', () => {
   let folderRepository: RepositoriesModule['folderRepository'];
   let imageRepository: RepositoriesModule['imageRepository'];
   let maintenanceRepository: RepositoriesModule['maintenanceRepository'];
+  let statsRepository: RepositoriesModule['statsRepository'];
 
   beforeAll(async () => {
     tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'insta-moment-rail-'));
@@ -41,7 +42,7 @@ describe.sequential('moment rail localization data', () => {
 
     ({ appConfig } = await import('../src/config/env.js'));
     ({ galleryService } = await import('../src/services/gallery-service.js'));
-    ({folderRepository, imageRepository, maintenanceRepository} = await import('../src/db/repositories.js'));
+    ({folderRepository, imageRepository, maintenanceRepository, statsRepository} = await import('../src/db/repositories.js'));
     await (await import('../src/db/repositories.js')).initRepositories();
   });
 
@@ -177,6 +178,14 @@ describe.sequential('moment rail localization data', () => {
         await folderRepository.setAvatar(folder.id, image.id);
       }
     }
+
+    // This fixture writes rows directly instead of running the scanner, so the
+    // cached counters the app relies on have to be refreshed by hand:
+    // `folders.image_count` (folder counters) and `stat.media_count` (global
+    // stats). Without them the moment rail falls back to the highlight rail
+    // because it only switches to moments once the library holds enough media.
+    await folderRepository.updateCounts(folder.id);
+    await statsRepository.refresh();
 
     return { folder };
   }

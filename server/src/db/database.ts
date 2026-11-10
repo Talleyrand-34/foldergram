@@ -4,7 +4,7 @@ import { appConfig } from '../config/env.js';
 import { SqliteDriver } from './driver/sqlite-driver.js';
 import { PostgresDriver } from './driver/postgres-driver.js';
 import type { IDbDriver } from './driver/types.js';
-import { runStartupMigrations } from './migration.js';
+import { ensurePostgresExtensions, runStartupMigrations } from './migration.js';
 import { assertNoLegacySchema } from './schema-compat.js';
 import { schemaSql } from './schema.js';
 import { storageService } from '../services/storage-service.js';
@@ -19,8 +19,26 @@ class DatabaseManager {
     return this.driverPromise;
   }
 
+  /**
+   * Closes the underlying driver (and with it the PostgreSQL connection pool).
+   * Used for graceful shutdown and by the test harness to release handles
+   * deterministically.
+   */
+  async close(): Promise<void> {
+    if (!this.driverPromise) {
+      return;
+    }
+
+    const driver = await this.driverPromise;
+    this.driverPromise = null;
+    await driver.close();
+  }
+
   private async initialize(): Promise<IDbDriver> {
     if (appConfig.dbDriver === 'postgres') {
+      // The migrations need `pg_trgm`; the extension is created here and not
+      // inside a migration, because `CREATE EXTENSION` takes a catalog lock.
+      await ensurePostgresExtensions(appConfig.databaseUrl!);
       runStartupMigrations({ dialect: 'postgres' });
       return new PostgresDriver(appConfig.databaseUrl!);
     }

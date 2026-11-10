@@ -806,11 +806,23 @@ class ScannerService {
   }
 
   private async finishRun(runId: number, summary: ScanSummary): Promise<void> {
+    // The cached stats are refreshed *before* the run is marked as finished.
+    //
+    // The run is the signal everybody waits for ("the scan is done"), so it
+    // has to be the last thing that happens: a reader that waits for the
+    // completed run and then reads the counts must not see the numbers of the
+    // previous scan. A stats failure must never turn a finished scan into a
+    // failed one, so it is logged and the run is marked as finished anyway.
+    try {
+      await statsRepository.refresh();
+    } catch (error) {
+      log.error('Could not refresh the library stats', error);
+    }
+
     await scanRunRepository.finish(runId, {
       ...summary,
       finished_at: new Date().toISOString()
     });
-    await statsRepository.refresh();
   }
 
   private async applyScanErrors(summary: ScanSummary, errors: ScanErrorCollector): Promise<void> {
@@ -1003,6 +1015,9 @@ class ScannerService {
 
     if (existingFolder) {
       await folderRepository.setAvatar(existingFolder.id, null, 'auto');
+      // Keep the stored image_count in sync: an emptied folder must drop out of
+      // the library listing.
+      await folderRepository.updateCounts(existingFolder.id);
     }
 
     await folderScanStateRepository.delete(sourceFolderPath);
@@ -1963,6 +1978,10 @@ class ScannerService {
         if (!discoveredFolderIds.has(folder.id)) {
           summary.removed_files += await imageRepository.markAllDeletedByFolder(folder.id);
           await folderRepository.setAvatar(folder.id, null, 'auto');
+          // The stored image_count drives the "folder still has visible media"
+          // filter, so it has to be refreshed when the scanner empties a folder
+          // (excluded folders, deleted folders).
+          await folderRepository.updateCounts(folder.id);
         }
       }
 

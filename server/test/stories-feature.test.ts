@@ -125,15 +125,19 @@ describe.sequential('stories feature', () => {
 
     await scannerService.scanAll('manual');
 
-    const folders = await galleryService.listFolders();
+    // listFolders() is paginated since the LIMIT+1 change: it takes (page, limit)
+    // and returns { items, page, limit, total, hasMore }.
+    const folders = (await galleryService.listFolders(1, 100)).items;
     expect(folders).toHaveLength(1);
     expect(folders[0]?.folderPath).toBe('albums/beach');
     expect(folders[0]?.hasAvatarStory).toBe(true);
 
     const folder = folders[0]!;
-    expect((await galleryService.getFeed(1, 20, 'recent')).total).toBe(1);
-    expect((await galleryService.searchMedia('avatar', 1, 20)).total).toBe(0);
-    expect((await galleryService.searchMedia('day-1', 1, 20)).total).toBe(0);
+    // `total` is always 0 since the LIMIT+1 pagination change; the item lists are
+    // the meaningful assertions.
+    expect((await galleryService.getFeed(1, 20, 'recent')).items).toHaveLength(1);
+    expect((await galleryService.searchMedia('avatar', 1, 20)).items).toHaveLength(0);
+    expect((await galleryService.searchMedia('day-1', 1, 20)).items).toHaveLength(0);
 
     const stories = await galleryService.getFolderStories(folder.slug);
     expect(stories).not.toBeNull();
@@ -158,7 +162,8 @@ describe.sequential('stories feature', () => {
     expect(highlightFeed).not.toBeNull();
     expect(highlightFeed?.story.presentation).toBe('highlight');
     expect(typeof highlightFeed?.story.latestActivityTimestamp).toBe('number');
-    expect(highlightFeed?.total).toBe(2);
+    expect(highlightFeed?.total).toBe(0);
+    expect(highlightFeed?.items).toHaveLength(2);
     expect(highlightFeed?.items.every((item) => item.folderSlug === folder.slug)).toBe(true);
 
     expect((await galleryService.getStatus()).storiesMigration).toEqual({
@@ -176,7 +181,7 @@ describe.sequential('stories feature', () => {
 
     await scannerService.scanAll('manual');
 
-    const folders = (await galleryService.listFolders())
+    const folders = (await galleryService.listFolders(1, 100)).items
       .map((folder) => folder.folderPath)
       .sort();
 
@@ -186,7 +191,9 @@ describe.sequential('stories feature', () => {
       'albums/beach/stories/highlights'
     ]);
 
-    const ownerFolder = (await galleryService.listFolders()).find((folder) => folder.folderPath === 'albums/beach');
+    const ownerFolder = (await galleryService.listFolders(1, 100)).items.find(
+      (folder) => folder.folderPath === 'albums/beach'
+    );
     expect(ownerFolder).toBeDefined();
     expect(ownerFolder?.hasAvatarStory).toBe(false);
     expect(await galleryService.getFolderStories(ownerFolder!.slug)).toEqual({
@@ -200,7 +207,7 @@ describe.sequential('stories feature', () => {
       highlights: []
     });
 
-    expect((await galleryService.searchMedia('avatar', 1, 20)).total).toBe(1);
+    expect((await galleryService.searchMedia('avatar', 1, 20)).items).toHaveLength(1);
     expect((await galleryService.getStatus()).preferences.treatStoriesAsFolders).toBe(true);
     expect((await galleryService.getStatus()).storiesMigration).toEqual({
       hasLegacyStoriesCandidates: true,
@@ -225,7 +232,7 @@ describe.sequential('stories feature', () => {
 
     await scannerService.scanAll('manual');
 
-    const folder = (await galleryService.listFolders())[0]!;
+    const folder = (await galleryService.listFolders(1, 100)).items[0]!;
     expect(folder.hasAvatarStory).toBe(true);
     const stories = await galleryService.getFolderStories(folder.slug);
     expect(stories).not.toBeNull();
@@ -240,7 +247,8 @@ describe.sequential('stories feature', () => {
     const avatarFeed = await galleryService.getFolderStoryFeed(folder.slug, stories!.avatarStoryId!, 1, 20);
     expect(avatarFeed).not.toBeNull();
     expect(avatarFeed?.story.presentation).toBe('avatar');
-    expect(avatarFeed?.total).toBe(10);
+    expect(avatarFeed?.total).toBe(0);
+    expect(avatarFeed?.items).toHaveLength(10);
     expect(avatarFeed?.hasMore).toBe(false);
     expect(avatarFeed?.items.map((item) => item.filename)).toEqual([
       'food-12.mp4',

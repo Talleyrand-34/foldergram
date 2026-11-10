@@ -62,7 +62,7 @@ import { geodataService, placeResolutionService } from './place-service.js';
 
 type FeedMode = 'recent' | 'rediscover' | 'random';
 type ReelsFeedMode = 'recommended' | 'recent' | 'random';
-type SupportedLocale = 'en' | 'es' | 'zh';
+type SupportedLocale = 'en' | 'es' | 'zh' | 'de';
 
 interface FeedCapsuleDefinition {
   id: string;
@@ -145,7 +145,7 @@ const HIGHLIGHT_FEED_OVERLAP_WINDOW = 18;
 const RAIL_COVER_CANDIDATE_LIMIT = 12;
 const FALLBACK_AVATAR_STORY_LIMIT = 10;
 const FALLBACK_AVATAR_STORY_ID = '__story-avatar-fallback__';
-const SUPPORTED_LOCALES = ['en', 'es', 'zh'] as const;
+const SUPPORTED_LOCALES = ['en', 'es', 'zh', 'de'] as const;
 
 interface PlaceRowFields {
   placeId?: number | null;
@@ -722,7 +722,10 @@ async function mapCollectionSummary(collection: CollectionSummaryRecord, derivat
     coverImage,
     previewImages,
     createdAt: collection.created_at,
-    updatedAt: collection.updated_at
+    updatedAt: collection.updated_at,
+    // When the last post joined the collection — the moment the collection
+    // view orders by.
+    lastAddedAt: collection.last_added_at ?? null
   };
 }
 
@@ -1610,7 +1613,12 @@ export const galleryService = {
     };
   },
 
-  async getCollectionImages(slug: string, page: number, limit: number) {
+  async getCollectionImages(
+    slug: string,
+    page: number,
+    limit: number,
+    order: "asc" | "desc" = "desc"
+  ) {
     if (!storageService.getState().libraryAvailable) {
       return null;
     }
@@ -1623,7 +1631,7 @@ export const galleryService = {
     const derivativeVersion = await getDerivativeAssetVersion();
     const offset = (page - 1) * limit;
     const [raw, allSummaries] = await Promise.all([
-      collectionRepository.listImages(slug, offset, limit + 1),
+      collectionRepository.listImages(slug, offset, limit + 1, order),
       collectionRepository.listSummaries()
     ]);
     const { items: rawPage, hasMore } = paginate(raw, limit);
@@ -1632,7 +1640,8 @@ export const galleryService = {
       item_count: 0,
       cover_image_id: null,
       cover_thumbnail_path: null,
-      preview_image_ids: null
+      preview_image_ids: null,
+      last_added_at: null
     };
 
     return {

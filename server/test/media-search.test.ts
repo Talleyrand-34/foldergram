@@ -70,7 +70,9 @@ describe.sequential('media search', () => {
     const firstPage = await galleryService.searchMedia('PANDA', 1, 1);
     const secondPage = await galleryService.searchMedia('PANDA', 2, 1);
 
-    expect(firstPage.total).toBe(2);
+    // `total` is always 0 since the LIMIT+1 pagination change; the union of both
+    // pages is the meaningful assertion.
+    expect(firstPage.total).toBe(0);
     expect(firstPage.hasMore).toBe(true);
     expect(secondPage.hasMore).toBe(false);
 
@@ -85,7 +87,8 @@ describe.sequential('media search', () => {
 
     const payload = await galleryService.searchMedia('red panda', 1, 20);
 
-    expect(payload.total).toBe(2);
+    expect(payload.total).toBe(0);
+    expect(payload.items).toHaveLength(2);
     expect(new Set(payload.items.map((item) => item.id))).toEqual(new Set([compact.id, underscored.id]));
   });
 
@@ -111,7 +114,10 @@ describe.sequential('media search', () => {
     const sunriseResults = await galleryService.searchMedia('sunrise', 1, 20);
     const coverResults = await galleryService.searchMedia('cover', 1, 20);
 
-    expect(sunriseResults.total).toBe(1);
+    // `total` is always 0 since the LIMIT+1 pagination change; the item list is
+    // what proves deleted/trashed/cover media is filtered out.
+    expect(sunriseResults.total).toBe(0);
+    expect(sunriseResults.items).toHaveLength(1);
     expect(sunriseResults.items.map((item) => item.id)).toEqual([visible.id]);
     expect(coverResults.total).toBe(0);
     expect(coverResults.items).toEqual([]);

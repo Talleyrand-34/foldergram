@@ -3,6 +3,8 @@ import fsPromises from 'node:fs/promises';
 import { inflateRawSync } from 'node:zlib';
 import { DatabaseSync } from 'node:sqlite';
 
+import { sqlitePrepare } from '../db/driver/sqlite-raw.js';
+
 import { appConfig } from '../config/env.js';
 import { imageRepository, placeRepository } from '../db/repositories.js';
 import type { ImageRecord, PlaceDetail, PlaceRecord, PlaceSummary } from '../types/models.js';
@@ -336,7 +338,7 @@ export const geodataService = {
         );
       `);
 
-      const insert = database.prepare(`
+      const insert = sqlitePrepare(database, `
         INSERT INTO geonames_places (
           geoname_id, name, ascii_name, latitude, longitude, country_code, admin1_code,
           admin1_name, population, feature_class, feature_code, timezone
@@ -401,9 +403,9 @@ export const geodataService = {
     try {
       const latitudeWindow = MAX_CITY_DISTANCE_KM / 111;
       const longitudeWindow = MAX_CITY_DISTANCE_KM / Math.max(20, Math.cos(latitude * Math.PI / 180) * 111);
-      const candidates = database
-        .prepare(
-          `
+      const candidates = sqlitePrepare(
+        database,
+        `
           SELECT
             geoname_id AS geonameId,
             name,

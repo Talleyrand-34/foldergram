@@ -2,6 +2,7 @@ import { performance } from 'node:perf_hooks';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 
 import { appConfig } from '../../config/env.js';
+import { sqlitePrepare } from './sqlite-raw.js';
 import { log } from '../../services/log-service.js';
 import { metricsService } from '../../services/metrics-service.js';
 import type { IDbDriver, QueryResult } from './types.js';
@@ -20,7 +21,7 @@ export class SqliteDriver implements IDbDriver {
 
   async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<QueryResult<T>> {
     const t = performance.now();
-    const stmt = this.db.prepare(sql);
+    const stmt = sqlitePrepare(this.db, sql);
     const rows = stmt.all(...(params as SQLInputValue[])) as T[];
     recordQuery(sql, Math.round(performance.now() - t));
     return { rows, rowCount: rows.length };
@@ -28,7 +29,7 @@ export class SqliteDriver implements IDbDriver {
 
   async queryOne<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T | undefined> {
     const t = performance.now();
-    const stmt = this.db.prepare(sql);
+    const stmt = sqlitePrepare(this.db, sql);
     const result = stmt.get(...(params as SQLInputValue[])) as T | undefined;
     recordQuery(sql, Math.round(performance.now() - t));
     return result;
@@ -36,7 +37,7 @@ export class SqliteDriver implements IDbDriver {
 
   async execute(sql: string, params: unknown[] = []): Promise<QueryResult> {
     const t = performance.now();
-    const stmt = this.db.prepare(sql);
+    const stmt = sqlitePrepare(this.db, sql);
     const result = stmt.run(...(params as SQLInputValue[]));
     recordQuery(sql, Math.round(performance.now() - t));
     return {

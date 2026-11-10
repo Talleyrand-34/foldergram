@@ -215,7 +215,10 @@ describe.sequential('bookmark collections', () => {
     await imageRepository.moveToTrash(trashed.id);
 
     const saved = await galleryService.getCollectionImages('saved', 1, 20);
-    expect(saved?.total).toBe(1);
+    // `total` is always 0 since the LIMIT+1 pagination change; the item list is
+    // what proves hidden (deleted/trashed/cover/story) members are filtered out.
+    expect(saved?.total).toBe(0);
+    expect(saved?.items).toHaveLength(1);
     expect(saved?.items.map((item) => item.id)).toEqual([visible.id]);
     expect(await collectionRepository.isImageSaved(deleted.id)).toBe(true);
     expect(await collectionRepository.isImageSaved(story.id)).toBe(true);

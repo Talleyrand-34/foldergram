@@ -150,7 +150,7 @@ describe.sequential('trash flow', () => {
     expect(folderImages?.items.map((item) => item.id)).toEqual([imageB.id]);
 
     expect(await galleryService.getImageDetail(imageA.id)).toBeNull();
-    expect((await galleryService.getLikes()).items.map((item) => item.id)).not.toContain(imageA.id);
+    expect((await galleryService.getLikes(1, 20)).items.map((item) => item.id)).not.toContain(imageA.id);
     expect(await galleryService.likeImage(imageA.id)).toBeNull();
 
     const restored = await galleryService.restoreImage(imageA.id);
@@ -165,7 +165,7 @@ describe.sequential('trash flow', () => {
     expect(await galleryService.getImageDetail(imageA.id)).not.toBeNull();
     expect((await galleryService.getFolderImages('trip', 1, 20))?.items.map((item) => item.id)).toContain(imageA.id);
     expect((await galleryService.getFeed(1, 20, 'recent')).items.map((item) => item.id)).toContain(imageA.id);
-    expect((await galleryService.getLikes()).items.map((item) => item.id)).toContain(imageA.id);
+    expect((await galleryService.getLikes(1, 20)).items.map((item) => item.id)).toContain(imageA.id);
   });
 
   it('keeps trashed posts hidden across rescans, including missing and reappeared files', async () => {
@@ -202,7 +202,7 @@ describe.sequential('trash flow', () => {
     });
 
     expect(await galleryService.likeImage(image.id)).toMatchObject({ id: image.id, liked: true });
-    expect((await galleryService.getLikes()).items.find((item) => item.id === image.id)?.caption).toBe('Misty morning by the lake');
+    expect((await galleryService.getLikes(1, 20)).items.find((item) => item.id === image.id)?.caption).toBe('Misty morning by the lake');
 
     expect(await galleryService.trashImage(image.id)).toMatchObject({ id: image.id });
     expect((await galleryService.getTrashImages(1, 20)).items.find((item) => item.id === image.id)?.caption).toBe('Misty morning by the lake');

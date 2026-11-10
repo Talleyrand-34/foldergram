@@ -86,6 +86,19 @@ async function createTestMigrationsDirectory(rootDirectory: string, extraMigrati
   return targetDirectory;
 }
 
+/**
+ * The versions dbmate is expected to record for the bundled SQLite migrations.
+ *
+ * Derived from the migration directory instead of hard-coded, so the test keeps
+ * tracking the real migration set when new migrations are added instead of
+ * failing with a stale expectation.
+ */
+async function listBundledMigrationVersions(extraVersions: string[] = []): Promise<string[]> {
+  const bundledFiles = (await fs.readdir(bundledMigrationsDirectory)).filter((file) => file.endsWith('.sql'));
+
+  return [...bundledFiles.map((file) => file.split('_')[0]!), ...extraVersions].sort();
+}
+
 describe.sequential('dbmate startup migrations', () => {
   let tempRoot = '';
 
@@ -143,7 +156,10 @@ describe.sequential('dbmate startup migrations', () => {
       expect(tableExists(database, 'images')).toBe(true);
       expect(tableExists(database, 'collections')).toBe(true);
       expect(tableHasColumn(database, 'images', 'caption')).toBe(true);
-      expect(listAppliedVersions(database)).toEqual([BASELINE_MIGRATION_VERSION, '000002']);
+      // The applied versions track the bundled migration set.
+      const expectedVersions = await listBundledMigrationVersions();
+      expect(expectedVersions[0]).toBe(BASELINE_MIGRATION_VERSION);
+      expect(listAppliedVersions(database)).toEqual(expectedVersions);
     } finally {
       database.close();
     }
@@ -238,7 +254,9 @@ describe.sequential('dbmate startup migrations', () => {
     const database = new DatabaseSync(databasePath);
 
     try {
-      expect(listAppliedVersions(database)).toEqual([BASELINE_MIGRATION_VERSION, '000002']);
+      const expectedVersions = await listBundledMigrationVersions();
+      expect(expectedVersions[0]).toBe(BASELINE_MIGRATION_VERSION);
+      expect(listAppliedVersions(database)).toEqual(expectedVersions);
       expect(tableExists(database, 'collections')).toBe(true);
       expect(tableHasColumn(database, 'folders', 'avatar_image_id')).toBe(true);
       expect(tableHasColumn(database, 'folders', 'avatar_source')).toBe(true);
@@ -266,7 +284,7 @@ describe.sequential('dbmate startup migrations', () => {
   });
 
   it('runs a pending migration once and records its version', async () => {
-    const { BASELINE_MIGRATION_VERSION, runStartupMigrations } = await importMigrationModule();
+    const { runStartupMigrations } = await importMigrationModule();
     const databasePath = path.join(tempRoot, 'db', 'gallery.sqlite');
     await fs.mkdir(path.dirname(databasePath), { recursive: true });
     const migrationsDirectory = await createTestMigrationsDirectory(tempRoot, [
@@ -292,7 +310,7 @@ ALTER TABLE images ADD COLUMN migration_note TEXT NULL;
 
     try {
       expect(tableHasColumn(database, 'images', 'migration_note')).toBe(true);
-      expect(listAppliedVersions(database)).toEqual([BASELINE_MIGRATION_VERSION, '000002', '000003']);
+      expect(listAppliedVersions(database)).toEqual(await listBundledMigrationVersions(['000003']));
     } finally {
       database.close();
     }
@@ -400,7 +418,7 @@ ALTER TABLE images ADD COLUMN migration_note TEXT NULL;
     const database = new DatabaseSync(databasePath);
 
     try {
-      expect(listAppliedVersions(database)).toEqual(['000001', '000002', '000003']);
+      expect(listAppliedVersions(database)).toEqual(await listBundledMigrationVersions(['000003']));
       expect(tableHasColumn(database, 'images', 'migration_note')).toBe(true);
       expect(tableHasColumn(database, 'images', 'caption')).toBe(true);
       expect(database.prepare('SELECT playback_strategy AS playbackStrategy FROM images WHERE id = 1').get()).toEqual({
@@ -435,8 +453,11 @@ ALTER TABLE images ADD COLUMN migration_note TEXT NULL;
     const database = new DatabaseSync(databasePath);
 
     try {
-      expect(listAppliedVersions(database)).toEqual(['000001', '000002', '000003']);
-      expect(database.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get()).toEqual({ count: 3 });
+      const expectedVersions = await listBundledMigrationVersions(['000003']);
+      expect(listAppliedVersions(database)).toEqual(expectedVersions);
+      expect(database.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get()).toEqual({
+        count: expectedVersions.length
+      });
     } finally {
       database.close();
     }
@@ -483,7 +504,11 @@ THIS IS NOT VALID SQL;
       vi.doMock('../src/db/migration.js', () => ({
         runStartupMigrations: () => {
           throw exitError;
-        }
+        },
+        // The migration script also ensures the PostgreSQL extensions - the
+        // mock has to provide it, otherwise importing the script fails before
+        // the migration is even attempted.
+        ensurePostgresExtensions: vi.fn(async () => {})
       }));
       vi.doMock('../src/services/log-service.js', () => ({
         log: {
@@ -509,6 +534,11 @@ THIS IS NOT VALID SQL;
   });
 
   it('keeps the in-memory fallback when the database directory is unavailable', async () => {
+    // The in-memory fallback is a SQLite-only path (PostgreSQL has no
+    // "database directory"), so this scenario always runs on SQLite - also
+    // when the rest of the suite runs against PostgreSQL.
+    vi.stubEnv('DB_DRIVER', 'sqlite');
+    vi.stubEnv('DATABASE_URL', '');
     vi.stubEnv('DB_DIR', path.join(tempRoot, 'occupied-file'));
     await fs.writeFile(path.join(tempRoot, 'occupied-file'), 'not-a-directory');
     vi.resetModules();

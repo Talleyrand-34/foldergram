@@ -156,6 +156,14 @@ export interface CollectionSummaryRecord extends CollectionRecord {
   cover_image_id: number | null;
   cover_thumbnail_path: string | null;
   preview_image_ids: string | null;
+  /**
+   * When the last media was added to the collection.
+   *
+   * The collection's own `updated_at` is not this: it does not move when a
+   * post is added, so a collection that just received a post would not come
+   * up. This is the moment the last post joined.
+   */
+  last_added_at: string | null;
 }
 
 export interface CollectionMembershipRecord extends CollectionSummaryRecord {

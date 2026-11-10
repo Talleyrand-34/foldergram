@@ -3,9 +3,15 @@ import { pathToFileURL } from 'node:url';
 
 import { appConfig } from '../config/env.js';
 import { log } from '../services/log-service.js';
-import { runStartupMigrations } from '../db/migration.js';
+import { ensurePostgresExtensions, runStartupMigrations } from '../db/migration.js';
 
 export async function main(): Promise<void> {
+  if (appConfig.dbDriver === 'postgres' && appConfig.databaseUrl) {
+    // The migrations need `pg_trgm`. It is created here and not inside a
+    // migration, because `CREATE EXTENSION` takes a catalog lock.
+    await ensurePostgresExtensions(appConfig.databaseUrl);
+  }
+
   const result = runStartupMigrations({ dialect: appConfig.dbDriver });
 
   if (appConfig.dbDriver === 'sqlite' && !result.usedInMemoryDatabase && result.baselineInserted) {

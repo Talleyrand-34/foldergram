@@ -188,7 +188,27 @@ describe('instagram-sync gallery-dl output parsing', () => {
   });
 
   it('handles empty output', () => {
-    expect(parseStdout('')).toEqual({ downloaded: [], skipped: 0 });
+    expect(parseStdout('')).toEqual({
+      downloaded: [],
+      skipped: 0,
+      longestSkipRun: 0
+    });
+  });
+
+  it('reports the longest run of skips in a row', () => {
+    // The `-A` budget counts CONSECUTIVE skips, and a download resets the
+    // run, so the run length is what says whether the early-exit fired.
+    const stdout = [
+      '# /gallery/a/1.jpg',
+      '# /gallery/a/2.jpg',
+      '# /gallery/a/3.jpg',
+      '/gallery/a/4.jpg',
+      '# /gallery/a/5.jpg'
+    ].join('\n');
+
+    const { skipped, longestSkipRun } = parseStdout(stdout);
+    expect(skipped).toBe(4);
+    expect(longestSkipRun).toBe(3);
   });
 
   it('classifies upstream faults', () => {
@@ -258,9 +278,10 @@ describe('instagram-sync gallery-dl output parsing', () => {
     const args = buildArgs({
       config: {
         enabled: true,
-        cron: '17 */6 * * *',
         sourceUrl: 'https://www.instagram.com/rodantes_6/saved/',
-        abortAfterSkips: 300,
+        abortAfterSkips: 30,
+  abortAfterSkipsCollections: 10,
+  abortAfterSkipsDeep: 3000,
         timeoutMinutes: 45,
         minGalleryDlVersion: '1.32.17',
         workDir: '/tmp/work',
@@ -275,7 +296,7 @@ describe('instagram-sync gallery-dl output parsing', () => {
     expect(args).not.toContain('gallery_dl');
     expect(args[0]).toBe('--config-ignore');
     expect(args).toContain('-A');
-    expect(args).toContain('300');
+    expect(args).toContain('30');
     expect(args[args.length - 1]).toBe('https://www.instagram.com/rodantes_6/saved/');
     // The directory template must be a single argv element.
     expect(args).toContain('extractor.instagram.directory=["{username}"]');

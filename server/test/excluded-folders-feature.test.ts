@@ -142,7 +142,9 @@ describe.sequential('excluded folders feature', () => {
 
     await scannerService.scanAll('manual');
 
-    expect((await galleryService.listFolders()).map((folder) => folder.folderPath)).toEqual(['Trips']);
+    // listFolders() is paginated since the LIMIT+1 change: it takes (page, limit)
+    // and returns { items, page, limit, total, hasMore }.
+    expect((await galleryService.listFolders(1, 100)).items.map((folder) => folder.folderPath)).toEqual(['Trips']);
     expect(await imageRepository.getByRelativePath('Trips/@eaDir/ignored.jpg')).toBeUndefined();
     expect(await imageRepository.getByRelativePath('Archive/cache/ignored-2.jpg')).toBeUndefined();
     expect((await galleryService.getStats()).excludedFolders).toEqual({
@@ -159,7 +161,7 @@ describe.sequential('excluded folders feature', () => {
 
     await scannerService.scanAll('manual');
 
-    expect((await galleryService.listFolders()).map((folder) => folder.folderPath).sort()).toEqual([
+    expect((await galleryService.listFolders(1, 100)).items.map((folder) => folder.folderPath).sort()).toEqual([
       'Archive/cache',
       'Trips',
       'Trips/cache'
@@ -179,7 +181,9 @@ describe.sequential('excluded folders feature', () => {
 
     await scannerService.scanAll('manual');
 
-    expect((await galleryService.listFolders()).map((folder) => folder.folderPath)).toEqual(['Trips']);
+    // listFolders() is paginated since the LIMIT+1 change: it takes (page, limit)
+    // and returns { items, page, limit, total, hasMore }.
+    expect((await galleryService.listFolders(1, 100)).items.map((folder) => folder.folderPath)).toEqual(['Trips']);
     expect((await imageRepository.getByRelativePath('Trips/cache/old-1.jpg'))?.is_deleted).toBe(1);
     expect((await imageRepository.getByRelativePath('Archive/cache/old-2.jpg'))?.is_deleted).toBe(1);
   });
@@ -193,7 +197,7 @@ describe.sequential('excluded folders feature', () => {
 
     await scannerService.scanAll('manual');
 
-    const folder = (await galleryService.listFolders())[0]!;
+    const folder = (await galleryService.listFolders(1, 100)).items[0]!;
     expect(folder.folderPath).toBe('Albums/beach');
     expect(folder.hasAvatarStory).toBe(false);
     expect((await galleryService.getFolderStories(folder.slug))?.items).toEqual([]);
@@ -235,7 +239,7 @@ describe.sequential('excluded folders feature', () => {
 
     await scannerService.scanAll('manual');
 
-    expect((await galleryService.listFolders()).map((folder) => folder.folderPath).sort()).toEqual(['Trips', 'Trips/thumbnails']);
+    expect((await galleryService.listFolders(1, 100)).items.map((folder) => folder.folderPath).sort()).toEqual(['Trips', 'Trips/thumbnails']);
     expect(await imageRepository.getByRelativePath('thumbnails/managed-1.jpg')).toBeUndefined();
     expect((await imageRepository.getByRelativePath('Trips/thumbnails/photo-2.jpg'))?.is_deleted).toBe(0);
 

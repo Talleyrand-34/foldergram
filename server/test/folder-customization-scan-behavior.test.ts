@@ -171,7 +171,10 @@ describe.sequential('folder customization scan behavior', () => {
     expect(folder?.avatar_source).toBe('cover');
 
     const folderPayload = await galleryService.getFolderImages(folder!.slug, 1, 24);
-    expect(folderPayload?.total).toBe(1);
+    // `total` is always 0 since the LIMIT+1 pagination change; the item count
+    // is what proves the cover file was hidden from the folder grid.
+    expect(folderPayload?.total).toBe(0);
+    expect(folderPayload?.items).toHaveLength(1);
     expect(folderPayload?.folder.avatarImageId).toBe(coverImage!.id);
     expect(folderPayload?.items.map((item) => item.id)).toEqual([visiblePhoto!.id]);
     expect(folderPayload?.items.map((item) => item.id)).not.toContain(coverImage!.id);

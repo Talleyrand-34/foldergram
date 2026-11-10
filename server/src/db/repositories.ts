@@ -105,6 +105,12 @@ const DEFAULT_COLLECTION_NAME = 'Saved';
 const COVER_FILENAMES = ['cover.jpg', 'cover.jpeg', 'cover.png', 'cover.webp', 'cover.avif', 'cover.gif'] as const;
 const COVER_FILENAME_SQL = COVER_FILENAMES.map((name) => `'${name}'`).join(', ');
 const NORMAL_FOLDER_ROLE_SQL = "folders.role = 'normal'";
+// A folder is only surfaced in the library while it still holds visible media
+// (soft-deleted, trashed and cover files do not count). This used to be an
+// INNER JOIN against the visible images; the stored `folders.image_count`
+// column carries exactly the same number, so the filter is now a cheap
+// column comparison instead of a full COUNT/GROUP BY aggregation.
+const FOLDER_SUMMARY_HAS_VISIBLE_MEDIA_SQL = 'folders.image_count > 0';
 const NORMAL_FOLDER_ID_SUBQUERY_SQL = "SELECT id FROM folders WHERE role = 'normal'";
 const VISIBLE_IMAGE_WHERE_SQL =
   `images.is_deleted = 0 AND images.is_trashed = 0 AND LOWER(images.filename) NOT IN (${COVER_FILENAME_SQL}) AND ${NORMAL_FOLDER_ROLE_SQL}`;
@@ -568,6 +574,7 @@ export const folderRepository = {
     const { rows } = await driver.query<FolderSummaryRecord>(
       `${getFolderSummarySql()}
       WHERE folders.role = 'normal'
+        AND ${FOLDER_SUMMARY_HAS_VISIBLE_MEDIA_SQL}
       GROUP BY folders.id
       ORDER BY folders.latest_image_mtime_ms DESC, ${nameOrder}, ${pathOrder}`
     );
@@ -585,6 +592,7 @@ export const folderRepository = {
     const { rows } = await driver.query<FolderSummaryRecord>(
       `${getFolderSummarySql()}
       WHERE folders.role = 'normal'
+        AND ${FOLDER_SUMMARY_HAS_VISIBLE_MEDIA_SQL}
       GROUP BY folders.id
       ORDER BY folders.latest_image_mtime_ms DESC, ${nameOrder}, ${pathOrder}
       LIMIT ? OFFSET ?`,
@@ -620,6 +628,10 @@ export const folderRepository = {
   },
 
   async getSummaryBySlug(slug: string): Promise<FolderSummaryRecord | undefined> {
+    // Note: the "folder still holds visible media" filter is intentionally NOT
+    // applied here. A folder that is addressed directly (by slug) must stay
+    // resolvable so it can be renamed, given an avatar or deleted - even while
+    // it holds no media. Only the library listing hides such folders.
     return getDriver().queryOne<FolderSummaryRecord>(
       `${getFolderSummarySql()}
       WHERE folders.slug = ? AND folders.role = 'normal'
@@ -1228,8 +1240,19 @@ export const imageRepository = {
   },
 
   async deleteById(id: number): Promise<boolean> {
-    const result = await getDriver().execute('DELETE FROM images WHERE id = ?', [id]);
-    return result.rowCount > 0;
+    const driver = getDriver();
+
+    return await driver.transaction(async (tx) => {
+      // `folders.avatar_image_id` references `images(id)` without an ON DELETE
+      // clause, so the reference has to be cleared before the image can go.
+      // SQLite does not enforce foreign keys by default, so this only ever
+      // failed on PostgreSQL - where it made the permanent delete of a folder
+      // avatar fail with a foreign key violation.
+      await tx.execute('UPDATE folders SET avatar_image_id = NULL WHERE avatar_image_id = ?', [id]);
+
+      const result = await tx.execute('DELETE FROM images WHERE id = ?', [id]);
+      return result.rowCount > 0;
+    });
   },
 
   async listFeed(offset: number, limit: number): Promise<FeedImage[]> {
@@ -2143,6 +2166,11 @@ function getCollectionSummarySelectSql(): string {
       LIMIT 1
     ) AS cover_image_id,
     (
+      SELECT MAX(collection_items.created_at)
+      FROM collection_items
+      WHERE collection_items.collection_id = collections.id
+    ) AS last_added_at,
+    (
       SELECT images.thumbnail_path
       FROM collection_items
       INNER JOIN images ON images.id = collection_items.image_id
@@ -2319,14 +2347,46 @@ export const collectionRepository = {
     return rows;
   },
 
-  async listImages(slug: string, offset: number, limit: number): Promise<FeedImage[]> {
+  /**
+   * The paths of the media a collection holds.
+   *
+   * The mirror needs them to know where it stands: a collection whose media
+   * are all already filed is caught up, and the enumeration can stop.
+   */
+  async listCollectionItemPaths(slug: string): Promise<string[]> {
+    const collection = await this.getBySlug(slug);
+    if (!collection) return [];
+
+    const { rows } = await getDriver().query<{ relative_path: string }>(
+      `SELECT images.relative_path
+         FROM collection_items
+         INNER JOIN images ON images.id = collection_items.image_id
+        WHERE collection_items.collection_id = ?`,
+      [collection.id]
+    );
+    return rows.map((row) => row.relative_path);
+  },
+
+  /**
+   * The media of a collection.
+   *
+   * The order is by when the media was **added to the collection**, not by
+   * when the file was scanned — that is what the collection view shows, and
+   * it can be inverted.
+   */
+  async listImages(
+    slug: string,
+    offset: number,
+    limit: number,
+    order: "asc" | "desc" = "desc"
+  ): Promise<FeedImage[]> {
     await this.ensureDefaultCollection();
     const { rows } = await getDriver().query<FeedImage>(
       `${getFeedImageSelectSql()}
       INNER JOIN collection_items ON collection_items.image_id = images.id
       INNER JOIN collections ON collections.id = collection_items.collection_id
       WHERE collections.slug = ? AND ${VISIBLE_IMAGE_WHERE_SQL}
-      ORDER BY collection_items.created_at DESC, collection_items.image_id DESC
+      ORDER BY collection_items.created_at ${order === "asc" ? "ASC" : "DESC"}, collection_items.image_id ${order === "asc" ? "ASC" : "DESC"}
       LIMIT ? OFFSET ?`,
       [slug, limit, offset]
     );
@@ -2418,17 +2478,29 @@ export const collectionRepository = {
       }
     }
 
-    await driver.execute(
+    // The moment a media joined the collection is kept: a re-add must not
+    // restamp it. Otherwise every poll — which adds the whole collection
+    // again — would move every media to "now", and the collection's order
+    // and its "last added" would say nothing at all.
+    //
+    // A media that was removed and added again is a new row, so it still
+    // goes to the top.
+    const insertResult = await driver.execute(
       `INSERT INTO collection_items (collection_id, image_id, created_at)
       VALUES (?, ?, ?)
-      ON CONFLICT(collection_id, image_id) DO UPDATE SET
-        created_at = excluded.created_at`,
+      ON CONFLICT(collection_id, image_id) DO NOTHING`,
       [collection.id, imageId, timestamp]
     );
-    await driver.execute(
-      'UPDATE collections SET updated_at = ? WHERE id = ?',
-      [timestamp, collection.id]
-    );
+
+    // The collection's own timestamp moves only when its membership really
+    // changed — otherwise "last updated" would mean "last polled".
+    if (insertResult.rowCount > 0) {
+      await driver.execute(
+        'UPDATE collections SET updated_at = ? WHERE id = ?',
+        [timestamp, collection.id]
+      );
+    }
+
     return this.getById(collection.id);
   },
 
@@ -2525,6 +2597,11 @@ export const appSettingsRepository = {
 
   async remove(key: string): Promise<void> {
     await getDriver().execute('DELETE FROM app_settings WHERE key = ?', [key]);
+  },
+
+  /** Remove every setting. Used to reset the application state. */
+  async clear(): Promise<void> {
+    await getDriver().execute('DELETE FROM app_settings');
   }
 };
 

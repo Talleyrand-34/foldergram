@@ -21,6 +21,15 @@ const paginationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(60).default(24)
 });
+/**
+ * The query of a collection's media.
+ *
+ * `order` inverts the list: the collection shows the media that were added
+ * first when it is `asc`.
+ */
+const collectionImagesQuerySchema = paginationQuerySchema.extend({
+  order: z.enum(['asc', 'desc']).default('desc')
+});
 const mediaTypeQuerySchema = z.object({
   mediaType: z.enum(['image', 'video']).optional()
 });
@@ -75,7 +84,7 @@ const homeFeedDefaultBodySchema = z.object({
   defaultMode: z.enum(['recent', 'rediscover', 'random'])
 });
 const appLocaleBodySchema = z.object({
-  defaultLocale: z.enum(['en', 'es', 'zh'])
+  defaultLocale: z.enum(['en', 'es', 'zh', 'de'])
 });
 const reelsFeedDefaultBodySchema = z.object({
   defaultMode: z.enum(['recommended', 'recent', 'random'])
@@ -1148,8 +1157,13 @@ router.delete('/collections/:slug', requireCapability('canUseSharedCollections',
 
 router.get('/collections/:slug/images', requireCapability('canUseSharedCollections', 'Authentication required.'), async (request, response) => {
   const params = slugSchema.parse(request.params);
-  const query = paginationQuerySchema.parse(request.query);
-  const payload = await galleryService.getCollectionImages(params.slug, query.page, query.limit);
+  const query = collectionImagesQuerySchema.parse(request.query);
+  const payload = await galleryService.getCollectionImages(
+    params.slug,
+    query.page,
+    query.limit,
+    query.order
+  );
 
   if (!payload) {
     response.status(404).json({ message: 'Collection not found' });
