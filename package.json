@@ -4,6 +4,9 @@
   "version": "1.2.2",
   "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "workspaces": [
     "server",
     "client",
@@ -27,7 +30,7 @@
   },
   "devDependencies": {
     "bun-types": "^1.4.2",
-    "concurrently": "^9.1.2",
+    "concurrently": "^10.0.7",
     "cross-env": "^10.0.0"
   }
 }

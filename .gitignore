@@ -36,3 +36,6 @@ server/src/**/*.d.ts
 
 # Claude agent working dir
 .claude/
+
+# graphify knowledge graph output
+graphify-out/
