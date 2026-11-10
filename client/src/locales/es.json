@@ -167,6 +167,7 @@
         "overrideNotice": "El valor predeterminado de la app es {savedLabel}. Este navegador está usando temporalmente {currentLabel} desde una configuración solo de este navegador. Guarda los cambios para convertir {currentLabel} en el predeterminado.",
         "selectLabel": "Idioma de la aplicación",
         "options": {
+          "de": "Alemán",
           "en": "Inglés",
           "es": "Español",
           "zh": "Chino"
@@ -561,7 +562,8 @@
           "removed": "eliminados"
         }
       }
-    }
+    },
+    "backToSettings": "Ajustes"
   },
   "home": {
     "sidebar": {
@@ -839,11 +841,9 @@
       }
     },
     "list": {
-      "libraryUnavailableTitle": "Almacenamiento de la biblioteca no disponible",
-      "loadErrorTitle": "No se pudieron cargar las colecciones",
-      "loading": "Cargando colecciones...",
-      "emptyTitle": "Aún no hay colecciones",
-      "emptyDescription": "Las publicaciones guardadas aparecerán en Todas las publicaciones."
+      "sortLabel": "Orden",
+      "sortUpdated": "Última actualización",
+      "sortName": "Alfabético"
     },
     "detail": {
       "fallbackTitle": "Colección",
@@ -876,7 +876,9 @@
         "confirm": "Eliminar",
         "cancel": "Cancelar",
         "error": "No se pudo eliminar la colección"
-      }
+      },
+      "orderOldestFirst": "Ver primero las publicaciones más antiguas",
+      "orderNewestFirst": "Ver primero las publicaciones más nuevas"
     }
   },
   "placesPage": {
@@ -1189,6 +1191,111 @@
       "video": "video {id}",
       "approve": "Aprobar como alias",
       "reject": "Rechazar"
+    },
+    "config": {
+      "eyebrow": "Análisis con IA",
+      "title": "Proveedores y pipeline",
+      "subtitle": "Elige qué proveedor y modelo usa cada etapa, y cómo se comporta el pipeline.",
+      "providers": "Proveedores",
+      "addProvider": "Añadir un proveedor",
+      "removeProvider": "Quitar este proveedor",
+      "noProviders": "No hay proveedores configurados.",
+      "newProvider": "Nuevo proveedor",
+      "providerLabel": "Nombre",
+      "baseUrl": "URL base",
+      "defaultModel": "Modelo por defecto",
+      "apiKey": "Clave de API",
+      "noKey": "sin clave",
+      "keyStored": "Hay una clave guardada. Escribe otra para reemplazarla, o vacía el campo para eliminarla.",
+      "test": "Probar",
+      "testOk": "Accesible — {count} modelos anunciados",
+      "testFailed": "Falló: {message}",
+      "testFailedGeneric": "no se pudo contactar con el proveedor",
+      "stages": "Etapas del pipeline",
+      "stageVision": "Visión y resumen",
+      "stageAudio": "Transcripción del audio",
+      "stageCanonicalizer": "Canonización de dominios",
+      "stageEmbed": "Embeddings",
+      "provider": "Proveedor",
+      "model": "Modelo",
+      "providerDefault": "el modelo por defecto del proveedor",
+      "maxTokens": "Tokens máximos",
+      "timeout": "Tiempo límite",
+      "jsonMode": "Pedir salida JSON",
+      "language": "Idioma (ISO 639-1, vacío para detectarlo)",
+      "serviceUrl": "URL del servicio",
+      "canonicalizerHint": "Sin una URL esta etapa no hace nada.",
+      "enabled": "Activada",
+      "pipeline": "Pipeline",
+      "frameCount": "Fotogramas por vídeo",
+      "framePositions": "Posiciones de los fotogramas",
+      "framePositionsHint": "Fracciones de la duración del vídeo, separadas por comas.",
+      "minDuration": "Omitir vídeos más cortos de (s)",
+      "maxDuration": "Omitir vídeos más largos de (s)",
+      "extractAudio": "Extraer y transcribir el audio",
+      "writeCaption": "Escribir el resumen en la descripción si está vacía",
+      "updateKnowledgeGraph": "Actualizar el grafo de dominios y el conocimiento de la carpeta",
+      "save": "Guardar la configuración",
+      "saving": "Guardando…",
+      "saved": "Configuración guardada.",
+      "savedWithProblems": "Configuración guardada, pero todavía tiene problemas.",
+      "saveFailed": "No se pudo guardar la configuración.",
+      "loadFailed": "No se pudo cargar la configuración.",
+      "addMiniMax": "Añadir un proveedor MiniMax",
+      "dialect": "API",
+      "dialectOpenAi": "Compatible con OpenAI",
+      "dialectMiniMax": "MiniMax",
+      "thinking": "Razonamiento",
+      "reasoningEffort": "Profundidad del razonamiento",
+      "apiDefault": "Por defecto de la API",
+      "usageLimits": "Límites de uso",
+      "usageLimitsSubtitle": "Los límites son por proveedor, porque cada proveedor tiene una cuota distinta. Las ventanas son móviles.",
+      "tokens": "tokens",
+      "limitReached": "detenido",
+      "budget": "Presupuesto de tokens",
+      "shareHint": "Cada ventana puede gastar esta parte del presupuesto. 50 % por día y 70 % por semana significa que un día no puede usar más de la mitad del presupuesto, y una semana no más de siete décimas partes.",
+      "verifyCanonicalization": "Verificar la decisión con la IA",
+      "verifyHint": "El clasificador es una coincidencia por similitud y puede encasillar un vídeo en el dominio más cercano que le ofrecieron. La verificación detecta eso y propone un dominio nuevo cuando ninguno encaja.",
+      "canonicalization": "Canonización de dominios",
+      "canonicalizationSubtitle": "Los dominios propuestos se ajustan a la taxonomía existente, se verifican, y los vídeos antiguos se vuelven a revisar cuando la taxonomía ha crecido.",
+      "recheckDomains": "Revisar dominios",
+      "recheckFailed": "No se pudieron revisar los dominios.",
+      "domainCount": "Dominios",
+      "rechecked": "Revisados",
+      "moved": "Movidos",
+      "windowLength": "Ventana",
+      "hours": "h",
+      "share": "Parte",
+      "addWindow": "Añadir una ventana",
+      "removeWindow": "Quitar esta ventana",
+      "windowHint": "Cada ventana es móvil: las últimas N horas. Una ventana de 5 horas al 20 % detiene la cola en una quinta parte del presupuesto.",
+      "usageMode": "Cuándo parar",
+      "modeHard": "Límites estrictos",
+      "modeSmart": "Plan compartido (inteligente)",
+      "modeHint": "Los límites estrictos paran la cola en tus propias cuotas de tokens. El plan compartido lee el plan del proveedor y cede ante quien lo esté usando.",
+      "probeUrl": "Endpoint del plan",
+      "probeUrlHint": "Vacío lo deriva. El Token Plan de MiniMax publica /token_plan/remains.",
+      "probeKey": "Clave del plan",
+      "probeKeyEmpty": "sin clave",
+      "watch": "Ventana a vigilar",
+      "watchInterval": "El intervalo del plan",
+      "watchWeekly": "La semana del plan",
+      "watchBoth": "Ambas",
+      "pollMinutes": "Leer cada (min)",
+      "contentionPercent": "Compartido por encima de",
+      "idlePercent": "Tomar si está solo (%)",
+      "idlePercentHint": "100 usa el plan hasta vaciarlo.",
+      "yieldPercent": "Tomar si está compartido (%)",
+      "yieldPercentHint": "0 se aparta por completo.",
+      "ignoreHardWindows": "Ignorar mis propios límites de tokens y dejar que el plan sea el único límite",
+      "planNow": "El plan ahora mismo",
+      "planShared": "Compartido",
+      "ourUse": "nuestros",
+      "resetsAt": "se reinicia",
+      "stagesHint": "Cada etapa elige un proveedor y un modelo de la lista que anuncia el proveedor, así un modelo mal escrito no puede parar la cola.",
+      "stageVisionHint": "describe los fotogramas y escribe el resumen",
+      "stageAudioHint": "transcribe el audio",
+      "modelPlaceholder": "elige un modelo"
     }
   },
   "instagramSync": {
@@ -1219,10 +1326,10 @@
       "archiveSizeKb": "{size} KB",
       "schedule": "Programación",
       "scheduleEnabled": "Activada",
-      "cron": "Programación: {cron}",
       "scheduleDisabled": "Desactivada",
       "notScheduled": "Sin sincronización programada",
-      "nextRun": "Próxima ejecución {date}"
+      "nextRun": "Próxima ejecución {date}",
+      "pollInterval": "Sondeo cada {interval}"
     },
     "lastRun": {
       "heading": "Última ejecución",
@@ -1232,7 +1339,8 @@
       "skipped": "Omitidas",
       "duration": "Duración",
       "durationValue": "{seconds} s",
-      "at": "Cuándo"
+      "at": "Cuándo",
+      "stoppedEarly": "El extractor se detuvo antes: vio suficientes archivos ya descargados seguidos yentino que el resto era nada nuevo."
     },
     "runStatus": {
       "ok": "Correcta",
@@ -1240,7 +1348,8 @@
       "skipped": "Omitida",
       "sessionExpired": "Sesión caducada",
       "error": "Error",
-      "unknown": "Desconocido"
+      "unknown": "Desconocido",
+      "archiveUnavailable": "Archivo de descargas no disponible (la sincronización sí se ejecutó)"
     },
     "actions": {
       "heading": "Acciones",
@@ -1281,7 +1390,67 @@
       "someMissing": "Replicado, pero {missing} medios aún no están en la biblioteca: ejecuta una sincronización primero.",
       "progress": "Replicando colecciones",
       "progressCollection": "Replicando {name}",
-      "foundMedia": "{count} medios encontrados hasta ahora"
+      "foundMedia": "{count} medios encontrados hasta ahora",
+      "postCounts": "{posts} publicaciones · {synced} sincronizadas",
+      "lastSynced": "sincronizado {date}",
+      "notMirrored": "aún sin replicar",
+      "statusOk": "sincronizada",
+      "statusPartial": "parcial",
+      "statusFailed": "falló"
+    },
+    "poll": {
+      "heading": "Sondeo",
+      "subtitle": "Actualiza la biblioteca y tus colecciones guardadas con la frecuencia que elijas.",
+      "enabled": "Sondear automáticamente",
+      "interval": "Frecuencia",
+      "intervalCustom": "Personalizada…",
+      "intervalUnit": "min",
+      "intervalHint": "Cuánto tiempo pasa entre dos sondeos.",
+      "scope": "Qué actualizar",
+      "scopeLibrary": "La biblioteca general — publicaciones guardadas nuevas",
+      "scopeCollections": "Las colecciones guardadas",
+      "scopeAllCollections": "Todas",
+      "scopeSelectedCollections": "Solo las seleccionadas",
+      "collectionsEmpty": "Carga las colecciones para poder elegirlas.",
+      "save": "Guardar el sondeo",
+      "saving": "Guardando…",
+      "saved": "Sondeo guardado.",
+      "saveFailed": "No se pudo guardar la configuración del sondeo.",
+      "loadFailed": "No se pudo cargar la configuración del sondeo.",
+      "runNow": "Sondear ahora",
+      "running": "Sondeando…",
+      "started": "Sondeo iniciado.",
+      "alreadyRunning": "Ya hay un sondeo en curso.",
+      "runFailed": "No se pudo iniciar el sondeo.",
+      "nextRun": "Próximo sondeo {date}",
+      "noNextRun": "Sin sondeo programado",
+      "lastPoll": "Último sondeo {date}",
+      "lastPollNever": "Todavía no hay sondeos",
+      "resultOk": "Correcto",
+      "resultFailed": "Falló",
+      "resultSkipped": "No había nada que hacer",
+      "resultError": "Error",
+      "resultUnknown": "Desconocido",
+      "unit": {
+        "minute": "{count} min",
+        "hour": "{count} h",
+        "day": "{count} d"
+      },
+      "nextRunLabel": "Próximo sondeo",
+      "lastPollLabel": "Último sondeo",
+      "resultRunning": "En curso",
+      "runningNow": "Sondeando ahora",
+      "progressLibrary": "Actualizando la biblioteca…",
+      "progressCollections": "Replicando las colecciones guardadas…",
+      "progressCollection": "Replicando «{name}» — {done}/{total} colecciones"
+    },
+    "budgets": {
+      "heading": "Hasta dónde mira un sondeo",
+      "feed": "Publicaciones guardadas",
+      "collections": "Una colección",
+      "intensive": "Saneo intenso",
+      "hint": "El número es cuántos archivos ya descargados seguidos hacen que el escaneo se detenga y decida que se ha puesto al día.",
+      "intensivePending": "Hay un escaneo intenso pendiente — {reason}."
     }
   },
   "explore": {
@@ -1309,7 +1478,11 @@
     "emptyTitle": "Todavía no hay nada para explorar",
     "emptyDescription": "Indexa algunas carpetas y esta página empezará a mostrar publicaciones aquí.",
     "folderPostsOne": "{count} publicación",
-    "folderPostsOther": "{count} publicaciones"
+    "folderPostsOther": "{count} publicaciones",
+    "sortLabel": "Orden",
+    "sortCurated": "Curado",
+    "sortUpdated": "Última actualización",
+    "sortRandom": "Aleatorio"
   },
   "editableChip": {
     "remove": "Quitar {value}",

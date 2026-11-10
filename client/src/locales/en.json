@@ -167,6 +167,7 @@
         "overrideNotice": "App default is {savedLabel}. This browser is temporarily using {currentLabel} from a browser-only setting. Save changes to make {currentLabel} the default.",
         "selectLabel": "App language",
         "options": {
+          "de": "German",
           "en": "English",
           "es": "Spanish",
           "zh": "Chinese"
@@ -561,7 +562,8 @@
           "removed": "removed"
         }
       }
-    }
+    },
+    "backToSettings": "Settings"
   },
   "home": {
     "sidebar": {
@@ -839,11 +841,9 @@
       }
     },
     "list": {
-      "libraryUnavailableTitle": "Library storage unavailable",
-      "loadErrorTitle": "Could not load collections",
-      "loading": "Loading collections...",
-      "emptyTitle": "No collections yet",
-      "emptyDescription": "Saved posts will appear in All Posts."
+      "sortLabel": "Order",
+      "sortUpdated": "Last updated",
+      "sortName": "Alphabetical"
     },
     "detail": {
       "fallbackTitle": "Collection",
@@ -876,7 +876,9 @@
         "confirm": "Delete",
         "cancel": "Cancel",
         "error": "Unable to delete collection"
-      }
+      },
+      "orderOldestFirst": "Show the oldest posts first",
+      "orderNewestFirst": "Show the newest posts first"
     }
   },
   "placesPage": {
@@ -1189,6 +1191,111 @@
       "video": "video {id}",
       "approve": "Approve as alias",
       "reject": "Reject"
+    },
+    "config": {
+      "eyebrow": "AI analysis",
+      "title": "Providers and pipeline",
+      "subtitle": "Choose which provider and model each stage uses, and how the analysis pipeline behaves.",
+      "providers": "Providers",
+      "addProvider": "Add a provider",
+      "removeProvider": "Remove this provider",
+      "noProviders": "No providers configured.",
+      "newProvider": "New provider",
+      "providerLabel": "Name",
+      "baseUrl": "Base URL",
+      "defaultModel": "Default model",
+      "apiKey": "API key",
+      "noKey": "no key",
+      "keyStored": "A key is stored. Type a new one to replace it, or clear the field to remove it.",
+      "test": "Test",
+      "testOk": "Reachable — {count} models advertised",
+      "testFailed": "Failed: {message}",
+      "testFailedGeneric": "the provider could not be reached",
+      "stages": "Pipeline stages",
+      "stageVision": "Vision and summary",
+      "stageAudio": "Audio transcription",
+      "stageCanonicalizer": "Domain canonicalization",
+      "stageEmbed": "Embeddings",
+      "provider": "Provider",
+      "model": "Model",
+      "providerDefault": "the provider's default model",
+      "maxTokens": "Max tokens",
+      "timeout": "Timeout",
+      "jsonMode": "Ask for JSON output",
+      "language": "Language (ISO 639-1, empty to auto-detect)",
+      "serviceUrl": "Service URL",
+      "canonicalizerHint": "Without a URL this stage does nothing.",
+      "enabled": "Enabled",
+      "pipeline": "Pipeline",
+      "frameCount": "Frames per video",
+      "framePositions": "Frame positions",
+      "framePositionsHint": "Fractions of the video's duration, comma separated.",
+      "minDuration": "Skip videos shorter than (s)",
+      "maxDuration": "Skip videos longer than (s)",
+      "extractAudio": "Extract and transcribe the audio",
+      "writeCaption": "Write the summary into the post's caption when it is empty",
+      "updateKnowledgeGraph": "Update the domain graph and the folder knowledge",
+      "save": "Save configuration",
+      "saving": "Saving…",
+      "saved": "Configuration saved.",
+      "savedWithProblems": "Configuration saved, but it still has problems.",
+      "saveFailed": "Could not save the configuration.",
+      "loadFailed": "Could not load the configuration.",
+      "addMiniMax": "Add a MiniMax provider",
+      "dialect": "API",
+      "dialectOpenAi": "OpenAI-compatible",
+      "dialectMiniMax": "MiniMax",
+      "thinking": "Thinking",
+      "reasoningEffort": "Reasoning effort",
+      "apiDefault": "API default",
+      "usageLimits": "Usage limits",
+      "usageLimitsSubtitle": "The limits are per provider, because each provider's own allowance differs. The windows are rolling.",
+      "tokens": "tokens",
+      "limitReached": "stopped",
+      "budget": "Token budget",
+      "shareHint": "Each window may spend this share of the budget. 50 % per day and 70 % per week means a day cannot use more than half the budget, and a week cannot use more than seven tenths of it.",
+      "verifyCanonicalization": "Check the decision with the AI",
+      "verifyHint": "The classifier is a similarity match and can put a post into the closest domain it was offered. The check catches that, and proposes a new domain when nothing fits.",
+      "canonicalization": "Domain canonicalization",
+      "canonicalizationSubtitle": "The proposed domains are matched onto the existing taxonomy, checked, and the earlier posts are re-checked once the taxonomy has grown.",
+      "recheckDomains": "Re-check domains",
+      "recheckFailed": "Could not re-check the domains.",
+      "domainCount": "Domains",
+      "rechecked": "Re-checked",
+      "moved": "Moved",
+      "windowLength": "Window",
+      "hours": "h",
+      "share": "Share",
+      "addWindow": "Add a window",
+      "removeWindow": "Remove this window",
+      "windowHint": "Each window is rolling: the last N hours. A 5-hour window at 20 % stops the queue at a fifth of the budget.",
+      "usageMode": "When to stop",
+      "modeHard": "Hard limits",
+      "modeSmart": "Shared plan (smart)",
+      "modeHint": "Hard limits stop the queue at your own token shares. The shared plan reads the provider's plan and yields to whoever else is using it.",
+      "probeUrl": "Plan endpoint",
+      "probeUrlHint": "Empty derives it. MiniMax's Token Plan publishes /token_plan/remains.",
+      "probeKey": "Plan key",
+      "probeKeyEmpty": "no key set",
+      "watch": "Window to watch",
+      "watchInterval": "The plan's interval",
+      "watchWeekly": "The plan's week",
+      "watchBoth": "Both",
+      "pollMinutes": "Read every (min)",
+      "contentionPercent": "Shared above",
+      "idlePercent": "Take while alone (%)",
+      "idlePercentHint": "100 uses the plan until it is empty.",
+      "yieldPercent": "Take while shared (%)",
+      "yieldPercentHint": "0 gets out of the way completely.",
+      "ignoreHardWindows": "Ignore my own token limits and let the plan's wall be the only limit",
+      "planNow": "The plan right now",
+      "planShared": "Shared",
+      "ourUse": "ours",
+      "resetsAt": "resets",
+      "stagesHint": "Every stage picks a provider and a model from the list the provider advertises, so a mistyped model cannot stop the queue.",
+      "stageVisionHint": "describes the frames and writes the summary",
+      "stageAudioHint": "transcribes the audio",
+      "modelPlaceholder": "pick a model"
     }
   },
   "instagramSync": {
@@ -1219,10 +1326,10 @@
       "archiveSizeKb": "{size} KB",
       "schedule": "Schedule",
       "scheduleEnabled": "Enabled",
-      "cron": "Schedule: {cron}",
       "scheduleDisabled": "Disabled",
       "notScheduled": "No run scheduled",
-      "nextRun": "Next run {date}"
+      "nextRun": "Next run {date}",
+      "pollInterval": "Polling every {interval}"
     },
     "lastRun": {
       "heading": "Last run",
@@ -1232,7 +1339,8 @@
       "skipped": "Skipped",
       "duration": "Duration",
       "durationValue": "{seconds} s",
-      "at": "When"
+      "at": "When",
+      "stoppedEarly": "The extractor stopped early: it had seen enough already-downloaded files in a row and assumed the rest was nothing new."
     },
     "runStatus": {
       "ok": "Succeeded",
@@ -1240,7 +1348,8 @@
       "skipped": "Skipped",
       "sessionExpired": "Session expired",
       "error": "Error",
-      "unknown": "Unknown"
+      "unknown": "Unknown",
+      "archiveUnavailable": "Download archive unavailable (sync still ran)"
     },
     "actions": {
       "heading": "Actions",
@@ -1281,7 +1390,67 @@
       "someMissing": "Mirrored, but {missing} media are not in the library yet — run a sync first.",
       "progress": "Mirroring collections",
       "progressCollection": "Mirroring {name}",
-      "foundMedia": "{count} media found so far"
+      "foundMedia": "{count} media found so far",
+      "postCounts": "{posts} posts · {synced} synced",
+      "lastSynced": "synced {date}",
+      "notMirrored": "not mirrored yet",
+      "statusOk": "synced",
+      "statusPartial": "partial",
+      "statusFailed": "failed"
+    },
+    "poll": {
+      "heading": "Polling",
+      "subtitle": "Refresh the library and your saved collections on a schedule you control.",
+      "enabled": "Poll automatically",
+      "interval": "Interval",
+      "intervalCustom": "Custom…",
+      "intervalUnit": "min",
+      "intervalHint": "How much time passes between two polls.",
+      "scope": "What to refresh",
+      "scopeLibrary": "The general library — newly saved posts",
+      "scopeCollections": "The saved collections",
+      "scopeAllCollections": "All of them",
+      "scopeSelectedCollections": "Only the selected ones",
+      "collectionsEmpty": "Load the collections to pick from them.",
+      "save": "Save polling",
+      "saving": "Saving…",
+      "saved": "Polling saved.",
+      "saveFailed": "Could not save the polling configuration.",
+      "loadFailed": "Could not load the polling configuration.",
+      "runNow": "Poll now",
+      "running": "Polling…",
+      "started": "Poll started.",
+      "alreadyRunning": "A poll is already running.",
+      "runFailed": "Could not start the poll.",
+      "nextRun": "Next poll {date}",
+      "noNextRun": "No poll scheduled",
+      "lastPoll": "Last poll {date}",
+      "lastPollNever": "No poll yet",
+      "resultOk": "Succeeded",
+      "resultFailed": "Failed",
+      "resultSkipped": "Nothing to do",
+      "resultError": "Error",
+      "resultUnknown": "Unknown",
+      "unit": {
+        "minute": "{count} min",
+        "hour": "{count} h",
+        "day": "{count} d"
+      },
+      "nextRunLabel": "Next poll",
+      "lastPollLabel": "Last poll",
+      "resultRunning": "Running",
+      "runningNow": "Polling now",
+      "progressLibrary": "Refreshing the library…",
+      "progressCollections": "Mirroring the saved collections…",
+      "progressCollection": "Mirroring “{name}” — {done}/{total} collections"
+    },
+    "budgets": {
+      "heading": "How far a poll looks",
+      "feed": "Saved posts",
+      "collections": "A collection",
+      "intensive": "Intensive scan",
+      "hint": "The number is how many already-downloaded files in a row make the scan stop and decide it has caught up.",
+      "intensivePending": "An intensive scan is waiting to run — {reason}."
     }
   },
   "explore": {
@@ -1309,7 +1478,11 @@
     "emptyTitle": "Nothing to explore yet",
     "emptyDescription": "Index a few folders and this page will start surfacing posts here.",
     "folderPostsOne": "{count} post",
-    "folderPostsOther": "{count} posts"
+    "folderPostsOther": "{count} posts",
+    "sortLabel": "Order",
+    "sortCurated": "Curated",
+    "sortUpdated": "Last updated",
+    "sortRandom": "Random"
   },
   "editableChip": {
     "remove": "Remove {value}",

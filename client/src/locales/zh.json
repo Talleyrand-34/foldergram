@@ -167,6 +167,7 @@
         "overrideNotice": "应用默认语言是{savedLabel}。当前浏览器正通过仅限此浏览器的设置临时使用{currentLabel}。保存更改即可将{currentLabel}设为默认语言。",
         "selectLabel": "应用语言",
         "options": {
+          "de": "德语",
           "en": "英语",
           "es": "西班牙语",
           "zh": "中文"
@@ -561,7 +562,8 @@
           "removed": "已移除"
         }
       }
-    }
+    },
+    "backToSettings": "设置"
   },
   "home": {
     "sidebar": {
@@ -839,11 +841,9 @@
       }
     },
     "list": {
-      "libraryUnavailableTitle": "图库存储不可用",
-      "loadErrorTitle": "无法加载合集",
-      "loading": "正在加载合集...",
-      "emptyTitle": "还没有合集",
-      "emptyDescription": "已保存的帖子会显示在“全部帖子”中。"
+      "sortLabel": "排序",
+      "sortUpdated": "最近更新",
+      "sortName": "按名称"
     },
     "detail": {
       "fallbackTitle": "合集",
@@ -876,7 +876,9 @@
         "confirm": "删除",
         "cancel": "取消",
         "error": "无法删除合集"
-      }
+      },
+      "orderOldestFirst": "先看最旧的帖子",
+      "orderNewestFirst": "先看最新的帖子"
     }
   },
   "placesPage": {
@@ -1189,6 +1191,111 @@
       "video": "视频 {id}",
       "approve": "批准为别名",
       "reject": "拒绝"
+    },
+    "config": {
+      "eyebrow": "AI 分析",
+      "title": "服务商与流水线",
+      "subtitle": "为每个阶段选择服务商和模型，并调整分析流水线的行为。",
+      "providers": "服务商",
+      "addProvider": "添加服务商",
+      "removeProvider": "移除此服务商",
+      "noProviders": "尚未配置任何服务商。",
+      "newProvider": "新服务商",
+      "providerLabel": "名称",
+      "baseUrl": "基础 URL",
+      "defaultModel": "默认模型",
+      "apiKey": "API 密钥",
+      "noKey": "无密钥",
+      "keyStored": "已保存密钥。输入新密钥可替换，清空则删除。",
+      "test": "测试",
+      "testOk": "可访问 — 提供了 {count} 个模型",
+      "testFailed": "失败：{message}",
+      "testFailedGeneric": "无法连接该服务商",
+      "stages": "流水线阶段",
+      "stageVision": "视觉与摘要",
+      "stageAudio": "音频转写",
+      "stageCanonicalizer": "分类规范化",
+      "stageEmbed": "嵌入向量",
+      "provider": "服务商",
+      "model": "模型",
+      "providerDefault": "服务商的默认模型",
+      "maxTokens": "最大 token 数",
+      "timeout": "超时",
+      "jsonMode": "请求 JSON 输出",
+      "language": "语言（ISO 639-1，留空则自动检测）",
+      "serviceUrl": "服务 URL",
+      "canonicalizerHint": "没有 URL 时该阶段不会执行。",
+      "enabled": "启用",
+      "pipeline": "流水线",
+      "frameCount": "每个视频的帧数",
+      "framePositions": "帧位置",
+      "framePositionsHint": "视频时长的比例，用逗号分隔。",
+      "minDuration": "跳过短于（秒）的视频",
+      "maxDuration": "跳过长于（秒）的视频",
+      "extractAudio": "提取并转写音频",
+      "writeCaption": "当描述为空时写入摘要",
+      "updateKnowledgeGraph": "更新分类图谱与文件夹知识",
+      "save": "保存配置",
+      "saving": "保存中…",
+      "saved": "配置已保存。",
+      "savedWithProblems": "配置已保存，但仍存在问题。",
+      "saveFailed": "无法保存配置。",
+      "loadFailed": "无法加载配置。",
+      "addMiniMax": "添加 MiniMax 服务商",
+      "dialect": "API",
+      "dialectOpenAi": "OpenAI 兼容",
+      "dialectMiniMax": "MiniMax",
+      "thinking": "思考模式",
+      "reasoningEffort": "思考深度",
+      "apiDefault": "API 默认",
+      "usageLimits": "用量上限",
+      "usageLimitsSubtitle": "限额按服务商设置，因为各服务商的额度不同。窗口是滚动的。",
+      "tokens": "tokens",
+      "limitReached": "已停止",
+      "budget": "Token 预算",
+      "shareHint": "每个时间窗口可使用预算的这一份额。例如每日 50%、每周 70% 表示一天最多用掉一半预算，一周最多用掉七成。",
+      "verifyCanonicalization": "用 AI 校验分类结果",
+      "verifyHint": "分类器按相似度匹配，可能把内容塞进它能想到的最接近的分类。校验会识别这种情况，并在没有合适分类时提出新分类。",
+      "canonicalization": "分类规范化",
+      "canonicalizationSubtitle": "提出的分类会匹配到已有分类体系、经过校验；当分类体系增长后，早期的内容会被重新检查。",
+      "recheckDomains": "重新检查分类",
+      "recheckFailed": "无法重新检查分类。",
+      "domainCount": "分类数",
+      "rechecked": "已复查",
+      "moved": "已调整",
+      "windowLength": "窗口",
+      "hours": "小时",
+      "share": "占比",
+      "addWindow": "添加窗口",
+      "removeWindow": "移除此窗口",
+      "windowHint": "每个窗口都是滚动的：最近 N 小时。5 小时窗口占 20% 表示用量达到预算的五分之一时暂停。",
+      "usageMode": "何时停止",
+      "modeHard": "硬性限额",
+      "modeSmart": "共享套餐（智能）",
+      "modeHint": "硬性限额按你自己的 token 份额停止队列。共享套餐会读取服务商的套餐，并在其他人使用时让路。",
+      "probeUrl": "套餐接口",
+      "probeUrlHint": "留空则自动推导。MiniMax 的 Token Plan 提供 /token_plan/remains。",
+      "probeKey": "套餐密钥",
+      "probeKeyEmpty": "未设置密钥",
+      "watch": "关注的窗口",
+      "watchInterval": "套餐的时间段",
+      "watchWeekly": "套餐的一周",
+      "watchBoth": "两者",
+      "pollMinutes": "读取间隔（分钟）",
+      "contentionPercent": "超过此比例即视为共享",
+      "idlePercent": "独占时使用（%）",
+      "idlePercentHint": "100 表示一直用到套餐耗尽。",
+      "yieldPercent": "共享时使用（%）",
+      "yieldPercentHint": "0 表示完全让路。",
+      "ignoreHardWindows": "忽略我自己的 token 限额，只以套餐上限为准",
+      "planNow": "当前套餐状态",
+      "planShared": "已共享",
+      "ourUse": "我们用了",
+      "resetsAt": "重置于",
+      "stagesHint": "每个阶段都从服务商公布的列表中选择服务商和模型，因此写错模型名不会让队列停摆。",
+      "stageVisionHint": "描述画面并生成摘要",
+      "stageAudioHint": "转录音频",
+      "modelPlaceholder": "选择模型"
     }
   },
   "instagramSync": {
@@ -1219,10 +1326,10 @@
       "archiveSizeKb": "{size} KB",
       "schedule": "定时计划",
       "scheduleEnabled": "已启用",
-      "cron": "定时计划：{cron}",
       "scheduleDisabled": "已停用",
       "notScheduled": "没有定时计划",
-      "nextRun": "下次运行 {date}"
+      "nextRun": "下次运行 {date}",
+      "pollInterval": "每 {interval} 轮询一次"
     },
     "lastRun": {
       "heading": "上次运行",
@@ -1232,7 +1339,8 @@
       "skipped": "已跳过",
       "duration": "耗时",
       "durationValue": "{seconds} 秒",
-      "at": "时间"
+      "at": "时间",
+      "stoppedEarly": "提取器提前停止：连续看到足够多的已下载文件后，它判断其余的都不是新内容。"
     },
     "runStatus": {
       "ok": "成功",
@@ -1240,7 +1348,8 @@
       "skipped": "已跳过",
       "sessionExpired": "会话已过期",
       "error": "错误",
-      "unknown": "未知"
+      "unknown": "未知",
+      "archiveUnavailable": "下载归档不可用（同步已正常执行）"
     },
     "actions": {
       "heading": "操作",
@@ -1281,7 +1390,67 @@
       "someMissing": "已镜像，但有 {missing} 个媒体尚未入库——请先运行一次同步。",
       "progress": "正在镜像合集",
       "progressCollection": "正在镜像 {name}",
-      "foundMedia": "目前已找到 {count} 个媒体"
+      "foundMedia": "目前已找到 {count} 个媒体",
+      "postCounts": "{posts} 条帖子 · 已同步 {synced}",
+      "lastSynced": "同步于 {date}",
+      "notMirrored": "尚未镜像",
+      "statusOk": "已同步",
+      "statusPartial": "部分同步",
+      "statusFailed": "失败"
+    },
+    "poll": {
+      "heading": "轮询",
+      "subtitle": "按你设定的周期更新资源库和已保存的合集。",
+      "enabled": "自动轮询",
+      "interval": "轮询间隔",
+      "intervalCustom": "自定义…",
+      "intervalUnit": "分钟",
+      "intervalHint": "两次轮询之间间隔多久。",
+      "scope": "更新范围",
+      "scopeLibrary": "通用资源库 — 新保存的内容",
+      "scopeCollections": "已保存的合集",
+      "scopeAllCollections": "全部合集",
+      "scopeSelectedCollections": "仅选中的合集",
+      "collectionsEmpty": "请先加载合集列表以便选择。",
+      "save": "保存轮询设置",
+      "saving": "保存中…",
+      "saved": "轮询设置已保存。",
+      "saveFailed": "无法保存轮询配置。",
+      "loadFailed": "无法加载轮询配置。",
+      "runNow": "立即轮询",
+      "running": "轮询中…",
+      "started": "轮询已启动。",
+      "alreadyRunning": "已有轮询正在进行。",
+      "runFailed": "无法启动轮询。",
+      "nextRun": "下次轮询 {date}",
+      "noNextRun": "暂无轮询计划",
+      "lastPoll": "上次轮询 {date}",
+      "lastPollNever": "尚未轮询",
+      "resultOk": "成功",
+      "resultFailed": "失败",
+      "resultSkipped": "无事可做",
+      "resultError": "错误",
+      "resultUnknown": "未知",
+      "unit": {
+        "minute": "{count} 分钟",
+        "hour": "{count} 小时",
+        "day": "{count} 天"
+      },
+      "nextRunLabel": "下次轮询",
+      "lastPollLabel": "上次轮询",
+      "resultRunning": "进行中",
+      "runningNow": "正在轮询",
+      "progressLibrary": "正在更新资源库…",
+      "progressCollections": "正在同步已保存的合集…",
+      "progressCollection": "正在同步「{name}」— {done}/{total} 个合集"
+    },
+    "budgets": {
+      "heading": "轮询的扫描深度",
+      "feed": "已保存帖子",
+      "collections": "单个合集",
+      "intensive": "深度扫描",
+      "hint": "这个数字表示连续看到多少个已下载文件后，扫描会停止并认为已经追平。",
+      "intensivePending": "有一次深度扫描待执行 — {reason}。"
     }
   },
   "explore": {
@@ -1309,7 +1478,11 @@
     "emptyTitle": "暂时没有可探索内容",
     "emptyDescription": "先为几个文件夹建立索引，这个页面就会开始在这里展示帖子。",
     "folderPostsOne": "{count} 篇帖子",
-    "folderPostsOther": "{count} 篇帖子"
+    "folderPostsOther": "{count} 篇帖子",
+    "sortLabel": "排序",
+    "sortCurated": "精选",
+    "sortUpdated": "最近更新",
+    "sortRandom": "随机"
   },
   "editableChip": {
     "remove": "移除 {value}",

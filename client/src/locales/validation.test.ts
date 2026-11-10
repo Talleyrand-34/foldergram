@@ -48,10 +48,14 @@ describe('locale validation', () => {
     expect(resolveSupportedLocale('es-MX')).toBe('es');
     expect(resolveSupportedLocale('zh')).toBe('zh');
     expect(resolveSupportedLocale('zh-CN')).toBe('zh');
+    expect(resolveSupportedLocale('de')).toBe('de');
+    expect(resolveSupportedLocale('de-AT')).toBe('de');
+    expect(resolveSupportedLocale('de_DE')).toBe('de');
     expect(resolveSupportedLocale('EN_gb')).toBe('en');
     expect(resolveSupportedLocale('fr')).toBeNull();
     expect(resolvePreferredLocale('fr-FR', 'es-MX')).toBe('es');
     expect(resolvePreferredLocale('fr-FR', 'zh-CN')).toBe('zh');
+    expect(resolvePreferredLocale('fr-FR', 'de-DE')).toBe('de');
     expect(resolvePreferredLocale('fr-FR')).toBe(DEFAULT_LOCALE);
   });
 });
