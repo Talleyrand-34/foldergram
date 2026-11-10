@@ -129,7 +129,8 @@ describe('useAppStore locale preferences', () => {
 
   it('falls back to English when stored and browser locales are unsupported', () => {
     window.localStorage.setItem('foldergram-locale', 'fr');
-    setNavigatorLocales(['de-DE'], 'de-DE');
+    // German is a supported locale, so an unsupported one is used here.
+    setNavigatorLocales(['it-IT'], 'it-IT');
 
     const store = useAppStore();
     store.initializeLocale();

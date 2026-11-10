@@ -31,6 +31,49 @@ export function rankExploreItems(
   });
 }
 
+/**
+ * Order the explore grid by when the content was last touched.
+ *
+ * The plain "newest first" — the counterpart to the mixed ranking, which
+ * reads as random because it mixes recency, likes, size and the folders that
+ * were opened recently.
+ */
+export function sortExploreItemsByUpdated(items: FeedItem[]): FeedItem[] {
+  return [...items].sort(
+    (left, right) =>
+      compareNumbers(right.sortTimestamp, left.sortTimestamp) ||
+      compareNumbers(right.id, left.id)
+  );
+}
+
+/**
+ * A stable shuffle.
+ *
+ * The order is random, but it does not change while the page is open — the
+ * items would otherwise jump around under the cursor. The seed is what makes
+ * it random: a new seed is a new order, the same seed is the same order.
+ */
+export function shuffleWithSeed<T>(items: T[], seed: number): T[] {
+  const result = [...items];
+  let state = seed >>> 0 || 1;
+
+  const next = (): number => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return (state >>> 0) / 4294967295;
+  };
+
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(next() * (index + 1));
+    const held = result[index];
+    result[index] = result[swap];
+    result[swap] = held;
+  }
+
+  return result;
+}
+
 export function searchFolders(folders: FolderSummary[], query: string): FolderSummary[] {
   const normalizedQuery = normalizeText(query);
   if (normalizedQuery.length === 0) {

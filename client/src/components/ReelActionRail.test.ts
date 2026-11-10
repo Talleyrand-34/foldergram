@@ -107,14 +107,16 @@ describe('ReelActionRail', () => {
 
     const controls = wrapper.findAll('.reel-action-rail > *');
 
-    expect(controls).toHaveLength(4);
-    expect(controls[1]?.find('button[aria-label="Show reel details"]').exists()).toBe(true);
+    // like | collection bookmark | info toggle | download | folder link
+    expect(controls).toHaveLength(5);
+    expect(controls[1]?.find('.collection-bookmark__button').exists()).toBe(true);
+    expect(controls[2]?.find('button[aria-label="Show reel details"]').exists()).toBe(true);
 
-    const downloadLink = controls[2];
+    const downloadLink = controls[3];
 
     expect(downloadLink?.attributes('aria-label')).toBe('Download original file');
     expect(downloadLink?.attributes('href')).toBe('/api/originals/22?download=1');
     expect(downloadLink?.attributes('title')).toBe('Download original file');
-    expect(controls[3]?.attributes('data-test')).toBe('folder-link');
+    expect(controls[4]?.attributes('data-test')).toBe('folder-link');
   });
 });

@@ -10,7 +10,11 @@ import SettingsView from './SettingsView.vue';
 vi.mock('vue-router', () => ({
   useRoute: () => ({
     query: {}
-  })
+  }),
+  RouterLink: {
+    props: ['to'],
+    template: '<a data-test="router-link"><slot /></a>'
+  }
 }));
 
 const scrollIntoViewSpy = vi.fn();

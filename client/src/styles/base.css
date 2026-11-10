@@ -1494,6 +1494,34 @@ img[data-loaded="true"] {
     transform 0.18s ease;
 }
 
+/* The order button looks like the menu button, but is its own thing. */
+.collection-page__order-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.35rem;
+  height: 2.35rem;
+  padding: 0;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.collection-page__order-button:hover {
+  opacity: 0.72;
+  transform: translateY(-1px);
+}
+
+.collection-page__order-button span {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
 .collection-page__menu-button:hover {
   opacity: 0.72;
   transform: translateY(-1px);

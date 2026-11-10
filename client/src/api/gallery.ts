@@ -243,8 +243,21 @@ export function deleteCollection(slug: string) {
   });
 }
 
-export function fetchCollectionImages(slug: string, page = 1, limit = 24) {
-  return requestJson<CollectionImagesPayload>(`/api/collections/${encodeURIComponent(slug)}/images?page=${page}&limit=${limit}`);
+/**
+ * The media of a collection.
+ *
+ * `order` inverts the list: `asc` shows the media that were added to the
+ * collection first.
+ */
+export function fetchCollectionImages(
+  slug: string,
+  page = 1,
+  limit = 24,
+  order: 'asc' | 'desc' = 'desc'
+) {
+  return requestJson<CollectionImagesPayload>(
+    `/api/collections/${encodeURIComponent(slug)}/images?page=${page}&limit=${limit}&order=${order}`
+  );
 }
 
 export function fetchImageCollections(id: number) {

@@ -55,6 +55,12 @@ interface CollectionsState {
   currentHasMore: boolean;
   loadingCollection: boolean;
   collectionError: string | null;
+  /**
+   * The order of the media in the collection being shown.
+   *
+   * `desc` is the newest added first, `asc` the oldest added first.
+   */
+  currentOrder: 'asc' | 'desc';
 }
 
 const LOCAL_COLLECTIONS_STORAGE_KEY = 'foldergram-local-collections-v1';
@@ -276,6 +282,7 @@ export const useCollectionsStore = defineStore('collections', {
     initialized: false,
     currentCollection: null,
     currentImages: [],
+    currentOrder: 'desc',
     currentPage: 1,
     currentLimit: 24,
     currentHasMore: true,
@@ -612,8 +619,13 @@ export const useCollectionsStore = defineStore('collections', {
 
       try {
         const payload = this.mode === 'local'
-          ? this.loadLocalCollection(slug, this.currentPage, this.currentLimit)
-          : await fetchCollectionImages(slug, this.currentPage, this.currentLimit);
+          ? this.loadLocalCollection(slug, this.currentPage, this.currentLimit, this.currentOrder)
+          : await fetchCollectionImages(
+              slug,
+              this.currentPage,
+              this.currentLimit,
+              this.currentOrder
+            );
 
         this.currentCollection = payload.collection;
         this.currentImages.push(...payload.items);
@@ -628,6 +640,23 @@ export const useCollectionsStore = defineStore('collections', {
       } finally {
         this.loadingCollection = false;
       }
+    },
+
+    /**
+     * Invert the order of the media in the collection being shown.
+     *
+     * The list is loaded again, because the order is the server's: the
+     * pages have to come in the right order too.
+     */
+    async setCurrentOrder(order: 'asc' | 'desc') {
+      if (this.currentOrder === order) return;
+
+      this.currentOrder = order;
+      this.currentImages = [];
+      this.currentPage = 1;
+      this.currentHasMore = true;
+      this.loadingCollection = false;
+      await this.loadCollection(this.currentCollection?.slug ?? DEFAULT_COLLECTION_SLUG, true);
     },
 
     removeImage(id: number) {
@@ -753,7 +782,12 @@ export const useCollectionsStore = defineStore('collections', {
       return deletedSummary;
     },
 
-    loadLocalCollection(slug: string, page: number, limit: number): CollectionImagesPayload {
+    loadLocalCollection(
+      slug: string,
+      page: number,
+      limit: number,
+      order: 'asc' | 'desc' = 'desc'
+    ): CollectionImagesPayload {
       const collections = readLocalCollections();
       const collection = collections.find((entry) => entry.slug === slug);
       if (!collection) {
@@ -762,7 +796,11 @@ export const useCollectionsStore = defineStore('collections', {
 
       const defaultCollection = collections.find((entry) => entry.isDefault);
       const offset = (page - 1) * limit;
-      const items = collection.items.slice(offset, offset + limit).map((item) => ({
+      // The local collections are kept newest first, so inverting means
+      // walking them the other way round.
+      const ordered =
+        order === 'asc' ? [...collection.items].reverse() : collection.items;
+      const items = ordered.slice(offset, offset + limit).map((item) => ({
         ...item,
         isSaved: defaultCollection?.items.some((entry) => entry.id === item.id) === true
       }));

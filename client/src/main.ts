@@ -62,6 +62,8 @@ async function bootstrap() {
   }
 
   appStore.initializeLastOpenedFolder();
+  appStore.initializeExploreSort();
+  appStore.initializeCollectionsSort();
 
   window.addEventListener(AUTH_REQUIRED_EVENT, () => {
     authStore.handleUnauthorized();

@@ -18,16 +18,33 @@
         </RouterLink>
         <div class="collection-page__title-row">
           <h1 class="collection-page__title">{{ collectionTitle }}</h1>
-          <button
-            v-if="canManageCurrentCollection"
-            class="collection-page__menu-button"
-            type="button"
-            :aria-label="t('collections.detail.options')"
-            :title="t('collections.detail.options')"
-            @click="menuOpen = true"
-          >
-            <span class="i-fluent-more-horizontal-24-filled" aria-hidden="true" />
-          </button>
+          <div class="flex items-center gap-[0.35rem]">
+            <!-- Invert the order of the posts. -->
+            <button
+              class="collection-page__order-button"
+              type="button"
+              :aria-label="orderLabel"
+              :title="orderLabel"
+              @click="toggleOrder"
+            >
+              <span
+                :class="collectionsStore.currentOrder === 'desc'
+                  ? 'i-fluent-arrow-down-16-regular'
+                  : 'i-fluent-arrow-up-16-regular'"
+                aria-hidden="true"
+              />
+            </button>
+            <button
+              v-if="canManageCurrentCollection"
+              class="collection-page__menu-button"
+              type="button"
+              :aria-label="t('collections.detail.options')"
+              :title="t('collections.detail.options')"
+              @click="menuOpen = true"
+            >
+              <span class="i-fluent-more-horizontal-24-filled" aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -170,6 +187,19 @@ const emptyDescription = computed(() =>
     : t('collections.detail.emptyDescriptionCustom')
 );
 const canManageCurrentCollection = computed(() => collectionsStore.currentCollection?.isDefault === false);
+
+/** What the order button does, in words. */
+const orderLabel = computed(() =>
+  collectionsStore.currentOrder === 'desc'
+    ? t('collections.detail.orderOldestFirst')
+    : t('collections.detail.orderNewestFirst')
+);
+
+async function toggleOrder() {
+  await collectionsStore.setCurrentOrder(
+    collectionsStore.currentOrder === 'desc' ? 'asc' : 'desc'
+  );
+}
 
 async function loadCollection() {
   if (appStore.isLibraryUnavailable) {

@@ -98,6 +98,46 @@ describe('CollectionView', () => {
     expect(wrapper.find('.collection-page__menu-button').exists()).toBe(false);
   });
 
+  it('inverts the order of the posts', async () => {
+    const collectionsStore = useCollectionsStore();
+    collectionsStore.$patch({
+      currentCollection: createCollection('saved', 'Saved', true),
+      currentImages: [],
+      currentOrder: 'desc',
+      loadingCollection: false,
+      collectionError: null
+    });
+    vi.spyOn(collectionsStore, 'loadCollection').mockResolvedValue(undefined);
+
+    const wrapper = mount(CollectionView, {
+      props: {
+        slug: 'saved'
+      },
+      global: {
+        stubs: {
+          EmptyState: true,
+          ErrorState: true,
+          FolderGrid: true,
+          InfiniteLoader: true
+        }
+      }
+    });
+
+    await flushPromises();
+
+    const button = wrapper.find('.collection-page__order-button');
+    expect(button.exists()).toBe(true);
+    expect(button.attributes('aria-label')).toContain('oldest');
+
+    await button.trigger('click');
+    await flushPromises();
+
+    expect(collectionsStore.currentOrder).toBe('asc');
+    expect(wrapper.find('.collection-page__order-button').attributes('aria-label')).toContain(
+      'newest'
+    );
+  });
+
   it('renders collection items in a three-column portrait grid', async () => {
     const collectionsStore = useCollectionsStore();
     collectionsStore.$patch({

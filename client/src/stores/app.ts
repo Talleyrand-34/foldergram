@@ -14,7 +14,15 @@ import {
   syncDocumentLanguage,
   type SupportedLocale
 } from '../locales';
-import type { AppStatus, FeedMode, FolderImageOrder, ReelsFeedMode, ScanProgress } from '../types/api';
+import type {
+  AppStatus,
+  CollectionsSortMode,
+  ExploreSortMode,
+  FeedMode,
+  FolderImageOrder,
+  ReelsFeedMode,
+  ScanProgress
+} from '../types/api';
 import { useAuthStore } from './auth';
 
 interface AppState {
@@ -27,6 +35,10 @@ interface AppState {
   videoPlaybackRate: 1 | 2 | 3;
   lastOpenedFolderSlug: string | null;
   recentOpenedFolderSlugs: string[];
+  /** How the explore grid is ordered. */
+  exploreSort: ExploreSortMode;
+  /** How the collections grid is ordered. */
+  collectionsSort: CollectionsSortMode;
   imageModalBackgroundPath: string | null;
   statsPollFailures: number;
   statsPollTimer: number | null;
@@ -38,6 +50,8 @@ const LOCALE_STORAGE_KEY = 'foldergram-locale';
 const VIDEO_MUTED_STORAGE_KEY = 'foldergram-video-muted';
 const LAST_OPENED_FOLDER_STORAGE_KEY = 'foldergram-last-opened-folder';
 const RECENT_OPENED_FOLDERS_STORAGE_KEY = 'foldergram-recent-opened-folders';
+const EXPLORE_SORT_STORAGE_KEY = 'foldergram-explore-sort';
+const COLLECTIONS_SORT_STORAGE_KEY = 'foldergram-collections-sort';
 const RECENT_OPENED_FOLDERS_LIMIT = 24;
 const SCAN_PROGRESS_POLL_INTERVAL_MS = 1000;
 
@@ -93,6 +107,8 @@ export const useAppStore = defineStore('app', {
     videoPlaybackRate: 1,
     lastOpenedFolderSlug: null,
     recentOpenedFolderSlugs: [],
+    exploreSort: 'curated',
+    collectionsSort: 'updated',
     imageModalBackgroundPath: null,
     statsPollFailures: 0,
     statsPollTimer: null,
@@ -171,6 +187,27 @@ export const useAppStore = defineStore('app', {
         : savedRecentSlugs;
 
       this.persistOpenedFolderState();
+    },
+
+    initializeExploreSort() {
+      const saved = window.localStorage.getItem(EXPLORE_SORT_STORAGE_KEY);
+      this.exploreSort =
+        saved === 'updated' || saved === 'random' ? saved : 'curated';
+    },
+
+    setExploreSort(mode: ExploreSortMode) {
+      this.exploreSort = mode;
+      window.localStorage.setItem(EXPLORE_SORT_STORAGE_KEY, mode);
+    },
+
+    initializeCollectionsSort() {
+      const saved = window.localStorage.getItem(COLLECTIONS_SORT_STORAGE_KEY);
+      this.collectionsSort = saved === 'name' ? 'name' : 'updated';
+    },
+
+    setCollectionsSort(mode: CollectionsSortMode) {
+      this.collectionsSort = mode;
+      window.localStorage.setItem(COLLECTIONS_SORT_STORAGE_KEY, mode);
     },
 
     setTheme(theme: 'light' | 'dark') {

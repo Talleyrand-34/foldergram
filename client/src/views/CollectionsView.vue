@@ -15,9 +15,21 @@
         <p class="text-muted">{{ t('collections.list.loading') }}</p>
       </div>
 
-      <section v-else-if="collectionsStore.items.length > 0" class="grid gap-[1px] grid-cols-2 md:grid-cols-3">
+      <template v-else-if="collectionsStore.items.length > 0">
+        <!-- How the grid is ordered. -->
+        <div class="flex items-center justify-end gap-3 pb-[0.6rem]">
+          <span class="text-[0.78rem] text-muted">{{ t('collections.list.sortLabel') }}</span>
+          <SortToggle
+            :model-value="appStore.collectionsSort"
+            :options="collectionsSortOptions"
+            :aria-label="t('collections.list.sortLabel')"
+            @update:model-value="setCollectionsSort"
+          />
+        </div>
+
+        <section class="grid gap-[1px] grid-cols-2 md:grid-cols-3">
         <RouterLink
-          v-for="collection in collectionsStore.items"
+          v-for="collection in orderedCollections"
           :key="collection.slug"
           class="group relative aspect-square overflow-hidden bg-surface-alt text-white"
           :to="{ name: 'collection', params: { slug: collection.slug } }"
@@ -52,8 +64,9 @@
             <strong class="truncate text-[0.95rem]">{{ displayCollectionName(collection) }}</strong>
             <span class="text-[0.74rem] font-semibold text-white/78">{{ formatPostCount(collection.itemCount) }}</span>
           </div>
-        </RouterLink>
-      </section>
+          </RouterLink>
+        </section>
+      </template>
 
       <EmptyState
         v-else
@@ -65,13 +78,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { RouterLink } from 'vue-router';
 
 import EmptyState from '../components/EmptyState.vue';
 import ErrorState from '../components/ErrorState.vue';
 import ResilientImage from '../components/ResilientImage.vue';
+import SortToggle from '../components/SortToggle.vue';
 import { useAppStore } from '../stores/app';
 import { useCollectionsStore } from '../stores/collections';
 import type { CollectionSummary } from '../types/api';
@@ -79,6 +93,45 @@ import type { CollectionSummary } from '../types/api';
 const appStore = useAppStore();
 const collectionsStore = useCollectionsStore();
 const { t, locale } = useI18n();
+
+const collectionsSortOptions = computed(() => [
+  { value: 'updated', label: t('collections.list.sortUpdated') },
+  { value: 'name', label: t('collections.list.sortName') }
+]);
+
+/**
+ * The collections in the chosen order.
+ *
+ * The server hands them over in its own order; the operator decides what
+ * they should look like.
+ */
+const orderedCollections = computed(() => {
+  const items = collectionsStore.items;
+
+  if (appStore.collectionsSort === 'name') {
+    return [...items].sort((left, right) =>
+      displayCollectionName(left).localeCompare(displayCollectionName(right), locale.value, {
+        sensitivity: 'base'
+      })
+    );
+  }
+
+  // The order is by when the last post JOINED the collection, not by the
+  // collection row's own timestamp: a collection that just received a post
+  // comes up, and one that has not changed does not.
+  const addedAt = (collection: CollectionSummary): number =>
+    Date.parse(collection.lastAddedAt ?? collection.updatedAt) || 0;
+
+  return [...items].sort(
+    (left, right) => addedAt(right) - addedAt(left) || left.id - right.id
+  );
+});
+
+function setCollectionsSort(mode: string) {
+  if (mode === 'updated' || mode === 'name') {
+    appStore.setCollectionsSort(mode);
+  }
+}
 
 function formatCount(value: number) {
   return new Intl.NumberFormat(locale.value).format(value);

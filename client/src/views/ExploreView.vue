@@ -159,11 +159,12 @@
       </section>
 
       <section v-else-if="hasActiveQuery" class="grid gap-5">
-        <div
-          class="explore-view__tabs flex flex-wrap gap-2"
-          role="tablist"
-          :aria-label="t('explore.tabsAria')"
-        >
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div
+            class="explore-view__tabs flex flex-wrap gap-2"
+            role="tablist"
+            :aria-label="t('explore.tabsAria')"
+          >
           <button
             class="explore-view__tab"
             :class="{ 'explore-view__tab--active': activeSearchTab === 'media' }"
@@ -194,6 +195,15 @@
           >
             {{ t('explore.tabs.descriptions') }}
           </button>
+          </div>
+
+          <!-- How the results are ordered. -->
+          <SortToggle
+            :model-value="appStore.exploreSort"
+            :options="exploreSortOptions"
+            :aria-label="t('explore.sortLabel')"
+            @update:model-value="setExploreSort"
+          />
         </div>
 
         <template v-if="activeSearchTab === 'media'">
@@ -237,7 +247,7 @@
 
           <template v-else>
             <ExploreGrid
-              :items="exploreStore.searchItems"
+              :items="orderedMediaResults"
               @open="handleSearchMediaOpen"
             />
             <InfiniteLoader
@@ -259,7 +269,7 @@
 
           <div v-else class="grid gap-1">
             <button
-              v-for="folder in folderSearchResults"
+              v-for="folder in orderedFolderResults"
               :key="folder.id"
               class="explore-view__result"
               type="button"
@@ -283,7 +293,7 @@
             </button>
 
             <p
-              v-if="folderSearchResults.length === 0"
+              v-if="orderedFolderResults.length === 0"
               class="m-0 pt-2 text-[1rem] text-muted"
             >
               {{ t('explore.noFoldersFound') }}
@@ -296,7 +306,7 @@
           class="grid gap-5"
         >
           <section
-            v-if="captionSearchResults.length === 0"
+            v-if="orderedSearchResults.length === 0"
             class="explore-view__message-card mx-auto"
           >
             <h1 class="m-0 text-[1.15rem] font-semibold text-text">
@@ -308,7 +318,7 @@
           </section>
           <ExploreGrid
             v-else
-            :items="captionSearchResults"
+            :items="orderedSearchResults"
             @open="handleSearchMediaOpen"
           />
         </section>
@@ -351,6 +361,17 @@
         </section>
 
         <template v-else>
+          <!-- How the grid is ordered. -->
+          <div class="flex items-center justify-end gap-3">
+            <span class="text-[0.78rem] text-muted">{{ t('explore.sortLabel') }}</span>
+            <SortToggle
+              :model-value="appStore.exploreSort"
+              :options="exploreSortOptions"
+              :aria-label="t('explore.sortLabel')"
+              @update:model-value="setExploreSort"
+            />
+          </div>
+
           <ExploreGrid :items="rankedItems" />
           <InfiniteLoader
             :loading="exploreStore.loading"
@@ -372,12 +393,18 @@ import { useRoute, useRouter } from 'vue-router';
 import Avatar from '../components/Avatar.vue';
 import ExploreGrid from '../components/ExploreGrid.vue';
 import InfiniteLoader from '../components/InfiniteLoader.vue';
+import SortToggle from '../components/SortToggle.vue';
 import { useAppStore } from '../stores/app';
 import { useExploreStore } from '../stores/explore';
 import { useFoldersStore } from '../stores/folders';
 import { useLikesStore } from '../stores/likes';
 import type { FolderSummary } from '../types/api';
-import { searchFolders, rankExploreItems } from '../utils/explore';
+import {
+  searchFolders,
+  rankExploreItems,
+  shuffleWithSeed,
+  sortExploreItemsByUpdated
+} from '../utils/explore';
 import { formatFolderTitle } from '../utils/folder-titles';
 import { buildLikedCountByFolder } from '../utils/home-recommendations';
 
@@ -430,15 +457,97 @@ const captionSearchResults = computed(() => {
     return tokens.every((token) => lc.includes(token));
   });
 });
-const rankedItems = computed(() =>
-  rankExploreItems(
+const exploreSortOptions = computed(() => [
+  { value: 'curated', label: t('explore.sortCurated') },
+  { value: 'updated', label: t('explore.sortUpdated') },
+  { value: 'random', label: t('explore.sortRandom') }
+]);
+
+/**
+ * The seed of the random order.
+ *
+ * A new seed is a new order. It is drawn when the random order is picked and
+ * when a search runs, so every search turns the results over — but the
+ * order does not change while the page is open.
+ */
+const randomSeed = ref(Math.floor(Math.random() * 2 ** 31));
+
+function newRandomOrder(): void {
+  randomSeed.value = Math.floor(Math.random() * 2 ** 31);
+}
+
+/** The media of the media-tab search results, in the chosen order. */
+const orderedMediaResults = computed(() => {
+  const results = exploreStore.searchItems;
+
+  if (appStore.exploreSort === 'updated') {
+    return sortExploreItemsByUpdated(results);
+  }
+
+  if (appStore.exploreSort === 'random') {
+    return shuffleWithSeed(results, randomSeed.value);
+  }
+
+  return results;
+});
+
+/** The media of the search results, in the chosen order. */
+const orderedSearchResults = computed(() => {
+  const results = captionSearchResults.value;
+
+  if (appStore.exploreSort === 'updated') {
+    return sortExploreItemsByUpdated(results);
+  }
+
+  if (appStore.exploreSort === 'random') {
+    return shuffleWithSeed(results, randomSeed.value);
+  }
+
+  return results;
+});
+
+/** The folders of the search results, in the chosen order. */
+const orderedFolderResults = computed(() => {
+  const results = folderSearchResults.value;
+
+  if (appStore.exploreSort === 'updated') {
+    return [...results].sort(
+      (left, right) =>
+        (right.latestImageMtimeMs ?? 0) - (left.latestImageMtimeMs ?? 0)
+    );
+  }
+
+  if (appStore.exploreSort === 'random') {
+    return shuffleWithSeed(results, randomSeed.value);
+  }
+
+  return results;
+});
+
+const rankedItems = computed(() => {
+  if (appStore.exploreSort === 'updated') {
+    return sortExploreItemsByUpdated(exploreStore.items);
+  }
+
+  if (appStore.exploreSort === 'random') {
+    return shuffleWithSeed(exploreStore.items, randomSeed.value);
+  }
+
+  return rankExploreItems(
     exploreStore.items,
     foldersStore.items,
     likedCountByFolder.value,
     appStore.recentOpenedFolderSlugs,
     appStore.lastOpenedFolderSlug
-  )
-);
+  );
+});
+
+function setExploreSort(mode: string) {
+  if (mode === 'updated' || mode === 'curated' || mode === 'random') {
+    if (mode === 'random') newRandomOrder();
+    appStore.setExploreSort(mode);
+  }
+}
 const showInitialLoading = computed(
   () =>
     exploreStore.loading &&
@@ -547,6 +656,9 @@ function activateSearch() {
 }
 
 function commitSearch(query = trimmedSearchQuery.value) {
+  // A new search is a new set of results, so the random order is drawn
+  // again — the results come up in a different order every time.
+  newRandomOrder();
   exploreStore.recordRecentSearch(query);
 }
 

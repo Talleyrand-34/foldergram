@@ -1,6 +1,17 @@
 import type { SupportedLocale } from '../locales';
 
 export type FeedMode = 'recent' | 'rediscover' | 'random';
+/**
+ * How the explore grid and the search results are ordered.
+ *
+ * `curated` is the mixed ranking — recency, likes, size and the folders that
+ * were opened recently, with a little jitter so it does not repeat itself.
+ * `updated` is a plain "newest first". `random` is a shuffle: the order is
+ * random, but it stays put while the page is open.
+ */
+export type ExploreSortMode = 'curated' | 'updated' | 'random';
+/** How the collections grid is ordered. */
+export type CollectionsSortMode = 'updated' | 'name';
 export type ReelsFeedMode = 'recommended' | 'recent' | 'random';
 export type FolderImageOrder = 'newest' | 'oldest';
 export type NestedFolderTitleFormat = 'folder' | 'parent-plus-folder';
@@ -287,6 +298,14 @@ export interface CollectionSummary {
   previewImages: FeedItem[];
   createdAt: string;
   updatedAt: string;
+  /**
+   * When the last post joined the collection.
+   *
+   * The collection's own `updatedAt` is not this: it does not move when a
+   * post is added, so a collection that just received a post would not come
+   * up in the "last updated" order.
+   */
+  lastAddedAt?: string | null;
 }
 
 export interface CollectionMembership extends CollectionSummary {
