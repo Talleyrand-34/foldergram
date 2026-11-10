@@ -45,6 +45,9 @@ plugins/instagram-sync/tsconfig.json
 
 ## Step 1 — Config + cron (pure, testable, no I/O)
 
+> **The cron part is superseded by step 14** — `src/cron.ts` and
+> `INSTAGRAM_SYNC_CRON` are gone. The env config below is still what it says.
+
 **Files**
 
 ```
@@ -52,10 +55,13 @@ plugins/instagram-sync/src/config.ts
 plugins/instagram-sync/src/cron.ts
 ```
 
-`config.ts` exports `InstagramSyncConfig` and `loadConfig(config)`. Defaults
-match the shell script: the same saved feed, the same `-A 300` budget, the same
-6-hourly cron. `workDir` derives from `ctx.config.galleryRoot`, so it follows
-`DATA_ROOT` automatically.
+`config.ts` exports `InstagramSyncConfig` and `loadConfig(config)`. The
+saved feed and the working set are the ones the shell script used. The `-A`
+budget is smaller — 30 for the feed, 10 for a collection — because the
+early-exit it buys is only worth it when it is reached quickly; the shell
+script's 300 meant walking a long way down the list of things it already had.
+`workDir` derives from `ctx.config.galleryRoot`, so it follows `DATA_ROOT`
+automatically.
 
 `cron.ts` exports `parseCron`, `matchesCron`, `nextRun`. 5 fields; `*`, step
 (`*` slash `n`), `a-b`, `a,b`, integers; day-of-week 0 and 7 are both Sunday.
@@ -230,6 +236,9 @@ affected folder via `path.posix.dirname` (`server/src/services/scanner-service.t
 ---
 
 ## Step 8 — The scheduler
+
+> **Superseded by step 14.** The scheduler no longer follows a cron expression;
+> it fires a poll on the interval the user configured.
 
 **Files**
 
@@ -456,6 +465,100 @@ Three media of the "repo" collection are recorded in the archive but are
 done, so the sync will never re-fetch them. That is a pre-existing
 archive/library inconsistency, not something the mirror introduces — the mirror
 reports them as missing, which is accurate.
+
+## Step 14 — First-class polling
+
+**Files**
+
+```
+plugins/instagram-sync/src/pollConfig.ts
+plugins/instagram-sync/src/pollStore.ts
+plugins/instagram-sync/src/collectionSelection.ts
+plugins/instagram-sync/src/scheduler.ts   (rewritten)
+plugins/instagram-sync/src/api.ts         (three new routes)
+plugins/instagram-sync/src/state.ts       (the poll run state)
+client/src/api/instagram-sync.ts
+client/src/views/InstagramSyncView.vue
+```
+
+The schedule used to be a cron expression in the environment
+(`INSTAGRAM_SYNC_CRON`), and it only ever covered the library. It is now a
+**poll**: a stored configuration that says how often to run and what to
+refresh.
+
+```
+instagram_sync.poll_config   the configuration
+instagram_sync.poll_run      the outcome of the last poll
+```
+
+Both live in `app_settings` — one JSON blob each, so the plugin still needs
+no DB migration.
+
+**The configuration**
+
+| field | default | meaning |
+|---|---|---|
+| `enabled` | `1` | poll at all |
+| `intervalMinutes` | `240` | time between two polls (15 min – 7 days) |
+| `library` | `1` | refresh the general library |
+| `collections` | `1` | refresh the saved collections |
+| `collectionMode` | `all` | every collection, or only `collectionIds` |
+| `collectionIds` / `collectionNames` | empty | the selected collections |
+
+One global configuration: the plugin has a single Instagram session (one
+cookie, one source feed) that the whole library shares, so a per-user
+schedule would have nothing to schedule.
+
+**What a poll does**
+
+1. the general library — gallery-dl pulls the saved-posts feed and the
+   scanner indexes what came down;
+2. the saved collections — the named sub-collections are mirrored into library
+   collections of the same name.
+
+The two halves are reported separately. A poll that refreshed the library but
+could not reach Instagram's collections is a partial success, not a total
+failure — the run state says which half ran.
+
+**The schedule is anchored on the last poll**, not on the boot time. A server
+that restarts every hour would otherwise never poll. A poll that came due
+while the server was down runs at the next tick.
+
+**The cron matcher is gone.** `src/cron.ts` and its test are deleted;
+`INSTAGRAM_SYNC_CRON` is no longer read. The plugin never had a cron library —
+it had a 50-line matcher — and an interval is what the user actually wants to
+choose.
+
+**The mirror takes a selection.** `runMirrorJob()` used to take one collection
+name; it now takes a selection (`ids` and/or `names`, case-insensitive) so the
+poll can mirror a subset. `POST /collections/sync?name=…` still works: it
+passes `{ names: [name] }`. The catch-all "All posts" pseudo-collection is
+never mirrorable.
+
+**Two modules, on purpose.** `pollConfig.ts` (defaults, normalisation,
+merging, validation) and `collectionSelection.ts` (which collections a mirror
+covers) are pure, so they can be tested without a database. `pollStore.ts`
+holds the `app_settings` side. The DB layer pulls in `node:sqlite`, which the
+test suite cannot import on Node 20 — the pure split keeps the new logic
+testable everywhere.
+
+**Routes**
+
+| method | path | purpose |
+|---|---|---|
+| `GET` | `/poll` | the configuration, the next poll and the last one |
+| `POST` | `/poll` | change the configuration (partial) |
+| `POST` | `/poll/run` | trigger a poll now |
+
+`POST /poll` rejects an interval outside 15 min – 7 days with a `400` rather
+than clamping it: the user asked for something specific.
+
+**Verify** — `server/test/instagram-sync-poll.test.ts`, 13 tests: the defaults,
+the clamping and the rejection of an out-of-range interval, the normalisation
+of a corrupt value, the merge that only takes the fields a patch carries, and
+the selection (ids, names, the empty selection, the catch-all).
+
+---
 
 ## What was NOT done, and why
 

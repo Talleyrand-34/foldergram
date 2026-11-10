@@ -7,6 +7,9 @@
  *   POST /cookie             → upload a Netscape cookie file (raw text/plain body)
  *   GET  /gallery-dl/check   → gallery-dl version known to the server
  *   POST /gallery-dl/update  → install the latest gallery-dl
+ *   GET  /poll               → the polling configuration and its state
+ *   POST /poll               → change the polling configuration
+ *   POST /poll/run           → start a poll now
  *
  * The cookie endpoint takes the cookie file verbatim as `text/plain`; it is
  * never sent as JSON and its contents are never echoed back by the server.
@@ -21,6 +24,7 @@ export type InstagramSyncRunStatus =
   | 'failed'
   | 'skipped'
   | 'session-expired'
+  | 'archive-unavailable'
   | 'error';
 
 export interface InstagramGalleryDlState {
@@ -49,22 +53,63 @@ export interface InstagramSyncRun {
   status: InstagramSyncRunStatus;
   downloaded: number;
   skipped: number;
+  /**
+   * True when the extractor stopped early because it had skipped enough
+   * files in a row. gallery-dl swallows the abort and exits 0, so without
+   * this the run would claim to have finished when it only gave up.
+   */
+  stoppedEarly?: boolean;
   error: string | null;
   durationMs: number | null;
+}
+
+/**
+ * The early-exit budgets.
+ *
+ * gallery-dl stops the extractor after this many files in a row were
+ * skipped. The budget is how far down the list a poll looks before it
+ * decides that it is caught up.
+ */
+export interface InstagramScanBudgets {
+  /** The saved-posts feed. */
+  feed: number;
+  /** One collection. */
+  collections: number;
+  /** The budget of an intensive scan. */
+  intensive: number;
+}
+
+/**
+ * A request for an intensive scan.
+ *
+ * It is asked for when a run did not go well, so the next one looks further
+ * down the list than the last one did.
+ */
+export interface InstagramDeepScanState {
+  library: boolean;
+  collections: boolean;
+  reason: string | null;
+  requestedAt: string | null;
 }
 
 export interface InstagramSyncStatus {
   enabled: boolean;
   sourceUrl: string;
-  cron: string | null;
   nextRunAt: string | null;
   galleryDl: InstagramGalleryDlState;
   cookie: InstagramCookieState;
   archive: InstagramArchiveState;
   lastRun: InstagramSyncRun | null;
+  /** The polling configuration and its last run. Optional: absent on servers
+   *  that predate the polling configuration. */
+  poll?: InstagramPollSummary;
   /** True while the server is executing a sync run. Optional: absent on
    *  servers that only report the last completed run. */
   running?: boolean;
+  /** The early-exit budgets. Optional: absent on older servers. */
+  budgets?: InstagramScanBudgets;
+  /** The pending intensive-scan request. Optional: absent on older servers. */
+  deepScan?: InstagramDeepScanState;
 }
 
 export interface InstagramGalleryDlCheck {
@@ -100,6 +145,27 @@ export interface InstagramCookieUploadResult {
   ok: boolean;
 }
 
+/** How a collection's last mirror went. */
+export type InstagramCollectionSyncStatus = 'never' | 'ok' | 'partial' | 'failed';
+
+/** The recorded status of one collection. */
+export interface InstagramCollectionState {
+  name: string;
+  /** How many posts the collection holds. */
+  mediaCount: number;
+  /** How many of them are in the library. */
+  syncedCount: number;
+  /** How many are not in the library yet. */
+  missingCount: number;
+  /** How many images the last mirror added. */
+  addedCount: number;
+  status: InstagramCollectionSyncStatus;
+  /** ISO timestamp of the last mirror. */
+  lastSyncedAt: string | null;
+  /** The last failure, when there was one. */
+  lastError: string | null;
+}
+
 /** One of the user's Instagram saved collections ("sub-folders" of saved). */
 export interface InstagramCollection {
   id: string;
@@ -108,6 +174,8 @@ export interface InstagramCollection {
   type: string;
   /** True for Instagram's catch-all "All posts" pseudo-collection. */
   isAuto: boolean;
+  /** What the last mirror of this collection did. Null until it is mirrored. */
+  state: InstagramCollectionState | null;
 }
 
 export interface InstagramCollectionList {
@@ -143,9 +211,96 @@ export interface InstagramCollectionSyncStarted {
   started: boolean;
 }
 
+/**
+ * How a poll ended.
+ *
+ * `skipped` means the poll had nothing to do — it is not a failure.
+ * `running` means the poll is happening right now: it is written when the
+ * poll starts, so the UI shows the current poll rather than the previous one.
+ */
+export type InstagramPollStatus = 'ok' | 'failed' | 'skipped' | 'error' | 'running';
+
+/** Which saved collections a poll covers. */
+export type InstagramPollCollectionMode = 'all' | 'selected';
+
+/** What a poll refreshes, how often, and which collections are in scope. */
+export interface InstagramPollConfig {
+  /** Is the polling on? */
+  enabled: boolean;
+  /** How many minutes pass between two polls. */
+  intervalMinutes: number;
+  /** Refresh the general library. */
+  library: boolean;
+  /** Refresh the saved collections. */
+  collections: boolean;
+  /** Every saved collection, or only the selected ones. */
+  collectionMode: InstagramPollCollectionMode;
+  /** The Instagram ids of the selected collections. */
+  collectionIds: string[];
+  /** Their names, kept alongside the ids for display. */
+  collectionNames: string[];
+}
+
+/** The outcome of one poll. */
+export interface InstagramPollRun {
+  at: string | null;
+  status: InstagramPollStatus;
+  /** The general library was refreshed. */
+  library: boolean;
+  /** The saved collections were refreshed. */
+  collections: boolean;
+  /** How many collections were mirrored. */
+  mirrored: number;
+  /** How many collections the poll has to mirror; null until they are known. */
+  mirroredTotal: number | null;
+  /** The collection being mirrored right now. */
+  currentCollection: string | null;
+  error: string | null;
+  durationMs: number | null;
+}
+
+/** The polling configuration as the server has it. */
+export interface InstagramPollSummary {
+  enabled: boolean;
+  intervalMinutes: number;
+  library: boolean;
+  collections: boolean;
+  collectionMode: InstagramPollCollectionMode;
+  collectionIds: string[];
+  collectionNames: string[];
+  nextRunAt: string | null;
+  lastRun: InstagramPollRun | null;
+}
+
+/** The polling configuration and its state. */
+export interface InstagramPollState {
+  config: InstagramPollConfig;
+  nextRunAt: string | null;
+  running: boolean;
+  lastRun: InstagramPollRun | null;
+  /** The interval range the server accepts. */
+  limits: {
+    minIntervalMinutes: number;
+    maxIntervalMinutes: number;
+  };
+}
+
+/** The server's answer to a configuration change. */
+export interface InstagramPollSaved {
+  config: InstagramPollConfig;
+  nextRunAt: string | null;
+}
+
+/** Acknowledgement of `POST /poll/run` — the poll runs in the background. */
+export interface InstagramPollStarted {
+  started: boolean;
+}
+
 /** The state of the background mirror job. */
 export interface InstagramMirrorJob {
   running: boolean;
+  /** What the job covers: "All collections" or a list of names. */
+  selection?: string | null;
   /** The collection being mirrored, or null when idle. */
   name: string | null;
   /** The collection currently being enumerated. */
@@ -226,4 +381,34 @@ export async function updateGalleryDl(): Promise<InstagramGalleryDlUpdateResult>
     `${INSTAGRAM_SYNC_BASE_PATH}/gallery-dl/update`,
     { method: 'POST' },
   );
+}
+
+/**
+ * The polling configuration and its state: what a poll refreshes, how often,
+ * when the next one is due and how the last one went.
+ */
+export async function fetchInstagramPoll(): Promise<InstagramPollState> {
+  return await requestJson<InstagramPollState>(`${INSTAGRAM_SYNC_BASE_PATH}/poll`);
+}
+
+/**
+ * Change the polling configuration.
+ *
+ * Only the fields in the patch are changed; the rest is left alone.
+ */
+export async function saveInstagramPoll(
+  patch: Partial<InstagramPollConfig>,
+): Promise<InstagramPollSaved> {
+  return await requestJson<InstagramPollSaved>(`${INSTAGRAM_SYNC_BASE_PATH}/poll`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+}
+
+/** Start a poll now, whatever the schedule says. */
+export async function runInstagramPoll(): Promise<InstagramPollStarted> {
+  return await requestJson<InstagramPollStarted>(`${INSTAGRAM_SYNC_BASE_PATH}/poll/run`, {
+    method: 'POST',
+  });
 }

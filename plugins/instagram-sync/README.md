@@ -10,25 +10,147 @@ Scheduled Instagram → Foldergram sync. Replaces the `insta.sh` script that run
    step.
 3. The files that came down are handed to Foldergram's scanner so they appear
    in the library immediately.
-4. A **cron expression** drives the schedule; the plugin owns its own timer
-   (the server has no cron library).
+4. A **poll** refreshes the library and the saved collections on an interval
+   the user configures from the Web UI (the plugin owns its own timer).
 5. **gallery-dl can update itself** from the Web UI: the plugin queries PyPI,
    verifies the download against the digest PyPI published, extracts it,
    smoke-tests it, and only then flips the active symlink.
 
+## Polling
+
+The schedule is first-class: it lives in `app_settings` and is edited from the
+plugin's UI. There is one global configuration, because the plugin has a single
+Instagram session (one cookie, one source feed) that the whole library shares.
+
+| setting | default | meaning |
+|---|---|---|
+| `enabled` | `1` | poll at all |
+| `intervalMinutes` | `240` (4 h) | time between two polls, 15 min – 7 days |
+| `library` | `1` | refresh the general library (the saved-posts feed) |
+| `collections` | `1` | refresh the saved collections |
+| `collectionMode` | `all` | every saved collection, or only `collectionIds` |
+| `collectionIds` / `collectionNames` | empty | the selected collections |
+
+A poll runs the parts the configuration covers:
+
+1. **the general library** — gallery-dl pulls the saved-posts feed and the
+   scanner indexes whatever came down;
+2. **the saved collections** — Instagram's named sub-collections are mirrored
+   into library collections of the same name.
+
+Both halves are reported separately: a poll that refreshed the library but
+could not reach Instagram's collections is not a total failure.
+
+The schedule is anchored on the **last poll**, not on the boot time, so a
+server that restarts often still polls. A poll that came due while the server
+was down runs at the next tick.
+
+A poll never overlaps another one: a poll in progress blocks the next tick, a
+manual sync does not start while a poll is running, and a tick is skipped
+while the scanner is busy so a poll does not queue behind a large library
+scan.
+
 ## Configuration
+
+Everything the plugin needs from the environment. The plugin's own settings
+(what a poll covers, how often it runs) are in the database — see
+[Polling](#polling).
 
 All optional; the defaults match the shell script this replaces.
 
 | env | default | meaning |
 |---|---|---|
 | `INSTAGRAM_SYNC_ENABLED` | `1` | `0` disables the plugin entirely |
-| `INSTAGRAM_SYNC_CRON` | `17 */6 * * *` | 5-field cron expression |
 | `INSTAGRAM_SYNC_SOURCE_URL` | `https://www.instagram.com/rodantes_6/saved/` | the saved-posts feed |
-| `INSTAGRAM_SYNC_ABORT_AFTER_SKIPS` | `300` | gallery-dl's `-A` budget |
+| `INSTAGRAM_SYNC_ABORT_AFTER_SKIPS` | `30` | gallery-dl's `-A` budget for the saved-posts feed |
+| `INSTAGRAM_SYNC_ABORT_AFTER_SKIPS_COLLECTIONS` | `10` | the same budget for one collection |
+| `INSTAGRAM_SYNC_ABORT_AFTER_SKIPS_DEEP` | `3000` | the budget of an intensive scan |
 | `INSTAGRAM_SYNC_TIMEOUT_MINUTES` | `45` | hard cap on one run |
 | `INSTAGRAM_SYNC_MIN_GALLERY_DL_VERSION` | `1.32.17` | version floor |
 | `INSTAGRAM_SYNC_WORK_DIR` | `<galleryRoot>/.instagram-sync` | working set root |
+
+## How far a poll looks
+
+gallery-dl's `-A N` is not a post cap. It is an **early-exit**: the extractor
+stops after `N` files in a row were skipped, because the list is ordered
+newest first and the new posts are reached before any skip. The budget is
+how far down the list a poll looks before it decides that it is caught up.
+
+| scope | budget | why |
+|---|---|---|
+| the saved-posts feed | 30 | the feed is huge; a big budget only walks a long way down the list of things it already has |
+| one collection | 10 | a collection is enumerated on its own, and the early-exit is what makes the poll fast |
+| an intensive scan | 3000 (feed) / none (collections) | used when the last run did not go well |
+
+The collections consult the **download archive** while they are listed, which
+is what lets their budget fire at all. Without it, every poll enumerates
+every media of every collection again — minutes per collection.
+
+### The false "finished"
+
+gallery-dl swallows the early-exit and exits `0`, so a run that gave up half
+way looks exactly like a run that finished. The plugin counts the run of
+skips in the output — the budget counts *consecutive* skips and a download
+resets the run — and reports `stoppedEarly`. The collections say the same
+thing: a listing that gave up reports a **partial** collection.
+
+### The deep pass
+
+One collection per job is enumerated **whole** and fetched. That is the pass
+that catches the media the early-exit walks past:
+
+- a collection is ordered by the date of the **post**, not by the day it was
+  saved — so a post saved yesterday but posted in 2023 sits deep in the list,
+  where the early-exit never looks;
+- the general sync walks the saved-posts feed and stops after thirty
+  already-downloaded posts, so a post whose download failed once is never
+  reached again — it is stranded behind the window.
+
+The deep pass runs **without the download archive**: the ledger is a claim,
+not a fact, and it still claims the media whose files are gone. The on-disk
+check is the truth — what is not on disk is fetched, what is on disk is left
+alone.
+
+The pass goes where the work is: a collection that had media missing last
+time is the one enumerated whole.
+
+### The intensive scan
+
+When a run did not go well, the plugin asks for an **intensive** scan: the
+next one walks much further before it decides that it is caught up. The
+request is remembered, so it survives a restart, and it says why:
+
+- a library run that failed, errored or could not use the ledger;
+- a collection holds media the library does not **while the library run
+  caught up** — then the ledger may be claiming media that are not really
+  there, and the next library scan looks further (and without the ledger, so
+  a file the ledger claims but that is gone is fetched again).
+
+Two rules keep it from becoming a permanent state, because a poll that always
+runs intensively is slower than the fault it was meant to cure:
+
+- the request is **consumed** by the run that uses it;
+- a fault asks for a scan only when it is **new** — a fault that was already
+  there when the intensive scan ran has had its remedy.
+
+### How long a poll takes
+
+Measured on the production server, 42 collections and a 3714-post library:
+
+| phase | time | why |
+|---|---|---|
+| the saved-posts feed | ~25 s | the downloads themselves |
+| one collection | ~2 s | Instagram's own round trip for the first page |
+| all the collections | ~2 min | 42 × 2 s, one after the other |
+
+The collections are listed one at a time on purpose: Instagram's API is the
+slow part, and asking it for several collections at once is what earns a
+rate limit. The listing stops after ten already-downloaded media, so it is
+one round trip per collection rather than a walk through the whole thing.
+
+The intensive scan is the outlier: without the early-exit, one collection can
+take minutes, and a poll of 42 of them takes hours. That is why the request
+is bounded.
 
 ## Working set
 
@@ -59,12 +181,33 @@ Mutating routes require the `canManageLibrary` capability.
 | method | path | purpose |
 |---|---|---|
 | `GET` | `/status` | plugin, gallery-dl, cookie, archive and last-run state |
-| `POST` | `/run` | trigger a sync now (`409` if one is already running) |
+| `POST` | `/run` | trigger a library sync now (`409` if one is already running) |
 | `POST` | `/cookie` | upload a fresh session cookie — **raw `text/plain` body** |
 | `GET` | `/gallery-dl/check` | ask PyPI for the latest gallery-dl |
 | `POST` | `/gallery-dl/update` | download, verify and activate a newer gallery-dl |
 | `GET` | `/collections` | the user's Instagram saved collections |
 | `POST` | `/collections/sync[?name=…]` | mirror them into library collections |
+| `GET` | `/poll` | the polling configuration, the next poll and the last one |
+| `POST` | `/poll` | change the polling configuration |
+| `POST` | `/poll/run` | trigger a poll now (`409` if one is already running) |
+
+`POST /poll` takes a partial configuration — the fields it does not carry are
+left alone:
+
+```json
+{
+  "enabled": true,
+  "intervalMinutes": 240,
+  "library": true,
+  "collections": true,
+  "collectionMode": "selected",
+  "collectionIds": ["18108037513940688"],
+  "collectionNames": ["repo"]
+}
+```
+
+An interval outside the supported range is rejected with a `400` rather than
+silently clamped.
 
 ## Saved collections → library collections
 

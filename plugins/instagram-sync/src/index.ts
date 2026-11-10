@@ -15,12 +15,21 @@
  * never indexed; and the gallery is a separate btrfs mount, so the working set
  * does not compete with Postgres for the (much smaller) root filesystem.
  *
+ * The schedule is first-class: it is stored in the database and edited from
+ * the UI (`pollConfig.ts`). A poll refreshes the general library and/or the
+ * saved collections, on an interval the user picks.
+ *
  * Routes (all under /api/plugins/instagram-sync):
  *   GET  /status            → plugin + gallery-dl + cookie + archive state
- *   POST /run               → trigger a sync now
+ *   POST /run               → trigger a library sync now
  *   POST /cookie            → upload a fresh session cookie (text/plain)
  *   GET  /gallery-dl/check  → ask PyPI for the latest gallery-dl
  *   POST /gallery-dl/update → download, verify and activate a newer gallery-dl
+ *   GET  /collections       → the user's Instagram saved collections
+ *   POST /collections/sync  → mirror them into library collections
+ *   GET  /poll              → the polling configuration and its state
+ *   POST /poll              → change the polling configuration
+ *   POST /poll/run          → trigger a poll now
  *
  * Set INSTAGRAM_SYNC_ENABLED=0 to disable the plugin entirely.
  */
@@ -53,11 +62,9 @@ const plugin: Plugin = {
     await fs.mkdir(config.galleryDlDir, { recursive: true });
 
     registerRoutes(ctx, { config, galleryRoot });
-    startScheduler(ctx, config, galleryRoot);
+    await startScheduler(ctx, config, galleryRoot);
 
-    ctx.log(
-      `ready: source=${config.sourceUrl} cron="${config.cron}" workDir=${config.workDir}`
-    );
+    ctx.log(`ready: source=${config.sourceUrl} workDir=${config.workDir}`);
   }
 };
 

@@ -617,28 +617,40 @@ the working set and swap symlinks without extra permission plumbing.
 
 ---
 
-## 7. Schedule (the internal cron)
+## 7. Schedule (the poll)
 
-No cron library exists and none is worth adding for one plugin. The plugin ships a
-minimal 5-field cron matcher (~50 lines, `src/cron.ts`) supporting `*`, `*/n`,
-`a-b`, `a,b`, and numeric fields — minute, hour, day-of-month, month, day-of-week.
+> **Changed.** The plugin used to be driven by a 5-field cron expression in the
+> environment (`INSTAGRAM_SYNC_CRON`). The schedule is now first-class: it is
+> stored in `app_settings`, edited from the Web UI, and it covers the saved
+> collections as well as the library. The cron matcher (`src/cron.ts`) is gone.
 
-Config:
+No cron library exists and none is worth adding for one plugin. The plugin owns
+a 60-second timer and fires a **poll** when the configured interval has passed.
 
-| env | default | meaning |
+Config (stored, not environment):
+
+| setting | default | meaning |
 |---|---|---|
-| `INSTAGRAM_SYNC_CRON` | `17 */6 * * *` | every 6 h at :17 (off the hour on purpose) |
-| `INSTAGRAM_SYNC_ENABLED` | `1` | `0` disables the timer entirely |
-| `INSTAGRAM_SYNC_SOURCE_URL` | `https://www.instagram.com/rodantes_6/saved/` | the saved feed |
-| `INSTAGRAM_SYNC_ABORT_AFTER_SKIPS` | `300` | the `-A` budget (see §1) |
-| `INSTAGRAM_SYNC_TIMEOUT_MINUTES` | `45` | hard cap on the gallery-dl run |
+| `enabled` | `1` | poll at all |
+| `intervalMinutes` | `240` | time between two polls (15 min – 7 days) |
+| `library` | `1` | refresh the general library |
+| `collections` | `1` | refresh the saved collections |
+| `collectionMode` | `all` | every collection, or only the selected ones |
+
+One global configuration: the plugin has a single Instagram session that the
+whole library shares.
+
+The schedule is anchored on the **last poll**, not on the boot time, so a
+server that restarts often still polls; a poll that came due while the server
+was down runs at the next tick.
 
 Guard rails:
-- **No overlap.** A run in progress blocks the next tick (boolean + next-tick skip).
+- **No overlap.** A poll in progress blocks the next tick, and a manual sync
+  does not start while a poll is running.
 - **Skip the tick if a scan is running** — `scannerService.getProgress().isScanning`
   is the same check `api.ts:1368` uses to refuse a concurrent rescan.
 - The first tick is delayed by a small random offset so a fleet of servers doesn't
-  stampede Instagram at :17.
+  stampede Instagram at the same minute.
 
 ---
 
@@ -670,14 +682,16 @@ plugins/instagram-sync/
   src/
     index.ts              default export Plugin; register(ctx) → load config, ensure work dir, start scheduler
     config.ts             env parsing + defaults
-    cron.ts               minimal 5-field cron matcher + nextRun()
     cookie.ts             read/validate/write the Netscape cookie file
     galleryDl.ts          locate + version-probe the vendored gallery-dl
     galleryDlUpdater.ts   PyPI check / download / verify / extract / activate
     fetcher.ts            spawn gallery-dl, capture stdout, classify errors, extract new file paths
     indexer.ts            call scannerService.scanChangedPaths with the new relative paths
     state.ts              read/write run state via appSettingsRepository
-    api.ts                the five routes
+    pollConfig.ts         the polling configuration: pure — defaults, normalisation, merging
+    pollStore.ts          the polling configuration: read/write via appSettingsRepository
+    collectionSelection.ts  which saved collections a mirror covers (pure)
+    api.ts                the routes
     scheduler.ts          timer + no-overlap guard
   test/  (or *.test.ts beside sources, matching the server's vitest convention)
   README.md
