@@ -112,5 +112,11 @@ export class HookEmitter {
 /**
  * Helpers that depend on Express live here so the rest of the file stays
  * pure-TS and importable from anywhere (tests, scripts).
+ *
+ * `RequestHandler` is re-exported so plugins can type their handlers without
+ * depending on the `express` package directly. Plugins are not pnpm workspace
+ * packages, so `express` types are not resolvable from a plugin directory on a
+ * clean install; importing them from here keeps the plugin contract in one
+ * place and guarantees the handler type is identical to the one the host mounts.
  */
-export type { Express, Request, Response, NextFunction };
+export type { Express, Request, Response, NextFunction, RequestHandler };

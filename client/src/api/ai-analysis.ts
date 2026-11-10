@@ -6,9 +6,15 @@
  *   GET  /search?q=&domain=&tag=&language=&limit= → analyzed-video hits
  *   POST /analyze/:imageId[?force]                → enqueue one video
  *   POST /analyze-folder/:folderId[?force]        → enqueue every video in a folder
+ *   GET  /config              → the provider + pipeline configuration
+ *   POST /config              → change the configuration
+ *   POST /config/test         → probe a provider
  *
  * The `force` flag re-runs analysis even when the source mtime hasn't changed
  * (useful when the model has improved or results were bad).
+ *
+ * The configuration carries the provider API keys, so the server never sends
+ * them back: a provider arrives with `hasApiKey` and a mask instead.
  */
 
 import { requestJson } from './http.js';
@@ -65,6 +71,339 @@ export interface AiAnalyzeFolderResponse {
   alreadyAnalyzed: number;
   alreadyQueued: number;
   force: boolean;
+}
+
+/**
+ * How to talk to a provider.
+ *
+ * `openai-compatible` is the plain OpenAI shape. `minimax` is the same shape
+ * with MiniMax's differences: `max_completion_tokens` instead of the
+ * deprecated `max_tokens`, no `response_format`, and the thinking controls.
+ */
+export type AiProviderDialect = 'openai-compatible' | 'minimax';
+
+/**
+ * A provider, as the browser sees it.
+ *
+ * The API key is never sent back: `hasApiKey` says whether one is stored and
+ * `apiKeyMasked` shows its last few characters.
+ */
+export interface AiProviderView {
+  id: string;
+  label: string;
+  dialect: AiProviderDialect;
+  baseUrl: string;
+  defaultModel: string;
+  headers: Record<string, string>;
+  /** MiniMax thinking depth; empty means the API default. */
+  reasoningEffort: string;
+  /** MiniMax thinking mode; empty means the API default. */
+  thinkingType: string;
+  /** This provider's own usage limits. */
+  usageLimits: AiProviderUsageLimitsView;
+  hasApiKey: boolean;
+  apiKeyMasked: string;
+}
+
+/** A provider as the form holds it. */
+export interface AiProviderInput {
+  id: string;
+  label: string;
+  dialect: AiProviderDialect;
+  baseUrl: string;
+  defaultModel: string;
+  headers: Record<string, string>;
+  reasoningEffort?: string;
+  thinkingType?: string;
+  /** This provider's own usage limits. */
+  usageLimits?: AiProviderUsageLimits;
+  /** Omitted keeps the stored key; an empty string clears it. */
+  apiKey?: string;
+}
+
+/** Which provider and model a stage uses. */
+export interface AiStageTarget {
+  providerId: string;
+  model: string;
+}
+
+export interface AiVisionStage extends AiStageTarget {
+  maxTokens: number;
+  timeoutMs: number;
+  jsonMode: boolean;
+}
+
+export interface AiAudioStage extends AiStageTarget {
+  timeoutMs: number;
+  /** Forced ISO 639-1 code, or null to let the model detect it. */
+  language: string | null;
+}
+
+export interface AiEmbedStage extends AiStageTarget {
+  enabled: boolean;
+  timeoutMs: number;
+}
+
+export interface AiCanonicalizerStage {
+  enabled: boolean;
+  url: string;
+  timeoutMs: number;
+  /** Check laya's decision with the AI — it catches false positives. */
+  verify: boolean;
+}
+
+/** The knobs of the per-video pipeline. */
+export interface AiPipelineConfig {
+  frameCount: number;
+  framePositions: number[];
+  extractAudio: boolean;
+  writeCaption: boolean;
+  updateKnowledgeGraph: boolean;
+  minDurationSeconds: number;
+  maxDurationSeconds: number;
+}
+
+/** The windows a usage limit can be set for. */
+export type AiUsageWindow = 'hourly' | 'daily' | 'weekly' | 'monthly';
+
+/**
+ * One usage window.
+ *
+ * The length is free-form, because a provider's own allowance is not: a plan
+ * can count tokens over a rolling 5-hour window, a calendar week, or anything
+ * else.
+ */
+export interface AiUsageWindowRule {
+  /** The window's length, in hours. 1 = hourly, 24 = daily, 168 = weekly. */
+  hours: number;
+  /** The share of the budget this window may use, as a percentage. */
+  percent: number;
+}
+
+/**
+ * How the queue decides to stop.
+ *
+ * `hard` uses the operator's own windows. `smart` watches the provider's
+ * shared plan and yields to whoever else is using it.
+ */
+export type AiUsageMode = 'hard' | 'smart';
+
+/**
+ * The smart mode's settings.
+ *
+ * The plan is read from a read-only endpoint. MiniMax's Token Plan publishes
+ * one — `/v1/token_plan/remains` — and it reports what *everybody* used.
+ */
+export interface AiSmartUsageLimits {
+  /** The read-only endpoint that reports the plan. Empty derives it. */
+  probeUrl: string;
+  /** The key for the endpoint. Empty uses the provider's own key. */
+  probeApiKey?: string;
+  /** Which of the plan's windows to watch. */
+  watch: 'interval' | 'weekly' | 'both';
+  /** How often to read the plan, in minutes. */
+  pollMinutes: number;
+  /** The share of the plan to take while nobody else is using it. */
+  idlePercent: number;
+  /** The share of the plan to take while somebody else is using it. */
+  yieldPercent: number;
+  /** The share of the plan's drain above which it counts as shared. */
+  contentionPercent: number;
+  /** Let the plan's own wall be the only limit. */
+  ignoreHardWindows: boolean;
+}
+
+/**
+ * A provider's usage limits.
+ *
+ * Per provider, because the providers' allowances differ. The windows are
+ * rolling — "in the last N hours".
+ */
+export interface AiProviderUsageLimits {
+  enabled: boolean;
+  /** The total token budget the percentages are shares of. */
+  budget: number;
+  windows: AiUsageWindowRule[];
+  /** Which rule decides when the queue stops. */
+  mode: AiUsageMode;
+  /** The smart mode's settings. */
+  smart: AiSmartUsageLimits;
+}
+
+/**
+ * The smart mode's settings as the browser sees them.
+ *
+ * The probe's key never leaves the server: it comes back as a flag and a
+ * mask.
+ */
+export interface AiSmartUsageView extends Omit<AiSmartUsageLimits, 'probeApiKey'> {
+  hasProbeApiKey: boolean;
+  probeApiKeyMasked: string;
+}
+
+/** The usage limits as the browser sees them. */
+export interface AiProviderUsageLimitsView
+  extends Omit<AiProviderUsageLimits, 'smart'> {
+  smart: AiSmartUsageView;
+}
+
+/** What the smart mode says about one provider's plan. */
+export interface AiSmartProviderState {
+  providerId: string;
+  label: string;
+  /** The plan could be read. */
+  probeOk: boolean;
+  /** Why it could not be read. */
+  probeError: string | null;
+  /** The model the plan reports for. */
+  model: string | null;
+  /** Somebody else is using the plan. */
+  contended: boolean;
+  /** How much of the plan's use was not ours. */
+  residual: number;
+  /** The share of the plan we may take right now. */
+  allowedPercent: number;
+  /** The plan's allowance for the watched window. */
+  poolTotal: number;
+  /** How much of it is used — by everybody. */
+  poolUsed: number;
+  /** Our own use of it. */
+  ourUsage: number;
+  /** The cap: the share of the plan we may take. */
+  cap: number;
+  /** We have taken our share. */
+  blocked: boolean;
+  /** When the watched window rolls over. */
+  resetsAt: string | null;
+  /** When the plan was last read. */
+  readAt: number;
+}
+
+/**
+ * The token budgets.
+ *
+ * The limits are percentages of ONE budget: the total allowance. Each window
+ * gets the share of it that may be spent in that window — 50 % of the budget
+ * per day, 70 % per week. Zero means "no limit for this window".
+ */
+export interface AiUsageLimits {
+  enabled: boolean;
+  /** The total token budget the shares are taken of. */
+  budget: number;
+  /** The share of the budget the current hour may use. */
+  hourly: number;
+  /** The share of the budget today may use. */
+  daily: number;
+  /** The share of the budget this week may use. */
+  weekly: number;
+  /** The share of the budget this month may use. */
+  monthly: number;
+}
+
+/** The usage in one window. */
+export interface AiUsageWindowStatus {
+  /** The window's length, in hours. */
+  hours: number;
+  used: number;
+  /** The token budget for this window — the budget times the share. */
+  limit: number;
+  /** The share of THIS window's budget used, 0–100+. */
+  percent: number;
+  overThreshold: boolean;
+  resetsAt: string;
+}
+
+/** What one provider has spent. */
+export interface AiProviderUsageStatus {
+  providerId: string;
+  label: string;
+  enabled: boolean;
+  budget: number;
+  windows: AiUsageWindowStatus[];
+  blocked: boolean;
+  blockedWindow: number | null;
+  blockedUntil: string | null;
+}
+
+/** What every provider has spent, and whether any of them must stop. */
+export interface AiUsageStatus {
+  providers: AiProviderUsageStatus[];
+  /** A provider is over its share — the queue must not claim work. */
+  blocked: boolean;
+}
+
+export interface AiAnalysisConfig {
+  providers: AiProviderView[];
+  stages: {
+    vision: AiVisionStage;
+    audio: AiAudioStage;
+    embed: AiEmbedStage;
+    canonicalizer: AiCanonicalizerStage;
+  };
+  pipeline: AiPipelineConfig;
+}
+
+export interface AiConfigResponse {
+  config: AiAnalysisConfig;
+  /** Problems with the configuration; empty when it is healthy. */
+  errors: string[];
+  /** What the pipeline has spent so far. */
+  usage: AiUsageStatus;
+  /** What the smart mode says about the shared plans. */
+  smart: AiSmartProviderState[];
+}
+
+/** The result of probing a provider. */
+export interface AiProviderTestResult {
+  ok: boolean;
+  /** The HTTP status, or null when the endpoint could not be reached. */
+  status: number | null;
+  message?: string;
+  models?: string[];
+  modelCount?: number;
+  /** Whether the requested model was in the list; null when not checked. */
+  modelFound?: boolean | null;
+}
+
+/**
+ * The models a provider offers.
+ *
+ * The names are read from the provider, not typed, so a typo cannot stop
+ * the queue.
+ */
+export interface AiProviderModels {
+  providerId: string;
+  /** The model names, as the provider spells them. */
+  models: string[];
+  /** How many the provider advertises in total. */
+  modelCount: number;
+  /** Why the list could not be read, if it could not. */
+  error: string | null;
+}
+
+/** The state of the domain re-check sweep. */
+export interface AiCanonicalizationState {
+  running: boolean;
+  /** How many posts were looked at. */
+  checked: number;
+  /** How many of them were moved to a different domain. */
+  moved: number;
+  /** How many domains the taxonomy has. */
+  domains: number;
+  lastRunAt: string | null;
+  error: string | null;
+  /** Recent activity, oldest first. */
+  log: string[];
+}
+
+export interface AiCanonicalizationStatus {
+  state: AiCanonicalizationState;
+  /** How many domains the taxonomy has. */
+  domains: number;
+  /** The canonicalizer is switched on. */
+  enabled: boolean;
+  /** The AI checks laya's decisions. */
+  verify: boolean;
 }
 
 export interface FolderRollup {
@@ -433,4 +772,99 @@ export async function resolvePendingSynonym(
   } catch {
     return false;
   }
+}
+
+/**
+ * The provider + pipeline configuration.
+ *
+ * The response carries the problems with the configuration, if any — the
+ * server reports all of them so the UI can list them.
+ */
+export async function fetchAiConfig(): Promise<AiConfigResponse> {
+  return await requestJson<AiConfigResponse>('/api/plugins/ai-analysis/config');
+}
+
+/**
+ * Change the configuration.
+ *
+ * Only the fields in the patch are changed. A provider without an `apiKey`
+ * keeps its stored one; an explicit empty string clears it.
+ */
+export async function saveAiConfig(patch: {
+  providers?: AiProviderInput[];
+  /**
+   * The providers to delete, by name.
+   *
+   * A provider that is simply left out of the list is **kept** — a stale
+   * page must never delete a provider somebody else added. A deletion has to
+   * be asked for by name.
+   */
+  removeProviders?: string[];
+  stages?: Partial<AiAnalysisConfig['stages']>;
+  pipeline?: Partial<AiPipelineConfig>;
+}): Promise<AiConfigResponse> {
+  return await requestJson<AiConfigResponse>('/api/plugins/ai-analysis/config', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+}
+
+/**
+ * Probe a provider before trusting it.
+ *
+ * The provider may be one that has not been saved yet — that is the point of
+ * the button.
+ */
+/**
+ * The models a saved provider offers.
+ *
+ * The list is read with the stored key, so the key never travels to the
+ * browser.
+ */
+export async function fetchProviderModels(providerId: string): Promise<AiProviderModels> {
+  return await requestJson<AiProviderModels>(
+    `/api/plugins/ai-analysis/providers/${encodeURIComponent(providerId)}/models`
+  );
+}
+
+export async function testAiProvider(
+  provider: AiProviderInput,
+  model?: string,
+): Promise<AiProviderTestResult> {
+  return await requestJson<AiProviderTestResult>('/api/plugins/ai-analysis/config/test', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ provider, model }),
+  });
+}
+
+/**
+ * The state of the domain canonicalization.
+ *
+ * The canonicalizer maps the proposed domains onto the existing taxonomy, an
+ * AI check verifies the decision, and the sweep re-checks the earlier posts
+ * once the taxonomy has grown.
+ */
+export async function fetchAiCanonicalization(): Promise<AiCanonicalizationStatus> {
+  return await requestJson<AiCanonicalizationStatus>('/api/plugins/ai-analysis/canonicalization');
+}
+
+/**
+ * Re-check the analysed posts against the current taxonomy.
+ *
+ * A post whose domain set has grown since it was analysed may fit a newer
+ * domain better than the one it was given.
+ */
+export async function runAiCanonicalization(
+  limit = 200,
+): Promise<{ state: AiCanonicalizationState }> {
+  return await requestJson<{ state: AiCanonicalizationState }>(
+    '/api/plugins/ai-analysis/canonicalization/run',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ limit }),
+    },
+  );
 }

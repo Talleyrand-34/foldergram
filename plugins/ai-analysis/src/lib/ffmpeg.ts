@@ -235,10 +235,67 @@ export async function extractSampleFrames(
     "3",
     pattern,
   ]);
-  // Glob the produced files
-  return Array.from({ length: count }, (_, i) =>
-    join(dir, `f${String(i + 1).padStart(3, "0")}.jpg`),
-  ).filter((p) => fileExists(p));
+  // Glob the produced files.
+  // `fileExists` is async — filtering on the Promise directly would keep
+  // every path, including the ones ffmpeg failed to produce.
+  const paths: string[] = [];
+  for (const [index, p] of Array.from({ length: count }, (_, i) =>
+    join(dir, `f${String(i + 1).padStart(3, "0")}.jpg`)
+  ).entries()) {
+    if (await fileExists(p)) paths.push(p);
+  }
+  return paths;
+}
+
+/**
+ * Extract one frame per position, where each position is a fraction of the
+ * video's duration (0..1).
+ *
+ * The even-spacing `fps` filter cannot express "10%, 50%, 95%" — it only
+ * divides the timeline into equal slices. Seeking per frame can, and it
+ * costs one short ffmpeg process per frame.
+ */
+export async function extractFramesAtPositions(
+  videoPath: string,
+  positions: number[],
+  outDir?: string,
+): Promise<string[]> {
+  const dir = outDir ?? (await mkTempDir("aip-frames-"));
+  const info = await probeVideo(videoPath);
+  const duration = info.duration;
+
+  const paths: string[] = [];
+  for (const [index, position] of positions.entries()) {
+    // A zero-length video has no meaningful timestamp; the caller skips those.
+    const timestamp = duration > 0 ? Math.max(0, duration * position) : 0;
+    const outPath = join(dir, `f${String(index + 1).padStart(3, "0")}.jpg`);
+    try {
+      await runProcess(FFMPEG, [
+        "-nostdin",
+        "-v",
+        "error",
+        "-y",
+        // Input seeking: fast, and lands on the keyframe before the timestamp.
+        "-ss",
+        timestamp.toFixed(3),
+        "-i",
+        videoPath,
+        "-frames:v",
+        "1",
+        "-vf",
+        "scale='min(1280,iw)':-2",
+        "-q:v",
+        "3",
+        outPath,
+      ]);
+    } catch {
+      // A frame that cannot be decoded is not fatal — the pipeline works with
+      // fewer frames than asked for.
+      continue;
+    }
+    if (await fileExists(outPath)) paths.push(outPath);
+  }
+  return paths;
 }
 
 /** Extract the full audio track as 16 kHz mono WAV (whisper's preferred format). */

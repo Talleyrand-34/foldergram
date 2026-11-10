@@ -8,6 +8,12 @@
  *   - Times out per stage; surfaces structured errors so the worker can retry
  *   - Records per-stage timings + outcome to ai_analysis_events so we can
  *     tune the slow stages and watch error rates without leaving the box.
+ *
+ * Every stage reads its parameters from the stored configuration
+ * (`config.ts`): which provider and model to use, how many frames to sample
+ * and where, whether to transcribe the audio, whether to canonicalize the
+ * domains, whether to write the caption back and whether to update the
+ * knowledge graph. The defaults reproduce the original behaviour exactly.
  */
 
 import { mkdir, readdir, readFile, rm } from "node:fs/promises";
@@ -16,13 +22,12 @@ import { join } from "node:path";
 import {
   chat,
   transcribe,
-  AUDIO_MODEL,
   RateLimitedError,
   UpstreamUnavailableError,
-  VISION_MODEL,
 } from "./lib/litellm-client.js";
-import { canonicalize, type CanonicalResult } from "./lib/laya-client.js";
-import { extractAudio, extractSampleFrames, probeVideo } from "./lib/ffmpeg.js";
+import { canonicalizePost, type VerifiedDecision } from "./canonicalize.js";
+import { extractAudio, extractFramesAtPositions, probeVideo } from "./lib/ffmpeg.js";
+import { readAiConfig } from "./configStore.js";
 import {
   applyCanonicalization,
   bumpDomainEdges,
@@ -31,10 +36,7 @@ import {
   getExistingLanguagesForCanonicalization,
   recomputeFolderRollup,
   recordAnalysisEvent,
-  recordPendingSynonym,
-  registerNewDomain,
   saveAnalysis,
-  touchExistingDomain,
   updateCaptionIfNull,
 } from "./storage.js";
 import type { IndexedVideoAsset } from "../../../server/dist/plugins/types.js";
@@ -59,6 +61,11 @@ export async function analyzeVideo(asset: IndexedVideoAsset): Promise<AnalysisRe
   const tmpDir = join(TMP_ROOT, `an-${asset.imageId}-${Date.now()}`);
   await mkdir(tmpDir, { recursive: true });
 
+  // The configuration decides what this run does. Reading it once here means
+  // a change mid-run cannot make the stages disagree with each other.
+  const config = await readAiConfig();
+  const pipeline = config.pipeline;
+
   // Per-stage timers. Reset to 0 if a stage is skipped.
   const t = {
     frameExtractMs: 0,
@@ -68,7 +75,12 @@ export async function analyzeVideo(asset: IndexedVideoAsset): Promise<AnalysisRe
   };
   let detectedLanguage: string | null = null;
   let domainsCount: number | null = null;
-  let model = VISION_MODEL;
+  let model = config.stages.vision.model || config.providers[0]?.defaultModel || "";
+  /**
+   * The provider the vision stage spends from. The usage limits are per
+   * provider, so the events have to name it.
+   */
+  const visionProviderId = config.stages.vision.providerId;
   let inputTokens = 0;
   let outputTokens = 0;
 
@@ -80,22 +92,44 @@ export async function analyzeVideo(asset: IndexedVideoAsset): Promise<AnalysisRe
       return { imageId: asset.imageId, status: "skipped", reason: "zero duration", durationMs: Date.now() - totalStart };
     }
 
+    if (pipeline.minDurationSeconds > 0 && info.duration < pipeline.minDurationSeconds) {
+      return {
+        imageId: asset.imageId,
+        status: "skipped",
+        reason: `shorter than the configured minimum (${pipeline.minDurationSeconds}s)`,
+        durationMs: Date.now() - totalStart
+      };
+    }
+
+    if (pipeline.maxDurationSeconds > 0 && info.duration > pipeline.maxDurationSeconds) {
+      return {
+        imageId: asset.imageId,
+        status: "skipped",
+        reason: `longer than the configured maximum (${pipeline.maxDurationSeconds}s)`,
+        durationMs: Date.now() - totalStart
+      };
+    }
+
     // ----- frame extraction -----
     {
       const t0 = Date.now();
       const framesDir = join(tmpDir, "frames");
       await mkdir(framesDir, { recursive: true });
-      await extractSampleFrames(asset.absolutePath, 3, framesDir);
+      await extractFramesAtPositions(
+        asset.absolutePath,
+        pipeline.framePositions,
+        framesDir
+      );
       t.frameExtractMs = Date.now() - t0;
     }
 
     // ----- audio extraction + whisper transcription -----
     let transcript = "";
-    if (info.hasAudio) {
+    if (info.hasAudio && pipeline.extractAudio) {
       const audioPath = await extractAudio(asset.absolutePath, tmpDir);
       try {
         const w0 = Date.now();
-        const r = await transcribe({ filePath: audioPath, model: AUDIO_MODEL });
+        const r = await transcribe({ filePath: audioPath });
         transcript = r.text.trim();
         detectedLanguage = (r.raw as { language?: string }).language ?? "auto";
         t.whisperMs = Date.now() - w0;
@@ -107,11 +141,14 @@ export async function analyzeVideo(asset: IndexedVideoAsset): Promise<AnalysisRe
         // only if no usable summary comes back.
       }
     } else {
-      detectedLanguage = "no_audio";
+      detectedLanguage = info.hasAudio ? "audio_disabled" : "no_audio";
     }
 
     // ----- LLM combined inference -----
-    const prompt = `You are a video librarian. You have 3 frames (10%, 50%, 95% of a <1 minute video) AND an audio transcript. Produce STRICT JSON.
+    const positions = pipeline.framePositions
+      .map((position) => `${Math.round(position * 100)}%`)
+      .join(", ");
+    const prompt = `You are a video librarian. You have ${pipeline.frameCount} frames (${positions} of a <1 minute video) AND an audio transcript. Produce STRICT JSON.
 
 Audio transcript (may be empty if no speech):
 """
@@ -149,8 +186,6 @@ Return ONLY the JSON object. No prose, no markdown.`;
     try {
       const llmStart = Date.now();
       llmResult = await chat({
-        model: VISION_MODEL,
-        maxTokens: 2000,
         json: true,
         messages: [
           {
@@ -180,6 +215,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
         eventType: "failed",
         imageId: asset.imageId,
         folderId: asset.folderId,
+        providerId: visionProviderId,
         language: detectedLanguage,
         domainCount: null,
         timings: {
@@ -190,7 +226,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
           llmMs: 0,
           inputTokens: 0,
           outputTokens: 0,
-          model: VISION_MODEL,
+          model,
         },
         errorKind: upstreamKind ?? "llm_request_failed",
         errorMessage: e instanceof Error ? e.message.slice(0, 500) : String(e).slice(0, 500),
@@ -218,6 +254,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
         eventType: "failed",
         imageId: asset.imageId,
         folderId: asset.folderId,
+        providerId: visionProviderId,
         language: detectedLanguage,
         domainCount: null,
         timings: {
@@ -244,57 +281,52 @@ Return ONLY the JSON object. No prose, no markdown.`;
     domainsCount = parsed.domains.length;
     detectedLanguage = parsed.language;
 
-    // Laya canonicalization: turn M3's free-form domain suggestions into
-    // either existing canonical nodes, synonyms awaiting admin approval, or
-    // newly-registered domains. Also normalize the language code. This is
-    // best-effort — if laya is unreachable, M3's raw suggestions stand.
+    // Canonicalization: laya maps the proposed domains onto the existing
+    // taxonomy, then an AI check verifies the decision — laya can put a post
+    // into a domain that is merely the closest one it was offered, and that
+    // is a false positive worth catching. When nothing fits, the original
+    // suggestion becomes a new domain instead of being forced into an
+    // existing one.
+    //
+    // Best-effort: if laya is unreachable the raw suggestions stand.
     let canonicalDomains = parsed.domains;
     let canonicalLanguage: string | null = parsed.language;
-    let canonicalDecision: CanonicalResult | null = null;
-    try {
-      const [existingDomains, existingLanguages] = await Promise.all([
-        getExistingDomainsForCanonicalization(),
-        getExistingLanguagesForCanonicalization(),
-      ]);
-      const layaResp = await canonicalize({
-        state: transcript,
-        suggestedDomains: parsed.domains,
-        suggestedLanguage: parsed.language,
-        existingDomains,
-        existingLanguages,
-      });
-      // laya returns CanonicalFailure when the service is unavailable
-      // (disabled, unreachable, bad response). In that case keep M3's
-      // raw values and continue as if nothing happened.
-      if (layaResp.ok !== false && layaResp.domains.length > 0) {
-        canonicalDomains = layaResp.domains.map((d) => d.canonical);
-        for (let i = 0; i < layaResp.domains.length; i++) {
-          const d = layaResp.domains[i];
-          if (d.status === 'new') {
-            await registerNewDomain(d.canonical);
-          } else if (d.status === 'match') {
-            await touchExistingDomain(d.canonical);
-          } else if (d.status === 'alias') {
-            await recordPendingSynonym(
-              d.canonical,
-              d.original,
-              asset.imageId,
-              d.confidence,
-              d.reason || null,
-            );
-          }
+    let canonicalDecisions: VerifiedDecision[] | null = null;
+    if (config.stages.canonicalizer.enabled && config.stages.canonicalizer.url) {
+      try {
+        const [existingDomains, existingLanguages] = await Promise.all([
+          getExistingDomainsForCanonicalization(),
+          getExistingLanguagesForCanonicalization(),
+        ]);
+        const result = await canonicalizePost({
+          imageId: asset.imageId,
+          transcript,
+          summary: parsed.summary,
+          suggestedDomains: parsed.domains,
+          suggestedLanguage: parsed.language,
+          existingDomains,
+          existingLanguages,
+          verify: config.stages.canonicalizer.verify
+        });
+
+        // Only a canonicalizer that actually answered may change the domains.
+        // When it is unreachable the raw suggestions stand — for a fresh
+        // analysis that is the right answer, and it must never undo a
+        // decision that was already made.
+        if (result.ok && result.domains.length > 0) {
+          canonicalDomains = result.domains;
+          domainsCount = result.domains.length;
         }
-        domainsCount = layaResp.domains.length;
+        if (result.language) {
+          canonicalLanguage = result.language;
+        }
+        if (result.ok) {
+          canonicalDecisions = result.decisions;
+        }
+      } catch (e) {
+        console.error('[ai-analysis] laya canonicalization failed:',
+          e instanceof Error ? e.message : String(e));
       }
-      if (layaResp.ok !== false && layaResp.language) {
-        canonicalLanguage = layaResp.language.canonical;
-      }
-      if (layaResp.ok !== false) {
-        canonicalDecision = layaResp;
-      }
-    } catch (e) {
-      console.error('[ai-analysis] laya canonicalization failed:',
-        e instanceof Error ? e.message : String(e));
     }
 
     await saveAnalysis(asset.imageId, asset.mtimeMs, {
@@ -314,33 +346,38 @@ Return ONLY the JSON object. No prose, no markdown.`;
     // Backfill the post's user-visible caption when it's empty. The analyzer
     // never overwrites a manual edit — users who want a fresh AI description
     // can clear the caption in the post viewer and re-trigger analysis.
-    await updateCaptionIfNull(asset.imageId, parsed.summary);
+    if (pipeline.writeCaption) {
+      await updateCaptionIfNull(asset.imageId, parsed.summary);
+    }
 
     // Roll up into folder knowledge + bump the domain graph. These are
     // best-effort — a failure here must not fail the analysis. We now use
-    // the canonicalized names from laya rather than M3's raw output.
-    try {
-      await bumpDomainNodes(canonicalDomains, canonicalLanguage);
-      await bumpDomainEdges(canonicalDomains);
-      await recomputeFolderRollup(asset.folderId);
-      if (canonicalDecision) {
-        await applyCanonicalization(
-          asset.imageId,
-          canonicalDomains,
-          canonicalLanguage,
-          JSON.stringify(canonicalDecision),
-        );
+    // the canonicalized names from laya rather than the LLM's raw output.
+    if (pipeline.updateKnowledgeGraph) {
+      try {
+        await bumpDomainNodes(canonicalDomains, canonicalLanguage);
+        await bumpDomainEdges(canonicalDomains);
+        await recomputeFolderRollup(asset.folderId);
+        if (canonicalDecisions && canonicalDecisions.length > 0) {
+          await applyCanonicalization(
+            asset.imageId,
+            canonicalDomains,
+            canonicalLanguage,
+            JSON.stringify(canonicalDecisions)
+          );
+        }
+      } catch (e) {
+        // Logged but not fatal — knowledge graph maintenance is a background concern.
+        console.error('[ai-analysis] knowledge graph update failed:',
+          e instanceof Error ? e.message : String(e));
       }
-    } catch (e) {
-      // Logged but not fatal — knowledge graph maintenance is a background concern.
-      console.error('[ai-analysis] knowledge graph update failed:',
-        e instanceof Error ? e.message : String(e));
     }
 
     await recordAnalysisEvent({
       eventType: "completed",
       imageId: asset.imageId,
       folderId: asset.folderId,
+      providerId: visionProviderId,
       language: detectedLanguage,
       domainCount: domainsCount,
       timings: {
@@ -383,6 +420,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
       eventType: "failed",
       imageId: asset.imageId,
       folderId: asset.folderId,
+      providerId: visionProviderId,
       language: detectedLanguage,
       domainCount: domainsCount,
       timings: {

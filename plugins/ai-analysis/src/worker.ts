@@ -29,7 +29,18 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import type { IndexedVideoAsset, PluginContext } from "../../../server/dist/plugins/types.js";
 import { analyzeVideo } from "./analyzer.js";
+import {
+  getRecanonicalizationState,
+  runRecanonicalizationSweep
+} from "./canonicalize.js";
+import { readAiConfig } from "./configStore.js";
 import { RateLimitedError, UpstreamUnavailableError } from "./lib/litellm-client.js";
+import { countDomains } from "./storage.js";
+import { getCachedUsageStatus, type UsageStatus } from "./usage.js";
+import {
+  evaluateSmartUsage,
+  type SmartProviderState
+} from "./lib/smart-usage.js";
 import {
   claimNextPending,
   getDistinctFolderIdsWithPendingOrUnanalyzedVideos,
@@ -78,9 +89,61 @@ let upstreamError: string | null = null;
 let pausedAt: number | null = null;
 /** The video currently being analysed — excluded from the reclaim sweep. */
 let inFlightImageId: number | null = null;
+/**
+ * The usage limit that stopped the queue, if any.
+ *
+ * Unlike the upstream fault, this lifts by itself: the window resets and the
+ * budget is available again, so the queue resumes without an operator.
+ */
+let usagePause: UsageStatus | null = null;
+/**
+ * The shared plan that stopped the queue, if any.
+ *
+ * The plan may be in use by somebody else — a person's editor assistant, for
+ * instance. The plan says so, and the queue gets out of the way until the
+ * pool is free again or the window rolls over.
+ */
+let smartPause: SmartProviderState | null = null;
+/** What the smart mode says about every provider, for the API. */
+let smartStates = new Map<string, SmartProviderState>();
+/**
+ * The cooldown after a transient upstream fault.
+ *
+ * A spent credit or an unreachable gateway is not a broken configuration:
+ * both come back on their own. The queue waits instead of stopping, and the
+ * wait grows with every consecutive failure — a long outage is met with one
+ * request an hour, not one a minute.
+ */
+let quotaPausedUntil: number | null = null;
+/** Consecutive transient failures — the index into the cooldown ladder. */
+let quotaAttempts = 0;
+
+/**
+ * How long to wait after a transient upstream fault, in minutes.
+ *
+ * The ladder grows so a long outage is not met with a request every minute,
+ * and stops at an hour: long enough to be cheap, short enough that the
+ * queue picks up promptly once the credit is back.
+ */
+const QUOTA_COOLDOWN_MINUTES = [1, 2, 5, 10, 30, 60];
+/**
+ * The domain count at the last re-check sweep.
+ *
+ * The sweep only matters when the taxonomy has grown, so it is skipped when
+ * the count has not moved.
+ */
+let domainsAtLastSweep = 0;
+/** True while a re-check sweep is running. */
+let recanonicalizationRunning = false;
 
 /** Why the queue is paused. */
-export type PauseCause = "manual" | "upstream" | "rate_limit";
+export type PauseCause =
+  | "manual"
+  | "upstream"
+  | "rate_limit"
+  | "usage_limit"
+  | "upstream_quota"
+  | "shared_plan";
 
 /** Observable pause state, rendered by the client and returned by GET /status. */
 export interface WorkerPauseState {
@@ -98,6 +161,10 @@ export interface WorkerPauseState {
   requiresAction: boolean;
   /** ISO timestamp of the current pause. */
   pausedAt: string | null;
+  /** The usage status that caused a usage_limit pause. */
+  usage: UsageStatus | null;
+  /** The shared plan that caused a shared_plan pause. */
+  sharedPlan: SmartProviderState | null;
 }
 
 function isoOrNull(ms: number | null): string | null {
@@ -109,12 +176,86 @@ function isPaused(): boolean {
   return (
     manualPaused ||
     upstreamPaused ||
+    quotaPausedUntil !== null ||
+    usagePause !== null ||
+    smartPause !== null ||
     (rateLimitedUntil !== null && Date.now() < rateLimitedUntil)
+  );
+}
+
+/** A one-line explanation of why the shared plan stopped the queue. */
+function sharedPlanMessage(state: SmartProviderState): string {
+  if (state.contended) {
+    return (
+      `somebody else is using the "${state.label}" plan — the queue yields ` +
+      `until the plan is free again`
+    );
+  }
+  return (
+    `the "${state.label}" plan's share is used up — the queue waits for the ` +
+    `window to roll over`
+  );
+}
+
+/** A one-line explanation of which budget stopped the queue. */
+function usageMessage(status: UsageStatus): string {
+  const provider = status.providers.find((entry) => entry.blocked);
+  const window = provider?.windows.find((entry) => entry.overThreshold);
+  if (!provider || !window) return "the usage limit was reached";
+  return (
+    `the ${window.hours}h usage limit of "${provider.label}" was reached ` +
+    `(${Math.round(window.percent)}% of its budget)`
   );
 }
 
 /** The current pause state, in the shape the API exposes. */
 export function getPauseState(): WorkerPauseState {
+  if (smartPause !== null) {
+    return {
+      paused: true,
+      cause: "shared_plan",
+      message: sharedPlanMessage(smartPause),
+      upstreamError,
+      resumeAt: smartPause.resetsAt,
+      // The pool frees itself: the other user stops, or the window rolls
+      // over. No operator needed.
+      requiresAction: false,
+      pausedAt: isoOrNull(pausedAt),
+      usage: null,
+      sharedPlan: smartPause
+    };
+  }
+  if (usagePause !== null) {
+    return {
+      paused: true,
+      cause: "usage_limit",
+      message: usageMessage(usagePause),
+      upstreamError,
+      resumeAt:
+        usagePause.providers.find((entry) => entry.blocked)?.blockedUntil ?? null,
+      // The window resets on its own — no operator needed.
+      requiresAction: false,
+      pausedAt: isoOrNull(pausedAt),
+      usage: usagePause,
+      sharedPlan: null
+    };
+  }
+  if (quotaPausedUntil !== null) {
+    return {
+      paused: true,
+      cause: "upstream_quota",
+      message:
+        upstreamError ??
+        "the upstream's credit or allowance ran out — the queue retries on its own",
+      upstreamError,
+      resumeAt: new Date(quotaPausedUntil).toISOString(),
+      // The cooldown lifts by itself; no operator needed.
+      requiresAction: false,
+      pausedAt: isoOrNull(pausedAt),
+      usage: usagePause,
+      sharedPlan: null
+    };
+  }
   if (manualPaused) {
     return {
       paused: true,
@@ -124,6 +265,8 @@ export function getPauseState(): WorkerPauseState {
       resumeAt: null,
       requiresAction: true,
       pausedAt: isoOrNull(pausedAt),
+      usage: usagePause,
+      sharedPlan: null
     };
   }
   if (upstreamPaused) {
@@ -135,6 +278,8 @@ export function getPauseState(): WorkerPauseState {
       resumeAt: null,
       requiresAction: true,
       pausedAt: isoOrNull(pausedAt),
+      usage: usagePause,
+      sharedPlan: null
     };
   }
   if (rateLimitedUntil !== null && Date.now() < rateLimitedUntil) {
@@ -146,6 +291,8 @@ export function getPauseState(): WorkerPauseState {
       resumeAt: isoOrNull(rateLimitedUntil),
       requiresAction: false,
       pausedAt: isoOrNull(pausedAt),
+      usage: usagePause,
+      sharedPlan: null
     };
   }
   return {
@@ -156,6 +303,8 @@ export function getPauseState(): WorkerPauseState {
     resumeAt: null,
     requiresAction: false,
     pausedAt: null,
+    usage: usagePause,
+    sharedPlan: null
   };
 }
 
@@ -182,6 +331,9 @@ export function resumeWorker(): WorkerPauseState {
   manualPaused = false;
   manualReason = null;
   upstreamPaused = false;
+  quotaPausedUntil = null;
+  quotaAttempts = 0;
+  smartPause = null;
   rateLimitedUntil = null;
   lastRetryAfterSec = null;
   pausedAt = null;
@@ -278,6 +430,17 @@ async function enqueueFolderUnanalyzed(folderId: number): Promise<void> {
 }
 
 /** Module exports so other plugins / the server can read rate-limit state. */
+/**
+ * What the smart mode says about every provider that uses it.
+ *
+ * The API hands this to the browser so the settings page can show the plan's
+ * state — how much of it is used, how much of that is ours, and whether
+ * somebody else is in the pool.
+ */
+export function getSmartStates(): SmartProviderState[] {
+  return [...smartStates.values()];
+}
+
 export function getRateLimitState(): { limitedUntil: number | null; retryAfterSec: number | null } {
   return { limitedUntil: rateLimitedUntil, retryAfterSec: lastRetryAfterSec };
 }
@@ -300,8 +463,28 @@ export function noteRateLimited(retryAfterSec: number): void {
  * worker would walk the whole library marking every video failed.
  */
 export async function noteUpstreamUnavailable(err: UpstreamUnavailableError, imageId: number): Promise<void> {
-  const wasPaused = upstreamPaused;
   await resetToPending(imageId);
+
+  // A quota or an unreachable service comes back on its own: the credit is
+  // topped up, the gateway restarts, the DNS catches up. The queue waits
+  // instead of stopping, and the wait grows with every consecutive failure.
+  if (err.kind === "quota" || err.kind === "unreachable") {
+    const minutes =
+      QUOTA_COOLDOWN_MINUTES[
+        Math.min(quotaAttempts, QUOTA_COOLDOWN_MINUTES.length - 1)
+      ];
+    quotaAttempts += 1;
+    quotaPausedUntil = Date.now() + minutes * 60_000;
+    upstreamError = err.message;
+    if (!manualPaused) pausedAt = Date.now();
+    log(
+      `upstream ${err.kind} — waiting ${minutes} min before retrying, id=${imageId} back to pending`
+    );
+    return;
+  }
+
+  // A bad key or a missing model only a human can fix.
+  const wasPaused = upstreamPaused;
   upstreamPaused = true;
   upstreamError = err.message;
   if (!wasPaused && !manualPaused) pausedAt = Date.now();
@@ -309,10 +492,143 @@ export async function noteUpstreamUnavailable(err: UpstreamUnavailableError, ima
   log("fix the model/API key, then resume the queue with POST /api/plugins/ai-analysis/resume");
 }
 
+/**
+ * Stop the queue when a usage limit has been reached.
+ *
+ * The pause lifts by itself: the window resets, the budget is available
+ * again, and the next tick carries on. Nothing is lost — the videos stay
+ * `pending` and are picked up afterwards.
+ */
+async function applyUsageLimit(): Promise<void> {
+  const config = await readAiConfig();
+  // A provider in smart mode that ignores the hard windows is not judged by
+  // them: the plan's own wall is the limit there.
+  const limited = config.providers.filter(
+    (provider) =>
+      provider.usageLimits.enabled &&
+      !(provider.usageLimits.mode === "smart" && provider.usageLimits.smart.ignoreHardWindows)
+  );
+  if (limited.length === 0) {
+    usagePause = null;
+    return;
+  }
+
+  const status = await getCachedUsageStatus(config.providers);
+  if (!status.blocked) {
+    if (usagePause !== null) {
+      log("usage limit no longer reached — the queue carries on");
+    }
+    usagePause = null;
+    return;
+  }
+
+  const blocking = status.providers.find((provider) => provider.blocked);
+  if (usagePause?.providers.find((entry) => entry.blocked)?.providerId !== blocking?.providerId) {
+    log(`usage limit reached: ${usageMessage(status)}`);
+  }
+  usagePause = status;
+}
+
+/**
+ * Stop the queue when the plan is shared with somebody else.
+ *
+ * The plan says what everybody used. When the part that is not ours is more
+ * than a rounding error, somebody else is in the pool, and the queue gets out
+ * of the way: it stops claiming work and waits for the pool to be free again
+ * or for the window to roll over.
+ *
+ * The pause lifts by itself — the other user stops, or the window ends.
+ */
+async function applySharedPlan(): Promise<void> {
+  const config = await readAiConfig();
+  const shared = config.providers.filter(
+    (provider) => provider.usageLimits.enabled && provider.usageLimits.mode === "smart"
+  );
+  if (shared.length === 0) {
+    smartStates = new Map();
+    smartPause = null;
+    return;
+  }
+
+  const states = await evaluateSmartUsage(config.providers);
+  smartStates = states;
+
+  // A shared pool is the more specific reason, so it wins over an exhausted
+  // share.
+  let blocking: SmartProviderState | null = null;
+  for (const state of states.values()) {
+    if (!state.contended && !state.blocked) continue;
+    if (!blocking || (state.contended && !blocking.contended)) blocking = state;
+  }
+
+  if (!blocking) {
+    if (smartPause !== null) {
+      log("the plan is free again — the queue carries on");
+    }
+    smartPause = null;
+    return;
+  }
+
+  if (
+    smartPause?.providerId !== blocking.providerId ||
+    smartPause?.contended !== blocking.contended
+  ) {
+    log(sharedPlanMessage(blocking));
+  }
+  smartPause = blocking;
+  if (!manualPaused) pausedAt = Date.now();
+}
+
+/**
+ * Re-check the earlier posts once the queue has drained.
+ *
+ * The sweep is worth running when the taxonomy has grown: a domain proposed
+ * after a post was analysed may fit it better than the one it was given. It is
+ * a background concern, so it never blocks the queue and it is skipped while
+ * the canonicalizer is off.
+ */
+async function maybeRunRecanonicalization(): Promise<void> {
+  if (recanonicalizationRunning) return;
+
+  const config = await readAiConfig();
+  if (!config.stages.canonicalizer.enabled || !config.stages.canonicalizer.url) {
+    return;
+  }
+
+  const domains = await countDomains();
+  if (domains === domainsAtLastSweep) return;
+
+  recanonicalizationRunning = true;
+  try {
+    const result = await runRecanonicalizationSweep(200, config.stages.canonicalizer.verify);
+    if (result.checked > 0) {
+      domainsAtLastSweep = domains;
+      log(`re-checked ${result.checked} post(s), ${result.moved} moved to a better domain`);
+    }
+  } finally {
+    recanonicalizationRunning = false;
+  }
+}
+
 async function tick(): Promise<void> {
   if (draining) return;
   draining = true;
   try {
+    // The usage limit is checked before anything is claimed: a poll that
+    // would blow through the budget must not start.
+    await applyUsageLimit();
+
+    // So is the shared plan: the queue must not take the pool from somebody
+    // else who is in it.
+    await applySharedPlan();
+
+    // A cooldown after a transient upstream fault elapsed → try again.
+    if (quotaPausedUntil !== null && Date.now() >= quotaPausedUntil) {
+      quotaPausedUntil = null;
+      quotaAttempts = 0;
+      log("the upstream cooldown elapsed — retrying");
+    }
+
     // Rate-limit window elapsed → clear the window and continue.
     if (rateLimitedUntil !== null && Date.now() >= rateLimitedUntil) {
       rateLimitedUntil = null;
@@ -351,7 +667,13 @@ async function tick(): Promise<void> {
     }
     // Then poll DB for any pending videos we missed (e.g. from a prior run).
     const claimed = await claimNextPending();
-    if (!claimed) return;
+    if (!claimed) {
+      // The queue is empty — a good moment to re-check the posts whose
+      // domain may have moved on (a newer domain was proposed since they
+      // were analysed).
+      await maybeRunRecanonicalization();
+      return;
+    }
     try {
       await processOne({
         imageId: claimed.imageId,
@@ -404,6 +726,8 @@ async function processOne(asset: IndexedVideoAsset): Promise<void> {
       log(`skipped: id=${asset.imageId} reason=${result.reason}`);
     } else {
       log(`done: id=${asset.imageId} in ${result.durationMs}ms; domains=${result.domains?.join(', ')}`);
+      // The upstream answered, so the cooldown ladder starts over.
+      quotaAttempts = 0;
     }
     // Surface a periodic status line.
     try {

@@ -1261,6 +1261,11 @@ export interface AnalysisEventInput {
   language: string | null;
   domainCount: number | null;
   timings: AnalysisTimings;
+  /**
+   * The provider that spent the tokens. The usage limits are per provider, so
+   * the events have to say whose budget they came out of.
+   */
+  providerId?: string | null;
   errorKind: string | null;
   errorMessage: string | null;
 }
@@ -1274,9 +1279,9 @@ export async function recordAnalysisEvent(input: AnalysisEventInput): Promise<vo
       `INSERT INTO ai_analysis_events
          (event_type, image_id, folder_id, language, domain_count,
           duration_ms, frame_extract_ms, audio_extract_ms, whisper_ms, llm_ms,
-          input_tokens, output_tokens, model,
+          input_tokens, output_tokens, model, provider_id,
           error_kind, error_message, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${nowExpr})`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${nowExpr})`,
       [
         input.eventType,
         input.imageId,
@@ -1291,6 +1296,7 @@ export async function recordAnalysisEvent(input: AnalysisEventInput): Promise<vo
         input.timings.inputTokens,
         input.timings.outputTokens,
         input.timings.model,
+        input.providerId,
         input.errorKind,
         input.errorMessage,
       ],
@@ -1552,6 +1558,125 @@ export async function applyCanonicalization(
      )`,
     [layaBlob, imageId],
   );
+}
+
+/** How many domains the taxonomy has. */
+export async function countDomains(): Promise<number> {
+  const row = await get(
+    `SELECT COUNT(*) AS n FROM ai_domain_nodes`
+  ) as { n: number } | undefined;
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * A post whose taxonomy may have moved on without it.
+ *
+ * A post is a candidate when a domain was created *after* the post was
+ * analysed: that domain was not on the table when the post was filed, so it
+ * may fit better than the one the post got.
+ */
+export interface PostCanonicalization {
+  imageId: number;
+  summary: string | null;
+  transcript: string | null;
+  language: string | null;
+  analyzedAt: string | null;
+  /** The domains the post is filed under right now. */
+  currentDomains: string[];
+  /** The domains the analysis originally proposed. */
+  suggestedDomains: string[];
+}
+
+/** Parse the JSON array in `ai_domains`, tolerating anything. */
+function parseDomainArray(raw: unknown): string[] {
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is string => typeof entry === "string");
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The posts that may deserve a better domain.
+ *
+ * The original suggestions are recovered from the canonicalizer's own record
+ * on the analysis event — the canonical domains replaced them on the image.
+ */
+export async function findPostsNeedingRecanonicalization(
+  limit = 200
+): Promise<PostCanonicalization[]> {
+  const rows = (await all(
+    `SELECT i.id AS id,
+            i.ai_summary AS summary,
+            i.ai_transcript AS transcript,
+            i.ai_language AS language,
+            i.ai_analyzed_at AS analyzed_at,
+            i.ai_domains AS ai_domains,
+            (SELECT e.laya_classification
+               FROM ai_analysis_events e
+              WHERE e.image_id = i.id AND e.laya_classification IS NOT NULL
+              ORDER BY e.created_at DESC, e.id DESC
+              LIMIT 1) AS laya_blob
+       FROM images i
+      WHERE i.ai_status = 'ok'
+        AND i.ai_domains IS NOT NULL
+        AND i.ai_domains <> '[]'
+        AND EXISTS (
+              SELECT 1 FROM ai_domain_nodes d
+               WHERE d.first_seen_at > i.ai_analyzed_at
+            )
+      ORDER BY i.ai_analyzed_at ASC
+      LIMIT ?`,
+    [limit]
+  )) as Array<{
+    id: number;
+    summary: string | null;
+    transcript: string | null;
+    language: string | null;
+    analyzed_at: string | null;
+    ai_domains: string | null;
+    laya_blob: string | null;
+  }>;
+
+  return rows.map((row) => ({
+    imageId: row.id,
+    summary: row.summary,
+    transcript: row.transcript,
+    language: row.language,
+    analyzedAt: row.analyzed_at,
+    currentDomains: parseDomainArray(row.ai_domains),
+    suggestedDomains: suggestedDomainsFrom(row.laya_blob, row.ai_domains)
+  }));
+}
+
+/**
+ * The domains the analysis originally proposed.
+ *
+ * The canonicalizer's record holds them: every decision names the domain it
+ * was asked about. Without it the canonical domains are used, which still
+ * lets laya find a better home for them.
+ */
+function suggestedDomainsFrom(
+  blob: string | null,
+  fallback: string | null
+): string[] {
+  if (blob) {
+    try {
+      const parsed = JSON.parse(blob) as {
+        domains?: Array<{ original?: string }>;
+      };
+      const originals = (parsed.domains ?? [])
+        .map((entry) => (typeof entry.original === "string" ? entry.original : ""))
+        .filter((entry) => entry !== "");
+      if (originals.length > 0) return originals;
+    } catch {
+      // A corrupt blob is not fatal — fall back to the canonical domains.
+    }
+  }
+  return parseDomainArray(fallback);
 }
 
 /** Record a pending synonym awaiting admin confirmation. */
