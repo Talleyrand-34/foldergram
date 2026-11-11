@@ -286,6 +286,43 @@ img[data-loaded="true"] {
         rgba(var(--primary-background), 0.96) 100%);
     backdrop-filter: blur(7px);
   }
+  .viewer--modal {
+    --viewer-inline-gutter: max(1rem, env(safe-area-inset-left), env(safe-area-inset-right));
+  }
+
+  .viewer__navigation--modal,
+  .viewer__right-controls .viewer__overlay-button {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .viewer__navigation--modal.viewer__navigation--previous {
+    left: max(0.25rem, env(safe-area-inset-left));
+  }
+
+  .viewer__right-controls {
+    top: calc(50% - 1rem);
+    right: max(0.25rem, env(safe-area-inset-right));
+    grid-template-rows: 2rem 2rem;
+    gap: 1rem;
+  }
+
+  .viewer__navigation--modal .viewer__navigation-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .viewer__card-wrapper:not(.viewer__card-wrapper--modal) {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .viewer__sidebar:not(.viewer__sidebar--drawer) {
+    width: 100%;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
 }
 
 .viewer__sidebar::-webkit-scrollbar {
@@ -301,6 +338,125 @@ img[data-loaded="true"] {
   border-radius: 999px;
 }
 
+/* The modal viewer is borderless and centred: the media decides how much
+   room it takes, and the details either sit next to it or are hidden. */
+.viewer--modal {
+  --viewer-inline-gutter: max(clamp(3.25rem, 7.4074vw, 5rem), env(safe-area-inset-left), env(safe-area-inset-right));
+  --viewer-block-gutter: max(1rem, 4dvh, env(safe-area-inset-top), env(safe-area-inset-bottom));
+  --viewer-available-height: calc(100dvh - 2 * var(--viewer-block-gutter));
+  --viewer-docked-sidebar-width: 0px;
+  --viewer-modal-media-width: min(
+    calc(min(72rem, 100vw - 2 * var(--viewer-inline-gutter)) - var(--viewer-docked-sidebar-width)),
+    calc(var(--viewer-available-height) * var(--viewer-media-ratio, 1))
+  );
+  width: calc(var(--viewer-modal-media-width) + var(--viewer-docked-sidebar-width));
+  min-width: 0;
+  min-height: 0;
+}
+
+.viewer--details-docked {
+  --viewer-docked-sidebar-width: 24rem;
+}
+
+.viewer__navigation {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  color: #111;
+  background: #fff;
+  transition: opacity 0.18s ease;
+}
+
+.viewer__navigation:hover {
+  opacity: 0.85;
+}
+
+.viewer__navigation:focus-visible,
+.viewer__overlay-button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 4px;
+}
+
+.viewer__navigation--modal.viewer__navigation--previous {
+  position: fixed;
+  top: 50%;
+  left: max(0.75rem, env(safe-area-inset-left));
+  z-index: 45;
+  transform: translateY(-50%);
+}
+
+.viewer__right-controls {
+  position: fixed;
+  top: calc(50% - 1.25rem);
+  right: max(0.75rem, env(safe-area-inset-right));
+  z-index: 45;
+  display: grid;
+  grid-template-rows: 2.5rem 2.5rem;
+  gap: 1.25rem;
+  pointer-events: none;
+}
+
+.viewer__right-controls > a,
+.viewer__right-controls > button {
+  pointer-events: auto;
+}
+
+.viewer__right-controls .viewer__navigation--next {
+  grid-row: 1;
+}
+
+.viewer__navigation-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.viewer__navigation--page {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 2.2rem;
+  height: 2.2rem;
+  transform: translateY(-50%);
+}
+
+.viewer__navigation--page.viewer__navigation--previous {
+  left: -3.25rem;
+}
+
+.viewer__navigation--page.viewer__navigation--next {
+  right: -3.25rem;
+}
+
+.viewer__navigation--page .viewer__navigation-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.viewer__overlay-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.viewer__overlay-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
 .viewer__card-wrapper {
   position: relative;
   display: flex;
@@ -311,9 +467,13 @@ img[data-loaded="true"] {
 }
 
 .viewer__card-wrapper--modal {
+  overflow: visible;
   width: 100%;
-  height: 100%;
-  max-height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .viewer__card-wrapper--compact {
@@ -345,11 +505,20 @@ img[data-loaded="true"] {
   display: block;
 }
 
-.viewer__media--modal {
+.viewer__media--modal .viewer__media-shell {
+  flex: none;
   width: 100%;
   height: 100%;
-  max-height: 100%;
+  border-radius: 0.25rem;
+}
+
+.viewer__media--modal {
+  align-self: center;
+  flex: 0 0 var(--viewer-modal-media-width);
+  width: var(--viewer-modal-media-width);
+  aspect-ratio: var(--viewer-media-aspect-ratio);
   min-height: 0;
+  background: transparent;
 }
 
 .viewer__media--swipe-enabled {
@@ -544,19 +713,26 @@ img[data-loaded="true"] {
 }
 
 .viewer__sidebar--modal {
-  height: 100%;
+  height: calc(var(--viewer-modal-media-width) / var(--viewer-media-ratio, 1));
   overflow-y: auto;
   scrollbar-width: thin;
   box-shadow: inset 1px 0 0 color-mix(in srgb, var(--border) 70%, transparent 30%);
 }
 
+/* Leave readable space between sticky controls even for panoramic media. */
+.viewer__sidebar--modal:not(.viewer__sidebar--drawer) {
+  min-height: min(24rem, var(--viewer-available-height));
+  max-height: var(--viewer-available-height);
+}
+
 .viewer__sidebar--drawer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  position: fixed;
+  top: max(4.5rem, var(--viewer-block-gutter));
+  right: var(--viewer-inline-gutter);
+  bottom: var(--viewer-block-gutter);
   z-index: 30;
-  width: min(24rem, calc(100vw - 4rem));
+  width: min(24rem, calc(100vw - 2 * var(--viewer-inline-gutter)));
+  height: auto;
   max-width: 100%;
   overflow-y: auto;
   border-left: 1px solid var(--border);
@@ -570,6 +746,11 @@ img[data-loaded="true"] {
     opacity 0.24s ease;
 }
 
+/* The details can be hidden on a wide screen too, so the media gets the room. */
+.viewer__sidebar--hidden {
+  display: none;
+}
+
 .viewer__sidebar--dragging {
   transition: none;
 }
@@ -581,7 +762,7 @@ img[data-loaded="true"] {
 }
 
 .viewer__drawer-backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 20;
   border: 0;
@@ -590,63 +771,31 @@ img[data-loaded="true"] {
 }
 
 .viewer__sidebar-toggle {
-  position: absolute;
-  top: max(1rem, env(safe-area-inset-top));
-  left: max(1rem, env(safe-area-inset-left));
-  z-index: 40;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.9rem;
-  height: 2.9rem;
-  padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 999px;
-  background: rgba(10, 14, 24, 0.58);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
-  color: #fff;
-  cursor: pointer;
-  transition:
-    background-color 0.18s ease,
-    border-color 0.18s ease,
-    opacity 0.18s ease,
-    transform 0.18s ease;
+  grid-row: 2;
+  border-radius: 50%;
+  background: #fff;
+  color: #111;
+  transition: opacity 0.18s ease;
 }
 
 .viewer__sidebar-toggle:hover {
-  background: rgba(10, 14, 24, 0.74);
-  border-color: rgba(255, 255, 255, 0.24);
-  transform: translateY(-1px);
+  background: #fff;
+  color: #111;
+  opacity: 0.85;
 }
 
 .viewer__sidebar-toggle-icon {
-  width: 1.2rem;
-  height: 1.2rem;
+  width: 1.4rem;
+  height: 1.4rem;
 }
 
 .viewer__modal-close {
   position: fixed;
-  top: max(0.95rem, env(safe-area-inset-top));
-  right: max(0.95rem, env(safe-area-inset-right));
+  top: max(0.75rem, env(safe-area-inset-top));
+  right: max(0.75rem, env(safe-area-inset-right));
   z-index: 55;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 3rem;
-  height: 3rem;
-  padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 999px;
-  background: rgba(10, 14, 24, 0.62);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
-  color: rgba(255, 255, 255, 0.92);
-  cursor: pointer;
-  transition:
-    background-color 0.18s ease,
-    border-color 0.18s ease,
-    transform 0.18s ease;
+  width: 2.75rem;
+  height: 2.75rem;
 }
 
 .viewer__modal-close:hover {
@@ -656,8 +805,8 @@ img[data-loaded="true"] {
 }
 
 .viewer__modal-close-icon {
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 2rem;
+  height: 2rem;
 }
 
 .viewer__media-shell {
@@ -2238,5 +2387,15 @@ img[data-loaded="true"] {
 
   50% {
     opacity: 0.92;
+  }
+}
+
+@media (max-width: 980px) {
+  .viewer__navigation--page.viewer__navigation--previous {
+    left: -2.75rem;
+  }
+
+  .viewer__navigation--page.viewer__navigation--next {
+    right: -2.75rem;
   }
 }

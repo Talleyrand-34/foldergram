@@ -198,6 +198,65 @@ describe('PostViewer', () => {
     document.body.innerHTML = '';
   });
 
+  it('collapses the details in portrait and docks them again in landscape', async () => {
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+
+    try {
+      // Portrait: there is no room for a docked column, so the details are a
+      // drawer and they start hidden.
+      Object.assign(window, { innerWidth: 1080, innerHeight: 1920 });
+
+      const wrapper = mount(PostViewer, {
+        props: { image: createVideoDetail(26), isModal: true },
+        global: { stubs: globalStubs }
+      });
+      await flushPromises();
+
+      const toggle = wrapper.get('.viewer__right-controls button[aria-label="Show post details"]');
+
+      expect(toggle.attributes('aria-expanded')).toBe('false');
+      expect(wrapper.get('.viewer__sidebar').classes()).toContain('viewer__sidebar--drawer');
+      expect(wrapper.get('.viewer__sidebar').attributes('aria-hidden')).toBe('true');
+
+      await toggle.trigger('click');
+
+      expect(toggle.attributes('aria-expanded')).toBe('true');
+      expect(wrapper.get('.viewer__sidebar').attributes('aria-hidden')).toBe('false');
+
+      // Landscape: the details sit next to the media.
+      Object.assign(window, { innerWidth: 1920, innerHeight: 1080 });
+      window.dispatchEvent(new Event('resize'));
+      await flushPromises();
+
+      expect(toggle.attributes('aria-expanded')).toBe('true');
+      expect(wrapper.classes()).toContain('viewer--details-docked');
+      expect(wrapper.get('.viewer__sidebar').classes()).not.toContain('viewer__sidebar--drawer');
+
+      // And they can be hidden there too, which gives the media the room.
+      await toggle.trigger('click');
+
+      expect(wrapper.classes()).not.toContain('viewer--details-docked');
+      expect(wrapper.get('.viewer__sidebar').classes()).toContain('viewer__sidebar--hidden');
+      expect(wrapper.get('.viewer__sidebar').attributes('aria-hidden')).toBe('true');
+    } finally {
+      Object.assign(window, { innerWidth: originalWidth, innerHeight: originalHeight });
+    }
+  });
+
+  it('publishes the media ratio so the viewer can size the frame to the media', async () => {
+    const wrapper = mount(PostViewer, {
+      props: { image: createVideoDetail(27), isModal: true },
+      global: { stubs: globalStubs }
+    });
+    await flushPromises();
+
+    const style = (wrapper.element as HTMLElement).style;
+
+    expect(style.getPropertyValue('--viewer-media-aspect-ratio')).toBe('1920 / 1080');
+    expect(Number(style.getPropertyValue('--viewer-media-ratio'))).toBeCloseTo(1920 / 1080, 5);
+  });
+
   it('uses likes-page neighbors instead of folder neighbors when opened from likes', () => {
     const appStore = useAppStore();
     const likesStore = useLikesStore();
