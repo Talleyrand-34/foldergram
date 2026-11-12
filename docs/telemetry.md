@@ -189,6 +189,10 @@ becomes `_milliseconds`, and a counter gets a `_total` suffix.
 | `foldergram.ai.errors` | `foldergram_ai_errors_total` | counter | `provider`, `error_kind` |
 | `foldergram.ai.queue.depth` | `foldergram_ai_queue_depth` | up-down counter | - |
 | `foldergram.ai.pauses` | `foldergram_ai_pauses_total` | counter | `provider`, `cause` |
+| `foldergram.ai.plan.remaining` | `foldergram_ai_plan_remaining_percent` | up-down counter | `provider`, `window` |
+| `foldergram.ai.plan.time_left` | `foldergram_ai_plan_time_left_hours` | up-down counter | `provider`, `window` |
+| `foldergram.ai.plan.rolls_over_in` | `foldergram_ai_plan_rolls_over_in_seconds` | up-down counter | `provider`, `window` |
+| `foldergram.ai.plan.contended` | `foldergram_ai_plan_contended` | up-down counter | `provider` |
 | `foldergram.db.query.duration` | `foldergram_db_query_duration_milliseconds_{bucket,sum,count}` | histogram (ms) | `dialect`, `operation`, `table`, `status` |
 | `foldergram.db.query.count` | `foldergram_db_query_count_total` | counter | `dialect`, `operation`, `table`, `status` |
 | `foldergram.http.request.duration` | `foldergram_http_request_duration_milliseconds_{bucket,sum,count}` | histogram (ms) | `method`, `route`, `status_class` |
@@ -232,6 +236,21 @@ is the current depth and not a growing sum.
 
   The `provider` label names the provider that caused the pause. It is
   `unknown` only for a manual pause, which belongs to no provider.
+- **`foldergram_ai_plan_remaining_percent`** - how much of each window of
+  the plan is left, as the provider publishes it. `window` is `interval`
+  (the plan's five-hour window) or `weekly` (its week). **This is the
+  limit the queue obeys.**
+- **`foldergram_ai_plan_time_left_hours`** - how long each window lasts at
+  the rate it is being spent. It is what is left divided by how fast the
+  plan is going, which is the answer to "when does this run out". It is
+  published only once there is enough history to measure the rate: the
+  plan publishes whole percentages, so a point is worth many minutes of
+  spending.
+- **`foldergram_ai_plan_rolls_over_in_seconds`** - how long until each
+  window rolls over and the plan is whole again.
+- **`foldergram_ai_plan_contended`** - whether somebody else is using the
+  plan. It is `1` while the pool moves without any of ours being sent. The
+  queue takes only its share while that is so.
 
 ### Labels that come from the resource
 
@@ -489,6 +508,42 @@ count({job="foldergram"})
    - *API latency*: the `histogram_quantile` by route
 3. **Units**: set the unit of the token panels to `short` and the latency
    panels to `milliseconds`, so Grafana formats them.
+
+### The ready-made dashboard
+
+There is one, in [`deploy/grafana/foldergram-ai.json`](../../deploy/grafana/foldergram-ai.json).
+It has a row for the plan - what is left of each window, how long it lasts
+at the current rate, and whether somebody else is in the pool - and the
+rows for the queue, the analyses, the cost, the stages and the errors.
+
+To deploy it, copy it into the folder Grafana provisions from:
+
+```bash
+scp deploy/grafana/foldergram-ai.json \
+  obs01:/var/lib/grafana/dashboards/foldergram/ai.json
+```
+
+Grafana picks it up in half a minute. The data source it uses is the one
+already provisioned on that host (Mimir), and the dashboard depends on
+nothing else.
+
+The two scripts next to it add panels to an existing dashboard, and both
+are idempotent:
+
+```bash
+python3 deploy/grafana/add_plan_panels.py     # the row of the plan
+python3 deploy/grafana/add_cost_panels.py     # the cost of one analysis
+```
+
+### Reading the plan's row
+
+- The plan is the limit, not the token budget in the settings. What the
+  provider publishes is what the queue obeys.
+- *Lasts* is what is left divided by how fast it is going: the answer to
+  "when does this run out".
+- *Shared* means somebody else is in the plan. The queue takes only its
+  share while that is so, and the panel says how long it has been the
+  case.
 
 ## Profiling
 
