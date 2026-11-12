@@ -50,6 +50,7 @@ and the shared schema stays untouched. The harness fails the run loudly if that 
 | `pg` returns `BIGINT` as a string | `taken_at` / `sort_timestamp` / `file_size` were strings on Postgres, numbers on SQLite |
 | `folders.image_count` replaced the visible-media filter | excluded and emptied folders stayed in the library |
 | `folders.avatar_image_id` has no `ON DELETE` and the delete path did not clear it | **permanently deleting a folder avatar failed on PostgreSQL** (SQLite ignores foreign keys by default, so it only ever showed up on Postgres) |
+| **`images.preview_path` had no index** | the lazy derivative route looked the media up with a **sequential scan over 129,591 rows**: 1.7 s per request, minutes in parallel. The browser timed out and **neither the media nor the images opened** (the thumbnails had an index, which is why the feed looked fine). Fixed by migration `0023`: 1.735 ms → 0.2 ms |
 | `KnownProgress.reached` was never initialised | `NaN` → the Instagram catch-up detection never fired |
 | Lazy-derivative dedup window closed before the file check | a concurrent request could trigger a second generation |
 | `app_settings` leaked between tests | a stale `scanner.library_rebuild_required` made the route answer `409` |
@@ -306,6 +307,28 @@ main:    1af5385 feat(folder Likes tab)   8d084f7 fix(likes nav)
 ```
 
 ---
+
+### Direct-MP4 playback: what it improves, and what it must not do
+
+The policy (a video is streamed from the original when it is an MP4 with a
+browser-safe profile, ≤ 24 MiB and ≤ 1500 px wide) was ported from upstream.
+Two things had to be separated, because mixing them broke playback:
+
+| Concern | Decided by | Where |
+|---|---|---|
+| Can the browser **play** the original? | the codec (`playback_strategy`, from ffprobe at scan time) | `server/src/db/repositories.ts` |
+| Is the original **light enough** to stream? | size and width | the policy, at scan time |
+| Can the browser **share** the file? | 50 MiB, and a fixed list of types | `client/src/utils/share-media.ts` |
+
+The mistake was deciding "reproduce" with the *sharing* limits. A VP9 inside
+an MP4 container is **not** H.264, so the scan marks it `preview`, and the
+lazy route then transcoded it on demand: 12 s of ffmpeg per video, while the
+browser waited. The original plays fine in Chromium (verified: `readyState 4`,
+no error), so the transcode was pure latency.
+
+The lazy route therefore redirects a video to the original, as it always did,
+and the preview is what the scan produces in eager mode - an optimisation for
+streaming, not a requirement for playback.
 
 ## 9. Test infrastructure
 
