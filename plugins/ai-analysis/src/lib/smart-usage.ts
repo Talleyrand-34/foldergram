@@ -236,6 +236,15 @@ const HISTORY_ENTRIES = 400;
  */
 const MINIMUM_RATE_SPAN_MS = 15 * 60_000;
 
+/**
+ * How many points the plan has to have lost for the rate to mean anything.
+ *
+ * The plan publishes whole percentages, so a measurement that rests on one
+ * point can be wrong by a hundred per cent. Three points is the least
+ * that gives a usable answer.
+ */
+const MINIMUM_RATE_POINTS = 3;
+
 /** The cached reading of each pool, so the endpoint is not polled too often. */
 const cachedReading = new Map<string, { state: PoolState; at: number }>();
 
@@ -289,7 +298,7 @@ export function burnRatePerHour(
 
   const hours = span / 3_600_000;
   const drop = oldestWindow.remainingPercent - window.remainingPercent;
-  if (drop <= 0) return null;
+  if (drop < MINIMUM_RATE_POINTS) return null;
 
   return drop / hours;
 }

@@ -333,11 +333,11 @@ describe('ai-analysis the plan reading', () => {
       'fetch',
       vi.fn(async () => {
         call += 1;
-        // The first reading says 90 % left, the second 80 %.
+        // The first reading says 90 % left, the second 70 %.
         return {
           ok: true,
           status: 200,
-          text: async () => JSON.stringify(planBody(call === 1 ? 90 : 80, 90))
+          text: async () => JSON.stringify(planBody(call === 1 ? 90 : 70, 90))
         };
       })
     );
@@ -351,11 +351,60 @@ describe('ai-analysis the plan reading', () => {
     const second = await evaluateSmartUsage([smartProvider()], later);
     const interval = second.get('minimax')?.windows.find((w) => w.kind === 'interval');
 
-    // Ten points in half an hour: twenty points an hour, so the eighty
-    // that are left would last four hours — but the window renews in two,
-    // and what is not spent is lost. The window is the limit, and by now
-    // it is an hour and a half away.
+    // Twenty points in half an hour: forty points an hour, so the seventy
+    // that are left would last an hour and three quarters — but the window
+    // renews in two, and what is not spent is lost. The window is the
+    // limit, and by now it is an hour and a half away.
     expect(interval?.hoursLeft).toBeCloseTo(1.5, 1);
+  });
+
+  it('does not measure a rate that rests on a single point', () => {
+    // The plan publishes whole percentages, so a rate measured over one
+    // point can be wrong by a hundred per cent. It is not published.
+    const history = [
+      {
+        state: {
+          providerId: 'minimax',
+          ok: true,
+          error: null,
+          model: 'general',
+          readAt: 0,
+          windows: [
+            {
+              kind: 'interval' as const,
+              total: 0,
+              used: 0,
+              remainingPercent: 90,
+              startTime: 1000,
+              endTime: 2000
+            }
+          ]
+        },
+        at: 0
+      },
+      {
+        state: {
+          providerId: 'minimax',
+          ok: true,
+          error: null,
+          model: 'general',
+          readAt: 0,
+          windows: [
+            {
+              kind: 'interval' as const,
+              total: 0,
+              used: 0,
+              remainingPercent: 89,
+              startTime: 1000,
+              endTime: 2000
+            }
+          ]
+        },
+        at: 3_600_000
+      }
+    ];
+
+    expect(burnRatePerHour(history, 'interval', 3_600_000)).toBeNull();
   });
 
   it('does not measure a rate across a window that rolled over', () => {
