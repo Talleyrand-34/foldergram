@@ -51,20 +51,52 @@ export interface SmartProviderState {
   residual: number;
   /** The share of the pool we may take right now, as a percentage. */
   allowedPercent: number;
-  /** The pool's allowance for the watched window. */
+  /** The pool's allowance for the watched window. Zero when it publishes none. */
   poolTotal: number;
-  /** The pool's usage for the watched window — by everybody. */
+  /** How much of it is used — by everybody. */
   poolUsed: number;
-  /** Our own usage for the watched window. */
+  /** Our own use of it. */
   ourUsage: number;
-  /** The cap: the share of the pool we may take. */
+  /** The cap: the share of the plan we may take. */
   cap: number;
+  /**
+   * How much of the watched window the plan says is left, as a percentage.
+   *
+   * This is the plan's own number, and for a plan that publishes no
+   * absolute allowance it is the only one there is.
+   */
+  poolRemainingPercent: number | null;
   /** We have taken our share; the queue must stop until the window rolls. */
   blocked: boolean;
   /** When the watched window rolls over. */
   resetsAt: string | null;
   /** When the pool was last read. */
   readAt: number;
+}
+
+/**
+ * The margin the queue keeps when the plan publishes no absolute allowance.
+ *
+ * The plan publishes whole percentages, so the finest gap it can express is
+ * one point. Two points of margin is enough to finish the analysis that is
+ * already running without starting one that could not be paid for.
+ */
+export const PERCENTAGE_SAFETY_MARGIN = 2;
+
+/**
+ * Whether the pool is spent, when it publishes no absolute allowance.
+ *
+ * The plan's own wall is then the limit: there is no count to compare with,
+ * and the operator's budget is not the plan's business — the plan knows
+ * nothing about it. So the queue stops when the plan says the window is
+ * nearly over, and carries on when the window rolls over.
+ *
+ * While somebody else is in the pool, the queue leaves them their share: the
+ * floor is the share we may take instead of the safety margin.
+ */
+export function poolIsSpent(window: PoolWindow, allowedPercent: number): boolean {
+  const floor = Math.max(PERCENTAGE_SAFETY_MARGIN, 100 - Math.max(0, allowedPercent));
+  return window.remainingPercent <= floor;
 }
 
 /** The verdict on a shared pool. */
@@ -216,6 +248,7 @@ export async function evaluateSmartUsage(
         poolUsed: 0,
         ourUsage: 0,
         cap: 0,
+        poolRemainingPercent: null,
         blocked: false,
         resetsAt: null,
         readAt: state.readAt
@@ -238,6 +271,7 @@ export async function evaluateSmartUsage(
         poolUsed: 0,
         ourUsage: 0,
         cap: 0,
+        poolRemainingPercent: null,
         blocked: false,
         resetsAt: null,
         readAt: state.readAt
@@ -257,27 +291,87 @@ export async function evaluateSmartUsage(
     if (previous) {
       const previousWindow = pickWindow(previous.state, limits.smart.watch);
       if (previousWindow) {
-        const poolDrain = Math.max(0, window.used - previousWindow.used);
         const ourDrain = providerRequestsBetween(provider.id, previous.at, now);
         const ourTokens = await tokensBetween(
           provider.id,
           new Date(previous.at),
           new Date(now)
         );
-        const verdict = detectContention(
-          poolDrain,
-          ourDrain,
-          ourTokens,
-          limits.smart.contentionPercent
-        );
-        contended = verdict.contended;
-        residual = verdict.residual;
+
+        if (window.total > 0) {
+          // A plan that counts: the pool's drain and our own usage are in
+          // the same unit, so the difference is the other user's.
+          const poolDrain = Math.max(0, window.used - previousWindow.used);
+          const verdict = detectContention(
+            poolDrain,
+            ourDrain,
+            ourTokens,
+            limits.smart.contentionPercent
+          );
+          contended = verdict.contended;
+          residual = verdict.residual;
+        } else {
+          // A plan that publishes only a percentage: its drain is in
+          // percentage points and our usage is in requests, so the two
+          // cannot be subtracted — a request costs the plan a number of
+          // points that depends on the model and the request itself.
+          //
+          // What can be told apart is the pool moving while we sent
+          // nothing: that drain is the other user's, whoever they are.
+          // A pool that moved while we were working is not attributed to
+          // anybody: we do not yield on a guess.
+          const poolDrain = Math.max(
+            0,
+            previousWindow.remainingPercent - window.remainingPercent
+          );
+          contended = ourDrain === 0 && poolDrain > 0;
+          residual = contended ? poolDrain : 0;
+        }
       }
     }
 
     // The share of the pool we may take right now.
     const allowedPercent = contended ? limits.smart.yieldPercent : limits.smart.idlePercent;
-    const cap = Math.floor((window.total * allowedPercent) / 100);
+
+    // The pool's wall, in every window the plan publishes.
+    //
+    // A plan that publishes an absolute allowance is compared with our own
+    // requests: we stop when we have taken the share we may take. A plan
+    // that publishes only a percentage has no count to compare with, and
+    // its own wall is the limit — the operator's budget is not the plan's
+    // business, and the plan knows nothing about it.
+    //
+    // Every window counts: the plan has a five-hour wall *and* a weekly
+    // one, and the queue must not run past either of them.
+    let blocked = false;
+    let cap = 0;
+    // The window the operator watches rolls over on its own, so the queue
+    // always knows when it does.
+    let resetsAt = new Date(window.endTime).toISOString();
+
+    for (const w of state.windows) {
+      let spent: boolean;
+
+      if (w.total > 0) {
+        const windowCap = Math.floor((w.total * allowedPercent) / 100);
+        if (w.kind === window.kind) {
+          cap = windowCap;
+        }
+        const ours = providerRequestsSince(provider.id, w.startTime);
+        spent = windowCap > 0 && ours >= windowCap;
+      } else {
+        spent = poolIsSpent(w, allowedPercent);
+      }
+
+      if (spent) {
+        blocked = true;
+        // The queue carries on when the last of the spent windows rolls
+        // over: until then one of them is still spent.
+        if (w.endTime > Date.parse(resetsAt)) {
+          resetsAt = new Date(w.endTime).toISOString();
+        }
+      }
+    }
 
     lastReading.set(provider.id, { state, at: now });
 
@@ -294,9 +388,13 @@ export async function evaluateSmartUsage(
       poolUsed: window.used,
       ourUsage,
       cap,
-      // Over our share of the pool: the queue waits for the window to roll.
-      blocked: cap > 0 && ourUsage >= cap,
-      resetsAt: new Date(window.endTime).toISOString(),
+      // What the plan says is left of the watched window. For a plan that
+      // publishes no absolute allowance this is the only number there is.
+      poolRemainingPercent: window.remainingPercent,
+      // Over our share of the pool, or out of room in one of its windows:
+      // the queue waits for the window to roll.
+      blocked,
+      resetsAt,
       readAt: state.readAt
     });
   }

@@ -11,7 +11,11 @@ import {
   resolveProbeKey,
   resolveProbeUrl
 } from '../../plugins/ai-analysis/src/lib/pool-probe.js';
-import { detectContention } from '../../plugins/ai-analysis/src/lib/smart-usage.js';
+import {
+  detectContention,
+  PERCENTAGE_SAFETY_MARGIN,
+  poolIsSpent
+} from '../../plugins/ai-analysis/src/lib/smart-usage.js';
 import {
   noteProviderRequest,
   providerRequestsBetween,
@@ -78,6 +82,46 @@ describe('ai-analysis the shared plan', () => {
     const state = parsePoolState('minimax', { model_remains: [] }, 'MiniMax-M3');
     expect(state.ok).toBe(false);
     expect(state.error).toContain('no windows');
+  });
+
+  it('reads a plan that publishes no absolute allowance', () => {
+    // The Token Plan as it answers today: the windows are there, with the
+    // share that is left, but no counts to compare with.
+    const body = {
+      model_remains: [
+        {
+          start_time: 1794501600049,
+          end_time: 1794519600049,
+          remains_time: 10510308,
+          current_interval_total_count: 0,
+          current_interval_usage_count: 0,
+          model_name: 'general',
+          current_weekly_total_count: 0,
+          current_weekly_usage_count: 0,
+          weekly_start_time: 1794319215830,
+          weekly_end_time: 1794924015830,
+          weekly_remains_time: 414926089,
+          current_interval_status: 1,
+          current_interval_remaining_percent: 97,
+          current_weekly_status: 1,
+          current_weekly_remaining_percent: 67
+        }
+      ]
+    };
+
+    const state = parsePoolState('minimax', body, 'MiniMax-M3');
+    expect(state.ok).toBe(true);
+    expect(state.windows).toHaveLength(2);
+
+    const interval = state.windows.find((w) => w.kind === 'interval')!;
+    expect(interval.total).toBe(0);
+    expect(interval.remainingPercent).toBe(97);
+    expect(interval.endTime - interval.startTime).toBe(5 * 3600 * 1000);
+
+    const weekly = state.windows.find((w) => w.kind === 'weekly')!;
+    expect(weekly.total).toBe(0);
+    expect(weekly.remainingPercent).toBe(67);
+    expect(weekly.endTime - weekly.startTime).toBe(7 * 24 * 3600 * 1000);
   });
 
   it('derives the plan endpoint for a MiniMax provider', () => {
@@ -158,6 +202,50 @@ describe('ai-analysis contention', () => {
     const verdict = detectContention(30, 6, 9000, 5);
     expect(verdict.unit).toBe('requests');
     expect(verdict.contended).toBe(true);
+  });
+});
+
+describe('ai-analysis the plan wall', () => {
+  /** A window with only the share that is left, as the Token Plan publishes it. */
+  function window(remainingPercent: number) {
+    return {
+      kind: 'interval' as const,
+      total: 0,
+      used: 0,
+      remainingPercent,
+      startTime: 0,
+      endTime: 0
+    };
+  }
+
+  it('keeps working while the plan has room', () => {
+    expect(poolIsSpent(window(97), 100)).toBe(false);
+    expect(poolIsSpent(window(50), 100)).toBe(false);
+  });
+
+  it('stops when the plan has no room left', () => {
+    expect(poolIsSpent(window(2), 100)).toBe(true);
+    expect(poolIsSpent(window(0), 100)).toBe(true);
+  });
+
+  it('keeps a margin so the analysis in flight can finish', () => {
+    // The plan publishes whole percentages, so the finest gap it can
+    // express is one point: the queue stops at two, not at zero.
+    expect(PERCENTAGE_SAFETY_MARGIN).toBe(2);
+    expect(poolIsSpent(window(3), 100)).toBe(false);
+    expect(poolIsSpent(window(2), 100)).toBe(true);
+  });
+
+  it('leaves the other user their share when the pool is contended', () => {
+    // Half of the pool is ours to take: the queue stops once the pool is
+    // half spent, so the rest is there for the other user.
+    expect(poolIsSpent(window(60), 50)).toBe(false);
+    expect(poolIsSpent(window(50), 50)).toBe(true);
+  });
+
+  it('gets out of the way when it may take nothing', () => {
+    // A share of zero means "stop while somebody else is in the pool".
+    expect(poolIsSpent(window(100), 0)).toBe(true);
   });
 });
 

@@ -219,7 +219,7 @@ is the current depth and not a growing sum.
   | `rate_limit` | The upstream answered `429` | Yes, when the window ends |
   | `upstream_quota` | The upstream's credit or allowance ran out | Yes, after a cooldown |
   | `upstream` | The upstream is unusable - bad key, missing model | No, an operator must fix it |
-  | `usage_limit` | The local budget window was exhausted | Yes, when the window resets |
+  | `usage_limit` | The plan's own wall: a window has no room left | Yes, when the window rolls over |
   | `shared_plan` | Somebody else is in the shared plan pool | Yes, when the pool frees up |
 
   The `provider` label names the provider that caused the pause. It is
@@ -271,6 +271,32 @@ span that sits where it belongs in the tree.
 The trace is where the ids live. It is also the only way to tie a single
 analysis to its media, which is what you need when a specific video comes
 back with a bad summary.
+
+## Where the limit comes from
+
+The queue does not stop because a number was typed into the settings. When
+the provider publishes its plan, **the plan's own wall is the limit**:
+
+- the plan is read from its read-only endpoint. MiniMax publishes it at
+  `/v1/token_plan/remains`, and it reports how much of each window is left -
+  a five-hour window and a weekly one, the same shape the plan enforces.
+- the queue stops when the plan says a window has no room left, and carries
+  on when the window rolls over. Nothing needs an operator.
+- the token budget in the settings is only the **fallback** for a plan that
+  cannot be reached. As soon as the server answers again, the plan decides.
+
+The Token Plan publishes its windows as whole percentages, with no absolute
+allowance, so the queue reads the percentage and not a count. The margin it
+keeps is two points: the plan publishes whole percentages, and two points
+are enough to finish the analysis that is already running without starting
+one that could not be paid for.
+
+While somebody else is in the same plan, the queue leaves them their share
+and takes only its own. The plan's percentage is what shows that somebody
+else is in there: the pool moves while nothing of ours is being sent.
+
+This is why the numbers in this document are the ones to watch. The plan is
+the budget: what it says is left is what there is.
 
 ## Reading the data with PromQL
 

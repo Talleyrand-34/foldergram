@@ -271,6 +271,13 @@ export interface AiSmartProviderState {
   ourUsage: number;
   /** The cap: the share of the plan we may take. */
   cap: number;
+  /**
+   * How much of the watched window the plan says is left, as a percentage.
+   *
+   * Null when the plan could not be read. When the plan publishes no
+   * absolute allowance this is the only number there is.
+   */
+  poolRemainingPercent: number | null;
   /** We have taken our share. */
   blocked: boolean;
   /** When the watched window rolls over. */

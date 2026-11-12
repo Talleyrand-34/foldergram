@@ -40,6 +40,7 @@ import { countDomains } from "./storage.js";
 import { getCachedUsageStatus, type UsageStatus } from "./usage.js";
 import {
   evaluateSmartUsage,
+  poolReading,
   type SmartProviderState
 } from "./lib/smart-usage.js";
 import {
@@ -220,6 +221,21 @@ function sharedPlanMessage(state: SmartProviderState): string {
   );
 }
 
+/**
+ * A one-line explanation of why the plan's own wall stopped the queue.
+ *
+ * The number is the plan's own: how much of the window is left, as it
+ * publishes it.
+ */
+function poolSpentMessage(state: SmartProviderState): string {
+  const left = state.poolRemainingPercent;
+  const remaining = left === null ? "" : ` (${left}% left)`;
+  return (
+    `the "${state.label}" plan has no room left${remaining} — the queue waits ` +
+    `for the window to roll over`
+  );
+}
+
 /** A one-line explanation of which budget stopped the queue. */
 function usageMessage(status: UsageStatus): string {
   const provider = status.providers.find((entry) => entry.blocked);
@@ -236,8 +252,11 @@ export function getPauseState(): WorkerPauseState {
   if (smartPause !== null) {
     return {
       paused: true,
-      cause: "shared_plan",
-      message: sharedPlanMessage(smartPause),
+      // The plan being spent and the plan being shared are different causes.
+      cause: smartPause.blocked ? "usage_limit" : "shared_plan",
+      message: smartPause.blocked
+        ? poolSpentMessage(smartPause)
+        : sharedPlanMessage(smartPause),
       upstreamError,
       resumeAt: smartPause.resetsAt,
       // The pool frees itself: the other user stops, or the window rolls
@@ -558,13 +577,21 @@ async function applyUsageLimit(): Promise<void> {
   // Refreshed here because this runs on every tick, before anything can
   // pause the queue.
   activeProviderId = config.stages.vision.providerId || null;
-  // A provider in smart mode that ignores the hard windows is not judged by
-  // them: the plan's own wall is the limit there.
-  const limited = config.providers.filter(
-    (provider) =>
-      provider.usageLimits.enabled &&
-      !(provider.usageLimits.mode === "smart" && provider.usageLimits.smart.ignoreHardWindows)
-  );
+
+  // A provider in smart mode whose pool can be read is governed by the
+  // pool: the plan's own wall is the limit, and the operator's budget is
+  // not — the plan knows nothing about a number that was typed here.
+  //
+  // The typed windows are only the fallback for a pool that could not be
+  // read. Better than nothing while the server is unreachable, and it stops
+  // being the limit as soon as the server answers again.
+  const limited = config.providers.filter((provider) => {
+    if (!provider.usageLimits.enabled) return false;
+    if (provider.usageLimits.mode !== "smart") return true;
+    if (provider.usageLimits.smart.ignoreHardWindows) return false;
+    const pool = poolReading(provider.id);
+    return !(pool && pool.ok);
+  });
   if (limited.length === 0) {
     usagePause = null;
     return;
@@ -593,12 +620,17 @@ async function applyUsageLimit(): Promise<void> {
 }
 
 /**
- * Stop the queue when the plan is shared with somebody else.
+ * Stop the queue when the plan is shared with somebody else, or when the
+ * plan has no room left.
  *
  * The plan says what everybody used. When the part that is not ours is more
  * than a rounding error, somebody else is in the pool, and the queue gets out
  * of the way: it stops claiming work and waits for the pool to be free again
  * or for the window to roll over.
+ *
+ * When the plan itself runs out of room, the queue stops too — but for a
+ * different reason, and it says so: the plan's wall is not the same thing as
+ * somebody else taking a share.
  *
  * The pause lifts by itself — the other user stops, or the window ends.
  */
@@ -632,15 +664,20 @@ async function applySharedPlan(): Promise<void> {
     return;
   }
 
+  // The plan being spent and the plan being shared are different causes,
+  // and the operator has to be able to tell them apart.
+  const cause: PauseCause = blocking.blocked ? "usage_limit" : "shared_plan";
+
   if (
     smartPause?.providerId !== blocking.providerId ||
-    smartPause?.contended !== blocking.contended
+    smartPause?.contended !== blocking.contended ||
+    smartPause?.blocked !== blocking.blocked
   ) {
-    log(sharedPlanMessage(blocking));
+    log(blocking.blocked ? poolSpentMessage(blocking) : sharedPlanMessage(blocking));
   }
   // Only the start of the pause is counted, for the same reason as above.
   if (smartPause === null) {
-    recordAiPause({ providerId: blocking.providerId, cause: "shared_plan" });
+    recordAiPause({ providerId: blocking.providerId, cause });
   }
   smartPause = blocking;
   if (!manualPaused) pausedAt = Date.now();
@@ -685,13 +722,14 @@ async function tick(): Promise<void> {
     // while the queue is paused - which is when it matters most.
     await refreshQueueDepth();
 
+    // The plan is read first: it decides whether the pool's wall or the
+    // operator's own budget is the limit, and that answer has to be in
+    // place before the budget is looked at.
+    await applySharedPlan();
+
     // The usage limit is checked before anything is claimed: a poll that
     // would blow through the budget must not start.
     await applyUsageLimit();
-
-    // So is the shared plan: the queue must not take the pool from somebody
-    // else who is in it.
-    await applySharedPlan();
 
     // A cooldown after a transient upstream fault elapsed → try again.
     if (quotaPausedUntil !== null && Date.now() >= quotaPausedUntil) {

@@ -40,7 +40,14 @@ import type { AiProvider } from "../config.js";
 export interface PoolWindow {
   /** Which window this is: the plan's interval, or its week. */
   kind: "interval" | "weekly";
-  /** The plan's allowance for this window. */
+  /**
+   * The plan's allowance for this window.
+   *
+   * Zero when the plan publishes no absolute allowance. The current Token
+   * Plan does not: it publishes how much of the window is left, and nothing
+   * else. The window is still real — only its unit changes, and the queue
+   * reads it as a percentage when there is no count to compare with.
+   */
   total: number;
   /** How much of it is used — by everybody, not only by us. */
   used: number;
@@ -123,6 +130,11 @@ function numberOr(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+/** A number the plan published, or null when it published none. */
+function optionalNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 /**
  * Turn the plan's answer into windows.
  *
@@ -147,33 +159,44 @@ export function parsePoolState(
 
   const intervalTotal = numberOr(row.current_interval_total_count);
   const intervalUsed = numberOr(row.current_interval_usage_count);
-  if (intervalTotal > 0 && numberOr(row.end_time) > 0) {
+  const intervalPercent = optionalNumber(row.current_interval_remaining_percent);
+  const intervalEnd = numberOr(row.end_time);
+
+  // A plan that publishes no absolute allowance still publishes how much of
+  // it is left. The window is real either way — only its unit changes, and
+  // the queue reads it as a percentage when there is no count to compare
+  // with. Dropping the window here would leave the queue with nothing but
+  // the operator's own budget, which the plan knows nothing about.
+  if (intervalEnd > 0 && (intervalTotal > 0 || intervalPercent !== null)) {
     windows.push({
       kind: "interval",
       total: intervalTotal,
       used: intervalUsed,
-      remainingPercent: numberOr(
-        row.current_interval_remaining_percent,
-        intervalTotal > 0 ? Math.round(((intervalTotal - intervalUsed) / intervalTotal) * 1000) / 10 : 0
-      ),
+      remainingPercent:
+        intervalPercent !== null
+          ? intervalPercent
+          : Math.round(((intervalTotal - intervalUsed) / intervalTotal) * 1000) / 10,
       startTime: numberOr(row.start_time),
-      endTime: numberOr(row.end_time)
+      endTime: intervalEnd
     });
   }
 
   const weeklyTotal = numberOr(row.current_weekly_total_count);
   const weeklyUsed = numberOr(row.current_weekly_usage_count);
-  if (weeklyTotal > 0 && numberOr(row.weekly_end_time) > 0) {
+  const weeklyPercent = optionalNumber(row.current_weekly_remaining_percent);
+  const weeklyEnd = numberOr(row.weekly_end_time);
+
+  if (weeklyEnd > 0 && (weeklyTotal > 0 || weeklyPercent !== null)) {
     windows.push({
       kind: "weekly",
       total: weeklyTotal,
       used: weeklyUsed,
-      remainingPercent: numberOr(
-        row.current_weekly_remaining_percent,
-        weeklyTotal > 0 ? Math.round(((weeklyTotal - weeklyUsed) / weeklyTotal) * 1000) / 10 : 0
-      ),
+      remainingPercent:
+        weeklyPercent !== null
+          ? weeklyPercent
+          : Math.round(((weeklyTotal - weeklyUsed) / weeklyTotal) * 1000) / 10,
       startTime: numberOr(row.weekly_start_time),
-      endTime: numberOr(row.weekly_end_time)
+      endTime: weeklyEnd
     });
   }
 

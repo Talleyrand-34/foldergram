@@ -400,6 +400,7 @@
               />
               <span>{{ t('ai.config.ignoreHardWindows') }}</span>
             </label>
+            <span class="text-[0.75rem] text-muted">{{ t('ai.config.planIsTheLimitHint') }}</span>
 
             <!-- What the plan says right now. -->
             <div
@@ -425,7 +426,12 @@
                 v-else
                 class="text-[0.78rem] tabular-nums text-muted"
               >
-                {{ smartState(provider.id)?.poolUsed }} / {{ smartState(provider.id)?.poolTotal }}
+                <template v-if="smartState(provider.id)?.poolTotal">
+                  {{ smartState(provider.id)?.poolUsed }} / {{ smartState(provider.id)?.poolTotal }}
+                </template>
+                <template v-else>
+                  {{ smartState(provider.id)?.poolRemainingPercent }}% {{ t('ai.config.planLeft') }}
+                </template>
                 · {{ t('ai.config.ourUse') }}: {{ smartState(provider.id)?.ourUsage }}
                 <span v-if="smartState(provider.id)?.resetsAt">
                   · {{ t('ai.config.resetsAt') }}: {{ formatDate(smartState(provider.id)?.resetsAt) }}
