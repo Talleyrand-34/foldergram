@@ -358,6 +358,56 @@ describe('ai-analysis the plan reading', () => {
     expect(interval?.hoursLeft).toBeCloseTo(1.5, 1);
   });
 
+  it('measures the rate against the readings of a previous run', () => {
+    // The readings outlive the process, so after a restart the rate does
+    // not have to be measured from scratch.
+    const history = [
+      {
+        state: {
+          providerId: 'minimax',
+          ok: true,
+          error: null,
+          model: 'general',
+          readAt: 0,
+          windows: [
+            {
+              kind: 'interval' as const,
+              total: 0,
+              used: 0,
+              remainingPercent: 90,
+              startTime: 1000,
+              endTime: 2000
+            }
+          ]
+        },
+        at: 0
+      },
+      {
+        state: {
+          providerId: 'minimax',
+          ok: true,
+          error: null,
+          model: 'general',
+          readAt: 0,
+          windows: [
+            {
+              kind: 'interval' as const,
+              total: 0,
+              used: 0,
+              remainingPercent: 70,
+              startTime: 1000,
+              endTime: 2000
+            }
+          ]
+        },
+        at: 3_600_000
+      }
+    ];
+
+    // Twenty points in an hour: twenty points an hour.
+    expect(burnRatePerHour(history, 'interval', 3_600_000)).toBeCloseTo(20, 1);
+  });
+
   it('does not measure a rate that rests on a single point', () => {
     // The plan publishes whole percentages, so a rate measured over one
     // point can be wrong by a hundred per cent. It is not published.
