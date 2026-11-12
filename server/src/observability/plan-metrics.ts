@@ -13,6 +13,7 @@
  *   foldergram.ai.plan.time_left        how long it lasts at the current rate
  *   foldergram.ai.plan.rolls_over_in    how long until the window rolls over
  *   foldergram.ai.plan.contended        whether somebody else is in the pool
+ *   foldergram.ai.plan.room_ratio       how much faster it could be spent
  *
  * They live in their own module because the plan is the AI plugin's
  * business, and because this file must not depend on anything else the
@@ -47,6 +48,11 @@ export interface PlanStateSample {
   readonly windows: readonly PlanWindowSample[];
   /** Somebody else is using the plan. */
   readonly contended: boolean;
+  /**
+   * How much faster the plan could be spent before a window runs out
+   * before it renews. Above one there is room to spare.
+   */
+  readonly roomRatio: number | null;
 }
 
 interface PlanInstruments {
@@ -54,6 +60,7 @@ interface PlanInstruments {
   timeLeft: ReturnType<ReturnType<typeof metrics.getMeter>['createUpDownCounter']>;
   rollsOverIn: ReturnType<ReturnType<typeof metrics.getMeter>['createUpDownCounter']>;
   contended: ReturnType<ReturnType<typeof metrics.getMeter>['createUpDownCounter']>;
+  roomRatio: ReturnType<ReturnType<typeof metrics.getMeter>['createUpDownCounter']>;
 }
 
 let instruments: PlanInstruments | null = null;
@@ -89,6 +96,10 @@ function getInstruments(): PlanInstruments {
     }),
     contended: meter.createUpDownCounter('foldergram.ai.plan.contended', {
       description: 'Whether somebody else is using the plan (1) or not (0)'
+    }),
+    roomRatio: meter.createUpDownCounter('foldergram.ai.plan.room_ratio', {
+      description:
+        'How much faster the plan could be spent before a window runs out before it renews'
     })
   };
   instrumentsProvider = provider;
@@ -134,7 +145,8 @@ function publish(
  */
 export function recordPlanState(sample: PlanStateSample): void {
   try {
-    const { remaining, timeLeft, rollsOverIn, contended } = getInstruments();
+    const { remaining, timeLeft, rollsOverIn, contended, roomRatio } =
+      getInstruments();
     const provider = sample.providerId || 'unknown';
 
     for (const window of sample.windows) {
@@ -157,6 +169,12 @@ export function recordPlanState(sample: PlanStateSample): void {
     }
 
     publish(contended, `contended:${provider}`, sample.contended ? 1 : 0, { provider });
+
+    // How much faster the plan could be spent. Null when the plan could
+    // not be read, or when there is not enough signal to say.
+    if (sample.roomRatio !== null && Number.isFinite(sample.roomRatio)) {
+      publish(roomRatio, `roomRatio:${provider}`, sample.roomRatio, { provider });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[telemetry] could not publish the plan state: ${message}`);

@@ -373,6 +373,27 @@ else is in there: the pool moves while nothing of ours is being sent.
 This is why the numbers in this document are the ones to watch. The plan is
 the budget: what it says is left is what there is.
 
+### The queue works at the pace the plan allows
+
+The room the plan leaves is not only a number to look at: it is what the
+queue works at.
+
+- The **window that renews soonest** sets the pace. Its allowance is the
+  one that is lost when it renews, so the queue takes as much of it as it
+  can before it rolls over.
+- Above one room ratio there is room to spare, and the queue analyses
+  **more videos at the same time**. The analysis spends most of its time
+  waiting for the model, so two or three at a time cost little more CPU and
+  finish the backlog much sooner.
+- The **other window is a brake**, not a target: the long budget of the
+  plan belongs mostly to whoever else is on it, and what they spend is not
+  ours to slow down. It only holds the queue back when the plan would be
+  exhausted at more than twice the pace its window allows.
+
+The number of workers changes slowly, and only when the room has said the
+same thing twice in a row, so the queue does not breathe in and out with
+every reading. `AI_ANALYSIS_MAX_PARALLEL` caps it (three by default).
+
 ## Reading the data with PromQL
 
 The examples below assume Prometheus is scraping the Collector on

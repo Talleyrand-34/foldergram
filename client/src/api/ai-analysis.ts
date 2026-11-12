@@ -305,6 +305,17 @@ export interface AiSmartProviderState {
   poolRemainingPercent: number | null;
   /** Every window the plan publishes, with what is left of each. */
   windows: AiPlanWindow[];
+  /**
+   * How much faster the plan could be spent before the window that renews
+   * soonest runs out before it renews. Above one there is room to spare.
+   */
+  roomRatio: number | null;
+  /**
+   * The worst ratio of the windows that do not decide the pace. It is a
+   * brake: the long budget of the plan belongs mostly to whoever else is
+   * on it.
+   */
+  brakeRatio: number | null;
   /** We have taken our share. */
   blocked: boolean;
   /** When the watched window rolls over. */

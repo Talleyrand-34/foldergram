@@ -198,12 +198,20 @@ interface AiInstruments {
   errors: ReturnType<ReturnType<typeof metrics.getMeter>['createCounter']>;
   queueDepth: ReturnType<ReturnType<typeof metrics.getMeter>['createUpDownCounter']>;
   pauses: ReturnType<ReturnType<typeof metrics.getMeter>['createCounter']>;
+  concurrency: ReturnType<ReturnType<typeof metrics.getMeter>['createUpDownCounter']>;
 }
 
 let instruments: AiInstruments | null = null;
 let instrumentsProvider: unknown = null;
 /** The last queue depth that was published, to turn it into a delta. */
 let lastQueueDepth = 0;
+/**
+ * The last concurrency that was published, to turn it into a delta.
+ *
+ * It starts at zero, like the counter itself: the sum of the deltas has to
+ * be the number of workers, not the number of changes.
+ */
+let lastConcurrency = 0;
 
 function getInstruments(): AiInstruments {
   const provider = metrics.getMeterProvider();
@@ -241,6 +249,9 @@ function getInstruments(): AiInstruments {
     }),
     pauses: meter.createCounter('foldergram.ai.pauses', {
       description: 'Times the AI queue was paused, by cause'
+    }),
+    concurrency: meter.createUpDownCounter('foldergram.ai.analysis.concurrency', {
+      description: 'How many videos are analysed at the same time'
     })
   };
   instrumentsProvider = provider;
@@ -298,6 +309,24 @@ export function recordAiUsage(sample: AiUsageSample): void {
     if (sample.status === 'failed') {
       errors.add(1, { provider, error_kind: sample.errorKind ?? 'unknown' });
     }
+  } catch (error) {
+    logTelemetryError('metrics', error);
+  }
+}
+
+/**
+ * Publishes how many videos are being analysed at the same time.
+ *
+ * The number follows the room the plan leaves: more when the plan has
+ * room to spare, less when going faster would exhaust it before its
+ * window renews.
+ */
+export function setAiConcurrency(value: number): void {
+  const concurrency = Number.isFinite(value) && value > 0 ? Math.floor(value) : 1;
+
+  try {
+    getInstruments().concurrency.add(concurrency - lastConcurrency);
+    lastConcurrency = concurrency;
   } catch (error) {
     logTelemetryError('metrics', error);
   }

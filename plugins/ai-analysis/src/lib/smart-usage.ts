@@ -94,6 +94,32 @@ export interface SmartProviderState {
   poolRemainingPercent: number | null;
   /** Every window the plan publishes, with what is left of each. */
   windows: PlanWindowView[];
+  /**
+   * How much faster the plan could be spent before a window runs out
+   * before it renews.
+   *
+   * Above one there is room to spare and the queue can work harder; below
+   * one the plan is being spent faster than its window lasts, and going
+   * faster would exhaust it early and leave the queue idle until the
+   * window renews.
+   *
+   * This is the ratio of the window that renews soonest: its allowance is
+   * the one that is wasted when it renews, so it is the one the pace
+   * follows. The other windows have their own ratio, and the queue
+   * brakes when one of them is clearly over-spent.
+   *
+   * Null when there is not enough signal to say.
+   */
+  roomRatio: number | null;
+  /**
+   * The worst ratio of the windows that do not decide the pace.
+   *
+   * It is a brake, not a target: the long budget of the plan belongs
+   * mostly to whoever else is on it, and what they spend is not ours to
+   * slow down. It only holds the queue back when the plan would be
+   * exhausted at more than twice the pace its window allows.
+   */
+  brakeRatio: number | null;
   /** We have taken our share; the queue must stop until the window rolls. */
   blocked: boolean;
   /** When the watched window rolls over. */
@@ -253,6 +279,38 @@ export function resetSmartUsage(): void {
   lastReading.clear();
   cachedReading.clear();
   readingHistory.clear();
+}
+
+/**
+ * How much room a window has, as a multiplier.
+ *
+ * The window's room is what is left of it; the time is what is left of
+ * its life. Together they say how fast the window may be spent before it
+ * runs out before it renews.
+ *
+ * The drain is the rate the plan is being spent at over the window, which
+ * is measured from the moment the window opened: the plan was whole then.
+ * A recent measurement would be sharper, but the plan publishes whole
+ * percentages and batches them, so a recent measurement is mostly noise.
+ *
+ * Null when the window has not been running long enough to say.
+ */
+export function windowRoomRatio(window: PoolWindow, now: number): number | null {
+  const hoursSinceStart = (now - window.startTime) / 3_600_000;
+  const hoursUntilReset = (window.endTime - now) / 3_600_000;
+
+  // A window that just opened says nothing yet.
+  if (hoursSinceStart * 3_600_000 < MINIMUM_RATE_SPAN_MS) return null;
+  if (hoursUntilReset <= 0) return 0;
+
+  const drain = (100 - window.remainingPercent) / hoursSinceStart;
+  if (drain <= 0) {
+    // The plan is not being spent: all the room there is.
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const room = window.remainingPercent / hoursUntilReset;
+  return room / drain;
 }
 
 /**
@@ -446,6 +504,8 @@ export async function evaluateSmartUsage(
         cap: 0,
         poolRemainingPercent: null,
         windows: [],
+        roomRatio: null,
+        brakeRatio: null,
         blocked: false,
         resetsAt: null,
         readAt: state.readAt
@@ -470,6 +530,8 @@ export async function evaluateSmartUsage(
         cap: 0,
         poolRemainingPercent: null,
         windows: [],
+        roomRatio: null,
+        brakeRatio: null,
         blocked: false,
         resetsAt: null,
         readAt: state.readAt
@@ -562,6 +624,12 @@ export async function evaluateSmartUsage(
     let resetsAt = new Date(window.endTime).toISOString();
 
     const windows: PlanWindowView[] = [];
+    // The window that renews soonest sets the pace: its allowance is the
+    // one that is lost when it renews.
+    let paceRatio: number | null = null;
+    let paceWindowEnd = Number.POSITIVE_INFINITY;
+    // The others are only a brake.
+    let brakeRatio: number | null = null;
 
     for (const w of state.windows) {
       let spent: boolean;
@@ -611,6 +679,22 @@ export async function evaluateSmartUsage(
         rollsOverInSeconds: Math.max(0, Math.round((w.endTime - now) / 1000)),
         hoursLeft
       });
+
+      // How much room this window has. The room is what is left of it
+      // against how long it has left to live, and the drain is how fast
+      // the plan is going. Above one the queue can work harder; below one
+      // the plan is being spent faster than its window lasts.
+      const ratio = windowRoomRatio(w, now);
+      if (ratio === null) continue;
+
+      if (w.endTime < paceWindowEnd) {
+        paceWindowEnd = w.endTime;
+        paceRatio = ratio;
+      }
+
+      if (brakeRatio === null || ratio < brakeRatio) {
+        brakeRatio = ratio;
+      }
     }
 
     lastReading.set(provider.id, { state, at: now });
@@ -634,6 +718,11 @@ export async function evaluateSmartUsage(
       // Every window the plan publishes, with what is left of each and how
       // long it lasts at the rate it is going.
       windows,
+      // How much faster the plan could be spent before the window that
+      // renews soonest runs out before it renews.
+      roomRatio: paceRatio,
+      // The brake: the worst of the other windows.
+      brakeRatio: paceRatio === brakeRatio ? null : brakeRatio,
       // Over our share of the pool, or out of room in one of its windows:
       // the queue waits for the window to roll.
       blocked,

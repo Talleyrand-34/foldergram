@@ -442,6 +442,16 @@
                   </span>
                   <span>· {{ t('ai.config.planRollsOver') }}: {{ formatSpan(window.rollsOverInSeconds) }}</span>
                 </li>
+                <li
+                  v-if="smartState(provider.id)?.roomRatio !== null && smartState(provider.id)?.roomRatio !== undefined"
+                  class="text-[0.78rem] tabular-nums text-muted flex flex-wrap items-baseline gap-x-2"
+                >
+                  <span class="font-semibold text-text">{{ t('ai.config.planRoom') }}</span>
+                  <span>{{ smartState(provider.id)?.roomRatio?.toFixed(2) }}×</span>
+                  <span class="text-[0.74rem]">
+                    {{ (smartState(provider.id)?.roomRatio ?? 0) >= 1 ? t('ai.config.planRoomToSpare') : t('ai.config.planRoomTight') }}
+                  </span>
+                </li>
               </ul>
 
               <span

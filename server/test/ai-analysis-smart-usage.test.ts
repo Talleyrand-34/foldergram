@@ -17,7 +17,8 @@ import {
   evaluateSmartUsage,
   PERCENTAGE_SAFETY_MARGIN,
   poolIsSpent,
-  resetSmartUsage
+  resetSmartUsage,
+  windowRoomRatio
 } from '../../plugins/ai-analysis/src/lib/smart-usage.js';
 import {
   noteProviderRequest,
@@ -461,6 +462,68 @@ describe('ai-analysis the plan reading', () => {
     // The window opened an hour ago at a hundred, and it is at eighty-nine:
     // eleven points in an hour.
     expect(burnRatePerHour(history, 'interval', 3_600_000)).toBeCloseTo(11, 0);
+  });
+
+  it('says how much room the plan leaves', () => {
+    // A window with 40 % left, two hours of life, four hours old: it has
+    // spent 60 points, so 15 an hour. The room is 40 points over two
+    // hours, so 20 an hour. There is a third more room than drain.
+    const window = {
+      kind: 'interval' as const,
+      total: 0,
+      used: 0,
+      remainingPercent: 40,
+      startTime: 0,
+      endTime: 6 * 3_600_000
+    };
+
+    const ratio = windowRoomRatio(window, 4 * 3_600_000);
+    expect(ratio).toBeCloseTo(20 / 15, 2);
+  });
+
+  it('says there is no room when the plan is spent faster than the window lasts', () => {
+    // 10 % left, one hour of life, and the window has been spending 22.5
+    // points an hour since it opened. The room is only 10 points an hour,
+    // so there is less room than drain: going faster would exhaust the
+    // plan before the window renews.
+    const window = {
+      kind: 'interval' as const,
+      total: 0,
+      used: 0,
+      remainingPercent: 10,
+      startTime: 0,
+      endTime: 5 * 3_600_000
+    };
+
+    const ratio = windowRoomRatio(window, 4 * 3_600_000);
+    expect(ratio).toBeCloseTo(10 / 22.5, 2);
+  });
+
+  it('says nothing about a window that has just opened', () => {
+    const window = {
+      kind: 'interval' as const,
+      total: 0,
+      used: 0,
+      remainingPercent: 99,
+      startTime: 0,
+      endTime: 5 * 3_600_000
+    };
+
+    // A minute old says nothing.
+    expect(windowRoomRatio(window, 60_000)).toBeNull();
+  });
+
+  it('says there is all the room there is when the plan is not being spent', () => {
+    const window = {
+      kind: 'interval' as const,
+      total: 0,
+      used: 0,
+      remainingPercent: 100,
+      startTime: 0,
+      endTime: 5 * 3_600_000
+    };
+
+    expect(windowRoomRatio(window, 4 * 3_600_000)).toBe(Number.POSITIVE_INFINITY);
   });
 
   it('does not measure a rate across a window that rolled over', () => {

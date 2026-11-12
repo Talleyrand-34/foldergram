@@ -28,7 +28,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
 import type { IndexedVideoAsset, PluginContext } from "../../../server/dist/plugins/types.js";
-import { recordAiPause, setAiQueueDepth } from "../../../server/dist/observability/telemetry.js";
+import { recordAiPause, setAiConcurrency, setAiQueueDepth } from "../../../server/dist/observability/telemetry.js";
 import { recordPlanState } from "../../../server/dist/observability/plan-metrics.js";
 import { analyzeVideo } from "./analyzer.js";
 import {
@@ -152,7 +152,14 @@ let upstreamError: string | null = null;
 /** Epoch ms of the current pause (informational). */
 let pausedAt: number | null = null;
 /** The video currently being analysed — excluded from the reclaim sweep. */
-let inFlightImageId: number | null = null;
+/**
+ * The videos being worked on right now.
+ *
+ * There can be more than one: how many depends on the room the plan
+ * leaves. The reclaim sweep must not reset a video that is being worked
+ * on, so it needs to know all of them.
+ */
+const inFlightImageIds = new Set<number>();
 /**
  * The usage limit that stopped the queue, if any.
  *
@@ -429,7 +436,7 @@ export function resumeWorker(): WorkerPauseState {
 /** Reclaim orphaned rows; failures are logged, never fatal. */
 async function reclaimStuckWork(): Promise<void> {
   try {
-    const reclaimed = await reclaimStuckVideos(inFlightImageId === null ? [] : [inFlightImageId]);
+    const reclaimed = await reclaimStuckVideos([...inFlightImageIds]);
     if (reclaimed.running > 0 || reclaimed.upstreamFailed > 0) {
       log(
         `reclaimed ${reclaimed.running} orphaned running video(s) and ${reclaimed.upstreamFailed} upstream-failed video(s) — back to pending`,
@@ -770,6 +777,7 @@ async function applySharedPlan(): Promise<void> {
     recordPlanState({
       providerId: state.providerId,
       contended: state.contended,
+      roomRatio: state.roomRatio,
       windows: state.windows.map((window) => ({
         kind: window.kind,
         remainingPercent: window.remainingPercent,
@@ -853,6 +861,130 @@ async function maybeRunRecanonicalization(): Promise<void> {
   }
 }
 
+/**
+ * The most videos that may be worked on at the same time.
+ *
+ * The plan's room is what decides, and it is a moving target: the room
+ * shrinks as the window is spent and grows again when it renews. The
+ * number is therefore changed slowly, and only when the room has said
+ * the same thing twice in a row, so the queue does not breathe in and out
+ * with every reading.
+ */
+/**
+ * The most videos that may be worked on at the same time.
+ *
+ * It can be raised or lowered with AI_ANALYSIS_MAX_PARALLEL. The default
+ * is three: the analysis spends most of its time waiting for the model,
+ * so two or three at a time cost little more CPU and finish the backlog
+ * much sooner.
+ */
+function maxParallelAnalyses(): number {
+  const configured = Number.parseInt(
+    process.env.AI_ANALYSIS_MAX_PARALLEL ?? '',
+    10
+  );
+
+  if (Number.isFinite(configured) && configured >= 1) {
+    return Math.min(configured, 16);
+  }
+
+  return 3;
+}
+
+/** How many readings have to agree before the number of workers changes. */
+const PARALLEL_HYSTERESIS = 2;
+
+/** The number of workers right now. */
+let parallelAnalyses = 1;
+
+/** How many readings in a row have said the same thing. */
+let parallelAgreement = 0;
+
+/** The number the readings last agreed on. */
+let parallelCandidate = 1;
+
+/**
+ * The ratio below which the plan would be spent too fast.
+ *
+ * The long budget of the plan belongs mostly to whoever else is on it,
+ * and what they spend is not ours to slow down. So the long window is
+ * only a brake: it holds the queue back when the plan would be exhausted
+ * at more than twice the pace its window allows.
+ */
+const BRAKE_RATIO = 0.5;
+
+/**
+ * How many videos may be worked on at the same time.
+ *
+ * The plan says how much room is left and how long the window has left to
+ * live. Together they say how fast the plan may be spent before it runs
+ * out before it renews — and what it does not spend is lost when the
+ * window renews. So:
+ *
+ *   - room to spare → work harder: more videos at a time, and the room
+ *     that nobody used is gone
+ *   - no room → work slower: a plan that runs out before its window
+ *     renews leaves the queue idle until the window rolls over, which can
+ *     be days
+ *
+ * The pace follows the window that renews soonest: its allowance is the
+ * one that is lost when it renews. The other window is a brake, and only
+ * for when it is clearly over-spent.
+ */
+function analysisConcurrency(): number {
+  let ratio: number | null = null;
+  let brake: number | null = null;
+
+  for (const state of smartStates.values()) {
+    if (state.roomRatio !== null) {
+      if (ratio === null || state.roomRatio < ratio) ratio = state.roomRatio;
+    }
+    if (state.brakeRatio !== null) {
+      if (brake === null || state.brakeRatio < brake) brake = state.brakeRatio;
+    }
+  }
+
+  if (ratio === null) {
+    // The plan could not be read: one video at a time, as always.
+    return parallelAnalyses;
+  }
+
+  // The room to spare, rounded to whole videos. The floor is one: the
+  // queue always makes progress, even when the plan is spent.
+  let wanted = Math.max(
+    1,
+    Math.min(maxParallelAnalyses(), Math.round(ratio))
+  );
+
+  // The brake: the plan would be spent faster than its window allows.
+  if (brake !== null && brake < BRAKE_RATIO) {
+    wanted = 1;
+  }
+
+  if (wanted === parallelCandidate) {
+    parallelAgreement += 1;
+  } else {
+    parallelCandidate = wanted;
+    parallelAgreement = 1;
+  }
+
+  if (
+    parallelAgreement >= PARALLEL_HYSTERESIS &&
+    parallelCandidate !== parallelAnalyses
+  ) {
+    log(
+      `the plan leaves room for ${parallelCandidate} video(s) at a time ` +
+      `(was ${parallelAnalyses})`
+    );
+    parallelAnalyses = parallelCandidate;
+  }
+
+  // It is published, so the dashboard says how hard the queue is working.
+  setAiConcurrency(parallelAnalyses);
+
+  return parallelAnalyses;
+}
+
 async function tick(): Promise<void> {
   if (draining) return;
   draining = true;
@@ -887,70 +1019,86 @@ async function tick(): Promise<void> {
     // Any pause (operator, upstream fault, rate limit) stops new claims.
     if (isPaused()) return;
 
-    // Drain any in-memory queue first (newly-enqueued videos).
-    while (queue.length > 0) {
+    // How many videos may be worked on at the same time: the room the
+    // plan leaves. Nothing is wasted — what the plan does not spend in a
+    // window is lost when the window renews — but going faster than the
+    // plan lasts would exhaust it early and leave the queue idle until
+    // the window renews.
+    const parallel = analysisConcurrency();
+
+    // The videos being worked on right now.
+    const running = new Set<Promise<void>>();
+
+    while (running.size < parallel) {
       // A pause can be raised while we work (upstream fault, operator).
-      if (isPaused()) return;
-      const asset = queue.shift()!;
-      try {
-        await processOne(asset);
-      } catch (e) {
-        // The analyzer throws structured errors for the two upstream
-        // conditions that must pause the queue instead of failing a video.
-        if (e instanceof RateLimitedError) {
-          noteRateLimited(e.retryAfterSec);
-          // Reset the asset to pending so a later tick picks it up.
-          await resetToPending(asset.imageId);
-          // Push the asset back to the head of the queue for resume order.
-          queue.unshift(asset);
-          return;
-        }
-        if (e instanceof UpstreamUnavailableError) {
-          await noteUpstreamUnavailable(e, asset.imageId);
-          queue.unshift(asset);
-          return;
-        }
-        throw e;
+      if (isPaused()) break;
+
+      // The in-memory queue first: the videos that were just indexed.
+      // Then the database, for any pending video we missed (e.g. from a
+      // prior run).
+      let asset: IndexedVideoAsset | null = null;
+      let claimed: { imageId: number; absolutePath: string; folderId: number; mtimeMs: number } | null = null;
+
+      if (queue.length > 0) {
+        asset = queue.shift()!;
+      } else {
+        claimed = await claimNextPending();
+        if (!claimed) break;
+        asset = {
+          imageId: claimed.imageId,
+          assetKey: '',
+          relativePath: '',
+          absolutePath: claimed.absolutePath,
+          folderId: claimed.folderId,
+          mediaType: 'video' as const,
+          extension: '',
+          fileSize: 0,
+          mtimeMs: claimed.mtimeMs,
+          durationMs: null,
+          width: null,
+          height: null,
+        };
       }
+
+      const target = asset;
+      const task = processOne(target)
+        .catch(async (e) => {
+          // The analyzer throws structured errors for the two upstream
+          // conditions that must pause the queue instead of failing a
+          // video.
+          if (e instanceof RateLimitedError) {
+            noteRateLimited(e.retryAfterSec);
+            // Reset the asset to pending so a later tick picks it up.
+            await resetToPending(target.imageId);
+            // Push the asset back to the head of the queue for resume
+            // order.
+            queue.unshift(target);
+            return;
+          }
+          if (e instanceof UpstreamUnavailableError) {
+            await noteUpstreamUnavailable(e, target.imageId);
+            queue.unshift(target);
+            return;
+          }
+          throw e;
+        })
+        .finally(() => {
+          running.delete(task);
+        });
+
+      running.add(task);
     }
-    // Then poll DB for any pending videos we missed (e.g. from a prior run).
-    const claimed = await claimNextPending();
-    if (!claimed) {
+
+    if (running.size === 0) {
       // The queue is empty — a good moment to re-check the posts whose
       // domain may have moved on (a newer domain was proposed since they
       // were analysed).
       await maybeRunRecanonicalization();
       return;
     }
-    try {
-      await processOne({
-        imageId: claimed.imageId,
-        assetKey: '',
-        relativePath: '',
-        absolutePath: claimed.absolutePath,
-        folderId: claimed.folderId,
-        mediaType: 'video' as const,
-        extension: '',
-        fileSize: 0,
-        mtimeMs: claimed.mtimeMs,
-        durationMs: null,
-        width: null,
-        height: null,
-      });
-    } catch (e) {
-      if (e instanceof RateLimitedError) {
-        noteRateLimited(e.retryAfterSec);
-        // The asset is 'running' from the claim; reset to pending so a
-        // later tick re-processes it once the rate-limit window expires.
-        await resetToPending(claimed.imageId);
-        return;
-      }
-      if (e instanceof UpstreamUnavailableError) {
-        await noteUpstreamUnavailable(e, claimed.imageId);
-        return;
-      }
-      throw e;
-    }
+
+    // Wait for the videos being worked on.
+    await Promise.all(running);
   } catch (e) {
     log(`tick failed: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
@@ -961,7 +1109,7 @@ async function tick(): Promise<void> {
 async function processOne(asset: IndexedVideoAsset): Promise<void> {
   log(`processing: id=${asset.imageId}`);
   // Tracked so the reclaim sweep never resets the video we are working on.
-  inFlightImageId = asset.imageId;
+  inFlightImageIds.add(asset.imageId);
   try {
     await markRunning(asset.imageId);
     const result = await analyzeVideo(asset);
@@ -987,6 +1135,6 @@ async function processOne(asset: IndexedVideoAsset): Promise<void> {
       /* ignore — status is best-effort */
     }
   } finally {
-    inFlightImageId = null;
+    inFlightImageIds.delete(asset.imageId);
   }
 }
