@@ -77,8 +77,13 @@ export function isTelemetryEnabled(): boolean {
     .some((name) => (process.env[name] ?? '').trim().length > 0);
 }
 
-function buildResource() {
-  const serviceName = (process.env.OTEL_SERVICE_NAME ?? 'foldergram').trim() || 'foldergram';
+/**
+ * The extra resource attributes, as `OTEL_RESOURCE_ATTRIBUTES` declares them.
+ *
+ * The same attributes are used as the tags of the profiles, so a profile and
+ * a metric of the same service can be told apart the same way.
+ */
+export function readResourceAttributes(): Record<string, string> {
   const extra = (process.env.OTEL_RESOURCE_ATTRIBUTES ?? '')
     .split(',')
     .map((pair) => pair.trim())
@@ -88,10 +93,16 @@ function buildResource() {
       return [pair.slice(0, index).trim(), pair.slice(index + 1).trim()];
     });
 
+  return Object.fromEntries(extra);
+}
+
+function buildResource() {
+  const serviceName = (process.env.OTEL_SERVICE_NAME ?? 'foldergram').trim() || 'foldergram';
+
   return resourceFromAttributes({
     'service.name': serviceName,
     'service.version': process.env.npm_package_version ?? '0.0.0',
-    ...Object.fromEntries(extra)
+    ...readResourceAttributes()
   });
 }
 

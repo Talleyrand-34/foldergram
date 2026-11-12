@@ -357,6 +357,8 @@ What is reported:
   decides the budget
 - which failures happen and how often
 - how much work is waiting in the queue, and why the queue stopped
+- how long the database takes, per operation and per table, and how long the
+  API takes, per route
 
 The configuration is the standard OpenTelemetry one, so an existing Collector
 setup works unchanged:
@@ -373,6 +375,26 @@ The metric names, their labels and the available variables are listed in
 The full guide - the architecture, the exact Prometheus series names, the
 PromQL queries, and how to connect a Collector, Prometheus or Grafana - is in
 [Telemetry](telemetry.md).
+
+## Profiling
+
+The application can also push continuous profiles of the Node.js process to a
+Pyroscope server, which Grafana reads as a flame graph. The metrics say how
+long; the flame graph says where the time goes.
+
+Nothing leaves the machine unless a Pyroscope address is configured:
+
+```bash
+PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040
+PYROSCOPE_APPLICATION_NAME=foldergram
+```
+
+The `wall` profile is the interesting one for the database: the time spent
+waiting for PostgreSQL appears in the graph as the frames of the driver and
+of the socket, with the width of the wait.
+
+The full guide - the profile types, how to read the flame graphs and how to
+connect Grafana - is in [Telemetry](telemetry.md#profiling).
 
 ## Theme, language, and local UI preferences
 

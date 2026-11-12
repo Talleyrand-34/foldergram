@@ -102,6 +102,9 @@ importers:
       '@opentelemetry/semantic-conventions':
         specifier: ^1.45.0
         version: 1.45.0
+      '@pyroscope/nodejs':
+        specifier: ^0.7.1
+        version: 0.7.1(express@5.3.0)
       chokidar:
         specifier: ^4.0.3
         version: 4.0.3
@@ -297,6 +300,10 @@ packages:
   '@csstools/css-tokenizer@3.0.4':
     resolution: {integrity: sha512-Vd/9EVDiu6PPJt9yAh6roZP6El1xHrdvIVGjyBsHR0RYwNHgL7FJPyIIW4fANJNG6FtyZfvlRPpFI4ZM/lubvw==}
     engines: {node: '>=18'}
+
+  '@datadog/pprof@5.14.4':
+    resolution: {integrity: sha512-egEZDD9v98RBI8ijbHyaWQeY8rW0WEu004As5D7SUkdqSMORhrnh7ZdsM46PUzQgAc85IaEZoukWS9UhMvWn9w==}
+    engines: {node: '>=16'}
 
   '@dbmate/darwin-arm64@2.38.1':
     resolution: {integrity: sha512-cf8e23w/FtJMvP+jJY59bBHLp2XYgP3pVdTppOUekI/6vZnFA5G/3fQfBAM2e/xRpOhAyT8ctwpJITD3TqGruw==}
@@ -1201,6 +1208,18 @@ packages:
 
   '@oxc-project/types@0.153.0':
     resolution: {integrity: sha512-jSNrRIyvPVLL5E1z/tS5zLAprosGz/FuI1PWwEOz59j3E4TTTzSpqKb/RDGqJhhW0QHYISGXxq582wGx6T11Tw==}
+
+  '@pyroscope/nodejs@0.7.1':
+    resolution: {integrity: sha512-uD2XY/Yn8Y2RPft3ptba5jxEMhukkMUkqvj4borZek//eV7GMzQowaPS4bmsiCqOqoJ0/BLGVtIKYXB3iHsQBQ==}
+    engines: {node: '>=22.23.4'}
+    peerDependencies:
+      express: ^4.0.0 || ^5.0.0
+      fastify: ^5.8.5
+    peerDependenciesMeta:
+      express:
+        optional: true
+      fastify:
+        optional: true
 
   '@quansync/fs@1.0.0':
     resolution: {integrity: sha512-4TJ3DFtlf1L5LDMaM6CanJ/0lckGNtJcMjQ1NAV6zDmA0tEHKZtxNKin8EgPaVX1YzljbxckyT2tJrpQKAtngQ==}
@@ -2281,6 +2300,10 @@ packages:
   node-fetch-native@1.6.7:
     resolution: {integrity: sha512-g9yhqoedzIUm0nTnTqAQvueMPVOuIY16bqgAJJC8XOOubYFNwz6IER9qs0Gq2Xd0+CecCKFjtdDTMA4u4xG06Q==}
 
+  node-gyp-build@4.8.4:
+    resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
+    hasBin: true
+
   nopt@10.0.1:
     resolution: {integrity: sha512-df3sBr/6ax9hSGuC3CspvLlbnX8cP5L5nZwXF8cGN8l0zSWR6BvzmQ6jPUKjvo6+/xdpkNvEcucBNUdBeeV13g==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
@@ -2449,6 +2472,9 @@ packages:
     resolution: {integrity: sha512-9ZhXKM/rw350N1ovuWHbGxnGh/SNJ4cnxHiM0rxE4VN41wsg8P8zWn9hv/buK00RP4WvlOyr/RBDiptyxVbkZQ==}
     engines: {node: '>=0.10.0'}
 
+  pprof-format@2.4.0:
+    resolution: {integrity: sha512-7SDtSvsD996RFtlODgEmCR+GAfC3Dx6zlnef7duB1QNAkOStz+VAV60Ie/OQrkEijmBmcOZlKK0KQ/Oupd1frw==}
+
   preact@10.29.0:
     resolution: {integrity: sha512-wSAGyk2bYR1c7t3SZ3jHcM6xy0lcBcDel6lODcs9ME6Th++Dx2KU+6D3HD8wMMKGA8Wpw7OMd3/4RGzYRpzwRg==}
 
@@ -2488,6 +2514,9 @@ packages:
   readdirp@5.0.0:
     resolution: {integrity: sha512-9u/XQ1pvrQtYyMpZe7DXKv2p5CNvyVwzUB6uhLAnQwHMSgKMBR62lc7AHljaeteeHXn11XTAaLLUVZYVZyuRBQ==}
     engines: {node: '>= 20.19.0'}
+
+  regenerator-runtime@0.14.1:
+    resolution: {integrity: sha512-dYnhHh0nJoMfnkZs6GmmhFknAGRrLznOu5nc9ML+EJxGvrx6H7teuevqVqCuPcPK//3eDrrjQhehXVx9cnkGdw==}
 
   regex-recursion@6.0.2:
     resolution: {integrity: sha512-0YCaSCq2VRIebiaUviZNs0cBz1kg5kVS2UKUfNIx8YVs1cN3AV7NTctO5FOKBA+UT2BPJIWZauYHPqJODG50cg==}
@@ -2601,6 +2630,10 @@ packages:
   source-map-js@1.2.2:
     resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
     engines: {node: '>=0.10.0'}
+
+  source-map@0.7.6:
+    resolution: {integrity: sha512-i5uvt8C3ikiWeNZSVZNWcfZPItFQOsYTUAOkcUPGd8DqDy1uOUikjt5dG+uRlwyvR108Fb9DOd4GvXfT0N2/uQ==}
+    engines: {node: '>= 12'}
 
   space-separated-tokens@2.0.2:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
@@ -3202,6 +3235,12 @@ snapshots:
 
   '@csstools/css-tokenizer@3.0.4': {}
 
+  '@datadog/pprof@5.14.4':
+    dependencies:
+      node-gyp-build: 4.8.4
+      pprof-format: 2.4.0
+      source-map: 0.7.6
+
   '@dbmate/darwin-arm64@2.38.1':
     optional: true
 
@@ -3780,6 +3819,19 @@ snapshots:
     optional: true
 
   '@oxc-project/types@0.153.0': {}
+
+  '@pyroscope/nodejs@0.7.1(express@5.3.0)':
+    dependencies:
+      '@datadog/pprof': 5.14.4
+      debug: 4.4.3
+      p-limit: 7.3.3
+      pprof-format: 2.4.0
+      regenerator-runtime: 0.14.1
+      source-map: 0.7.6
+    optionalDependencies:
+      express: 5.3.0
+    transitivePeerDependencies:
+      - supports-color
 
   '@quansync/fs@1.0.0':
     dependencies:
@@ -5032,6 +5084,8 @@ snapshots:
 
   node-fetch-native@1.6.7: {}
 
+  node-gyp-build@4.8.4: {}
+
   nopt@10.0.1:
     dependencies:
       abbrev: 5.0.0
@@ -5194,6 +5248,8 @@ snapshots:
     dependencies:
       xtend: 4.0.2
 
+  pprof-format@2.4.0: {}
+
   preact@10.29.0: {}
 
   property-information@7.1.0: {}
@@ -5226,6 +5282,8 @@ snapshots:
   readdirp@4.1.2: {}
 
   readdirp@5.0.0: {}
+
+  regenerator-runtime@0.14.1: {}
 
   regex-recursion@6.0.2:
     dependencies:
@@ -5412,6 +5470,8 @@ snapshots:
   source-map-js@1.2.1: {}
 
   source-map-js@1.2.2: {}
+
+  source-map@0.7.6: {}
 
   space-separated-tokens@2.0.2: {}
 

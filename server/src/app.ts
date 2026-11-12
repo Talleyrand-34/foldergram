@@ -8,6 +8,7 @@ import { appConfig, repositoryRoot } from './config/env.js';
 import { requireApiAuthentication, requireMediaAuthentication } from './middleware/auth-protection.js';
 import { requireTrustedMutationRequest } from './middleware/csrf-protection.js';
 import { blockPublicDemoMutations } from './middleware/public-demo-mode.js';
+import { recordHttpRequest, resolveRoute, startHttpRequestSpan } from './observability/http-telemetry.js';
 import { apiRouter } from './routes/api.js';
 import { authService } from './services/auth-service.js';
 import { log } from './services/log-service.js';
@@ -45,9 +46,20 @@ export function createApp() {
   app.use('/api', (request, response, next) => {
     applyApiNoStoreHeaders(response);
     const startedAt = performance.now();
+    // The span is opened here and the request runs inside it, so the queries
+    // that run during the request become its children in the trace.
+    const span = startHttpRequestSpan(request.method, request.path, next);
     response.on('finish', () => {
       const elapsed = Math.round(performance.now() - startedAt);
       metricsService.recordRequest(request.method, request.path, response.statusCode, elapsed);
+      const route = resolveRoute(request, '/api');
+      recordHttpRequest({
+        method: request.method,
+        route,
+        statusCode: response.statusCode,
+        elapsedMs: elapsed
+      });
+      span.finish(route, response.statusCode, elapsed);
       const meta = { status: response.statusCode, elapsed: `${elapsed}ms` };
       if (response.statusCode >= 500) {
         log.error(`${request.method} ${request.path}`, meta);
@@ -55,7 +67,6 @@ export function createApp() {
         log.info(`${request.method} ${request.path}`, meta);
       }
     });
-    next();
   });
   app.use('/api', blockPublicDemoMutations, requireTrustedMutationRequest, requireApiAuthentication, apiRouter);
   app.get('/api/metrics', requireApiAuthentication, (_request, response) => {

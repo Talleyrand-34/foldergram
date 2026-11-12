@@ -3,6 +3,7 @@ import { performance } from 'node:perf_hooks';
 import pg from 'pg';
 
 import { appConfig } from '../../config/env.js';
+import { recordDbQuery } from '../../observability/db-telemetry.js';
 import { log } from '../../services/log-service.js';
 import { metricsService } from '../../services/metrics-service.js';
 import type { IDbDriver, QueryResult } from './types.js';
@@ -20,8 +21,38 @@ function extractCaller(): string {
 
 function recordQuery(sql: string, elapsedMs: number, getCaller?: () => string): void {
   metricsService.recordQuery(sql, elapsedMs, appConfig.logSlowQueryMs, getCaller);
+  recordDbQuery({ dialect: 'postgres', sql, elapsedMs });
   if (elapsedMs >= appConfig.logSlowQueryMs) {
     log.info('Slow query', { elapsed: `${elapsedMs}ms`, sql: sql.replace(/\s+/g, ' ').trim().slice(0, 200) });
+  }
+}
+
+function recordQueryError(sql: string, elapsedMs: number, error: unknown): void {
+  // A query that failed is not a slow query, but it is still a query: it is
+  // measured so the failures show up in the same place as the rest.
+  recordDbQuery({ dialect: 'postgres', sql, elapsedMs, error });
+}
+
+/**
+ * Runs a query and measures it.
+ *
+ * The measurement covers the failed queries too: a query that throws is not
+ * a query that does not exist.
+ */
+async function runQuery(
+  sql: string,
+  run: () => Promise<pg.QueryResult<pg.QueryResultRow>>,
+  getCaller?: () => string
+): Promise<pg.QueryResult<pg.QueryResultRow>> {
+  const startedAt = performance.now();
+
+  try {
+    const result = await run();
+    recordQuery(sql, Math.round(performance.now() - startedAt), getCaller);
+    return result;
+  } catch (error) {
+    recordQueryError(sql, Math.round(performance.now() - startedAt), error);
+    throw error;
   }
 }
 
@@ -244,17 +275,21 @@ export class PostgresDriver implements IDbDriver {
   }
 
   async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<QueryResult<T>> {
-    const t = performance.now();
-    const result = await this.pool.query(prepSql(sql), normalizeBooleanParams(sql, params));
-    recordQuery(sql, Math.round(performance.now() - t), extractCaller);
+    const result = await runQuery(
+      sql,
+      () => this.pool.query(prepSql(sql), normalizeBooleanParams(sql, params)),
+      extractCaller
+    );
     const rows = result.rows.map((row: Record<string, unknown>) => normalizeRow<T>(row));
     return { rows, rowCount: result.rowCount ?? rows.length };
   }
 
   async queryOne<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T | undefined> {
-    const t = performance.now();
-    const result = await this.pool.query(prepSql(sql), normalizeBooleanParams(sql, params));
-    recordQuery(sql, Math.round(performance.now() - t), extractCaller);
+    const result = await runQuery(
+      sql,
+      () => this.pool.query(prepSql(sql), normalizeBooleanParams(sql, params)),
+      extractCaller
+    );
     if (result.rows.length === 0) {
       return undefined;
     }
@@ -262,9 +297,11 @@ export class PostgresDriver implements IDbDriver {
   }
 
   async execute(sql: string, params: unknown[] = []): Promise<QueryResult> {
-    const t = performance.now();
-    const result = await this.pool.query(prepSql(sql), normalizeBooleanParams(sql, params));
-    recordQuery(sql, Math.round(performance.now() - t), extractCaller);
+    const result = await runQuery(
+      sql,
+      () => this.pool.query(prepSql(sql), normalizeBooleanParams(sql, params)),
+      extractCaller
+    );
     const lastInsertId = result.rows.length > 0 && result.rows[0].id != null
       ? Number(result.rows[0].id)
       : undefined;
@@ -312,17 +349,21 @@ class PostgresClientDriver implements IDbDriver {
   constructor(private readonly client: pg.PoolClient) {}
 
   async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<QueryResult<T>> {
-    const t = performance.now();
-    const result = await this.client.query(prepSql(sql), normalizeBooleanParams(sql, params));
-    recordQuery(sql, Math.round(performance.now() - t), extractCaller);
+    const result = await runQuery(
+      sql,
+      () => this.client.query(prepSql(sql), normalizeBooleanParams(sql, params)),
+      extractCaller
+    );
     const rows = result.rows.map((row: Record<string, unknown>) => normalizeRow<T>(row));
     return { rows, rowCount: result.rowCount ?? rows.length };
   }
 
   async queryOne<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T | undefined> {
-    const t = performance.now();
-    const result = await this.client.query(prepSql(sql), normalizeBooleanParams(sql, params));
-    recordQuery(sql, Math.round(performance.now() - t), extractCaller);
+    const result = await runQuery(
+      sql,
+      () => this.client.query(prepSql(sql), normalizeBooleanParams(sql, params)),
+      extractCaller
+    );
     if (result.rows.length === 0) {
       return undefined;
     }
@@ -330,9 +371,11 @@ class PostgresClientDriver implements IDbDriver {
   }
 
   async execute(sql: string, params: unknown[] = []): Promise<QueryResult> {
-    const t = performance.now();
-    const result = await this.client.query(prepSql(sql), normalizeBooleanParams(sql, params));
-    recordQuery(sql, Math.round(performance.now() - t), extractCaller);
+    const result = await runQuery(
+      sql,
+      () => this.client.query(prepSql(sql), normalizeBooleanParams(sql, params)),
+      extractCaller
+    );
     const lastInsertId = result.rows.length > 0 && result.rows[0].id != null
       ? Number(result.rows[0].id)
       : undefined;

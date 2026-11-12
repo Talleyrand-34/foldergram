@@ -45,7 +45,16 @@ const envSchema = z.object({
   DB_DRIVER: z.enum(['sqlite', 'postgres']).default('sqlite'),
   DATABASE_URL: z.string().optional(),
   LOG_SLOW_QUERY_MS: z.coerce.number().int().min(0).default(200),
-  REELS_CANDIDATE_LIMIT: z.coerce.number().int().min(100).default(2000)
+  REELS_CANDIDATE_LIMIT: z.coerce.number().int().min(100).default(2000),
+  PYROSCOPE_SERVER_ADDRESS: z.string().optional(),
+  PYROSCOPE_APPLICATION_NAME: z.string().optional(),
+  PYROSCOPE_FLUSH_INTERVAL_MS: z.coerce.number().int().min(1000).default(60_000),
+  PYROSCOPE_WALL_SAMPLING_DURATION_MS: z.coerce.number().int().min(1000).default(60_000),
+  PYROSCOPE_WALL_SAMPLING_INTERVAL_MICROS: z.coerce.number().int().min(1000).default(10_000),
+  PYROSCOPE_HEAP_PROFILING: z.string().optional(),
+  PYROSCOPE_BASIC_AUTH_USER: z.string().optional(),
+  PYROSCOPE_BASIC_AUTH_PASSWORD: z.string().optional(),
+  PYROSCOPE_TENANT_ID: z.string().optional()
 });
 
 const parsed = envSchema.parse(process.env);
@@ -216,5 +225,19 @@ export const appConfig = {
   dbDriver: parsed.DB_DRIVER,
   databaseUrl: parsed.DATABASE_URL,
   logSlowQueryMs: parsed.LOG_SLOW_QUERY_MS,
-  reelsCandidateLimit: parsed.REELS_CANDIDATE_LIMIT
+  reelsCandidateLimit: parsed.REELS_CANDIDATE_LIMIT,
+  pyroscope: {
+    // Without a server address there is nowhere to send the profiles to, so
+    // the profiling stays off.
+    serverAddress: parsed.PYROSCOPE_SERVER_ADDRESS?.trim() || null,
+    applicationName: parsed.PYROSCOPE_APPLICATION_NAME?.trim() || 'foldergram',
+    flushIntervalMs: parsed.PYROSCOPE_FLUSH_INTERVAL_MS,
+    wallSamplingDurationMs: parsed.PYROSCOPE_WALL_SAMPLING_DURATION_MS,
+    wallSamplingIntervalMicros: parsed.PYROSCOPE_WALL_SAMPLING_INTERVAL_MICROS,
+    // The allocation profiler is expensive, so it is opt in.
+    heapEnabled: parseBooleanFlag(parsed.PYROSCOPE_HEAP_PROFILING),
+    basicAuthUser: parsed.PYROSCOPE_BASIC_AUTH_USER?.trim() || undefined,
+    basicAuthPassword: parsed.PYROSCOPE_BASIC_AUTH_PASSWORD || undefined,
+    tenantId: parsed.PYROSCOPE_TENANT_ID?.trim() || undefined
+  }
 };

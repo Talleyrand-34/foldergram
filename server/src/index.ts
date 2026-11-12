@@ -27,6 +27,7 @@ import { pluginHost } from "./plugins/host.js";
 import { scannerService } from "./services/scanner-service.js";
 import { watcherService } from "./services/watcher-service.js";
 import { shutdownTelemetry, startTelemetry } from "./observability/telemetry.js";
+import { startProfiling, stopProfiling } from "./observability/pyroscope.js";
 
 function logServerReady(): void {
   if (!appConfig.isDevelopment) {
@@ -54,6 +55,9 @@ async function bootstrap(): Promise<void> {
   // The telemetry pipeline is started before anything else so the first
   // requests are already covered. Without an exporter this is a no-op.
   startTelemetry();
+  // The profiling is off unless there is a Pyroscope server to send the
+  // profiles to. When it is off, nothing is even loaded.
+  startProfiling();
 
   await initRepositories();
   await authService.initialize();
@@ -106,6 +110,8 @@ async function bootstrap(): Promise<void> {
     await watcherService.stop();
     // Flush the last batch of metrics and traces before the process goes.
     await shutdownTelemetry();
+    // The last profile is flushed too, so the last minutes are not lost.
+    await stopProfiling();
     server.close(() => process.exit(0));
   }
 

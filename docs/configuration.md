@@ -349,6 +349,25 @@ The media and folder ids are deliberately **not** metric labels: they would
 make every series unique and blow up the backend. They are attributes of the
 `ai.analysis` trace instead, where they belong.
 
+### Runtime metrics
+
+The same pipeline also carries the metrics of the runtime: how long the
+database takes, and how long the requests take.
+
+| Metric | Type | Labels | What it answers |
+| --- | --- | --- | --- |
+| `foldergram.db.query.duration` | histogram (ms) | `dialect`, `operation`, `table`, `status` | How long the database takes, per operation and per table. |
+| `foldergram.db.query.count` | counter | `dialect`, `operation`, `table`, `status` | How many queries run, and how many of them fail. |
+| `foldergram.http.request.duration` | histogram (ms) | `method`, `route`, `status_class` | How long the API takes, per route. |
+| `foldergram.http.request.count` | counter | `method`, `route`, `status_class` | How many requests are served, and how many fail. |
+
+The statement itself is **not** a label - one series per statement would blow
+up the backend. What is a label is the operation (`SELECT`, `INSERT`,
+`UPDATE`, `DELETE`, `WITH`, ...) and the table, both bounded by the schema.
+
+The `route` label is the route **template** (`/api/folders/:slug`), not the
+path that was requested (`/api/folders/my-holiday`).
+
 ### Traces
 
 Every analysis opens an `ai.analysis` span with the media id, the folder id,
@@ -357,8 +376,41 @@ the provider and the model. Every stage that ran opens a child span
 so the cost breakdown can be read either from the histogram or from the
 trace.
 
+Every API request opens an `http.request` span, and every query that runs
+during it opens a `db.query` child span with the operation, the table and the
+duration. A trace is therefore the answer to "what was this request waiting
+for?".
+
 The full guide - how to connect a Collector, Prometheus or Grafana to this
 data - is in [Telemetry](telemetry.md).
+
+## Profiling (Pyroscope)
+
+The application can also push **continuous profiles** of the Node.js process to
+a Pyroscope server, which Grafana reads to draw the flame graphs. The flame
+graph is the answer to "where does the time go?", where the metrics only say
+how long.
+
+Profiling is **off** unless `PYROSCOPE_SERVER_ADDRESS` says where the profiles
+go. When it is off, the profiler is not even loaded.
+
+| Variable | Meaning |
+| --- | --- |
+| `PYROSCOPE_SERVER_ADDRESS` | Address of the Pyroscope server, for example `http://10.0.2.254:4040`. Its presence turns the profiling on. |
+| `PYROSCOPE_APPLICATION_NAME` | Name of the application in Pyroscope. Defaults to `foldergram`. |
+| `PYROSCOPE_FLUSH_INTERVAL_MS` | How often the profiles are pushed, in milliseconds. Defaults to `60000`. |
+| `PYROSCOPE_WALL_SAMPLING_DURATION_MS` | How long one profile covers, in milliseconds. Defaults to `60000`. |
+| `PYROSCOPE_WALL_SAMPLING_INTERVAL_MICROS` | How often the stack is sampled, in microseconds. Defaults to `10000` (100 samples per second). |
+| `PYROSCOPE_HEAP_PROFILING=1` | Also collects the allocation profile. It is expensive, so it is opt in. |
+| `PYROSCOPE_BASIC_AUTH_USER` | User for a Pyroscope behind basic auth. |
+| `PYROSCOPE_BASIC_AUTH_PASSWORD` | Password for a Pyroscope behind basic auth. |
+| `PYROSCOPE_TENANT_ID` | Tenant, only for a Pyroscope with multi-tenancy on. |
+
+The profiles carry the same resource attributes as the metrics (`env`, `host`),
+so a profile and a metric of the same deployment are labelled the same way.
+
+The full guide - how to connect it and how to read the flame graphs - is in
+[Telemetry](telemetry.md).
 
 ## Concurrency tuning
 

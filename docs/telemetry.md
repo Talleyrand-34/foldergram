@@ -166,9 +166,13 @@ systemctl restart otelcol
 
 ## The metrics
 
-All the metrics are under the `foldergram.ai` namespace. They are emitted by
-the AI analysis plugin at the same place where the analysis event is
-recorded, so the metrics and the `ai_analysis_events` table cannot disagree.
+The metrics come in two groups: the **AI usage** (`foldergram.ai.*`) and the
+**runtime** (`foldergram.db.*` and `foldergram.http.*`).
+
+The AI ones are emitted by the AI analysis plugin at the same place where the
+analysis event is recorded, so the metrics and the `ai_analysis_events` table
+cannot disagree. The runtime ones are emitted by the database drivers and by
+the API middleware.
 
 ### Names
 
@@ -185,6 +189,10 @@ becomes `_milliseconds`, and a counter gets a `_total` suffix.
 | `foldergram.ai.errors` | `foldergram_ai_errors_total` | counter | `provider`, `error_kind` |
 | `foldergram.ai.queue.depth` | `foldergram_ai_queue_depth` | up-down counter | - |
 | `foldergram.ai.pauses` | `foldergram_ai_pauses_total` | counter | `provider`, `cause` |
+| `foldergram.db.query.duration` | `foldergram_db_query_duration_milliseconds_{bucket,sum,count}` | histogram (ms) | `dialect`, `operation`, `table`, `status` |
+| `foldergram.db.query.count` | `foldergram_db_query_count_total` | counter | `dialect`, `operation`, `table`, `status` |
+| `foldergram.http.request.duration` | `foldergram_http_request_duration_milliseconds_{bucket,sum,count}` | histogram (ms) | `method`, `route`, `status_class` |
+| `foldergram.http.request.count` | `foldergram_http_request_count_total` | counter | `method`, `route`, `status_class` |
 
 The queue depth has **no** `_total`: it is an up-down counter, so its value
 is the current depth and not a growing sum.
@@ -248,6 +256,24 @@ They are attributes of the trace instead, where they belong. The metric
 labels are bounded: a provider, a model, a status, a stage, a direction, a
 cause.
 
+The same goes for the SQL statement: it is never a label. One series per
+statement would be one series per query in the code.
+
+### The runtime metrics
+
+- **`foldergram_db_query_duration_milliseconds`** - how long the database
+  takes. `operation` is the verb of the statement (`SELECT`, `INSERT`,
+  `UPDATE`, `DELETE`, `WITH`, ...) and `table` is the first table it touches.
+  `dialect` is `postgres` or `sqlite` and `status` is `ok` or `error`.
+- **`foldergram_db_query_count_total`** - how many queries run, and how many
+  of them fail. A query that throws is measured too: it is not a query that
+  does not exist.
+- **`foldergram_http_request_duration_milliseconds`** - how long the API
+  takes, per route. `route` is the route **template**
+  (`/api/folders/:slug`), never the path that was requested.
+- **`foldergram_http_request_count_total`** - how many requests are served,
+  and how many of them fail (`status_class` is `2xx`, `3xx`, `4xx`, `5xx`).
+
 ## The traces
 
 Every analysis opens an `ai.analysis` span, and every stage that ran opens a
@@ -260,6 +286,8 @@ child span.
 | `ai.stage.audio` | `ai.stage`, `ai.duration_ms` |
 | `ai.stage.transcribe` | `ai.stage`, `ai.duration_ms` |
 | `ai.stage.llm` | `ai.stage`, `ai.duration_ms` |
+| `http.request` | `http.request.method`, `url.path`, `http.route`, `http.response.status_code`, `http.duration_ms` |
+| `db.query` | `db.system`, `db.operation`, `db.sql.table`, `db.duration_ms`, `db.status` |
 
 `ai.outcome` is `completed`, `failed` or `skipped`. A failed analysis has
 `ai.error_kind` and the span status is `ERROR`.
@@ -271,6 +299,25 @@ span that sits where it belongs in the tree.
 The trace is where the ids live. It is also the only way to tie a single
 analysis to its media, which is what you need when a specific video comes
 back with a bad summary.
+
+### The request and its queries
+
+Every API request opens an `http.request` span, and the request runs inside
+it, so the queries that run during the request are its children:
+
+```
+http.request  http.route=/api/feed  http.duration_ms=783
+├── db.query   db.operation=SELECT  db.sql.table=images  db.duration_ms=507
+└── db.query   db.operation=SELECT  db.sql.table=images  db.duration_ms=267
+```
+
+That tree is the answer to "what was this request waiting for?". The
+`db.query` spans of the work that runs outside a request (the scanner, the AI
+worker) are roots of their own trace, which is also how they are found.
+
+The queries are measured next to the query itself, in the driver, so the
+measurement covers the round trip to PostgreSQL and not only the time the
+application spends with the result.
 
 ## Where the limit comes from
 
@@ -360,6 +407,38 @@ growing total. It is refreshed every five minutes.
 sum by (cause) (increase(foldergram_ai_pauses_total[24h]))
 ```
 
+**How long does the database take? (p95, per operation):**
+
+```text
+histogram_quantile(0.95, sum by (le, operation) (rate(foldergram_db_query_duration_milliseconds_bucket[5m])))
+```
+
+**Which table is the slow one? (average per query):**
+
+```text
+sum by (table) (rate(foldergram_db_query_duration_milliseconds_sum[10m]))
+/
+sum by (table) (rate(foldergram_db_query_duration_milliseconds_count[10m]))
+```
+
+**The queries that fail:**
+
+```text
+sum by (operation, table) (rate(foldergram_db_query_count_total{status="error"}[10m]))
+```
+
+**How long does the API take? (p95, per route):**
+
+```text
+histogram_quantile(0.95, sum by (le, route) (rate(foldergram_http_request_duration_milliseconds_bucket[5m])))
+```
+
+**How many requests fail?**
+
+```text
+sum by (route, status_class) (rate(foldergram_http_request_count_total{status_class=~"4xx|5xx"}[10m]))
+```
+
 **Alert: the provider is out of credit.** The upstream answers `402` and the
 queue pauses on its own. The metric makes it visible without reading the
 journal:
@@ -405,8 +484,129 @@ count({job="foldergram"})
    - *Errors*: `sum by (error_kind) (rate(foldergram_ai_errors_total[5m]))`
    - *Queue depth*: `foldergram_ai_queue_depth`
    - *Pauses*: `sum by (cause) (increase(foldergram_ai_pauses_total[24h]))`
+   - *Database latency*: the `histogram_quantile` by operation, and the
+     average per table
+   - *API latency*: the `histogram_quantile` by route
 3. **Units**: set the unit of the token panels to `short` and the latency
    panels to `milliseconds`, so Grafana formats them.
+
+## Profiling
+
+The metrics say **how long**. The flame graph says **where**. The
+application can push continuous profiles of the Node.js process to a
+Pyroscope server, and Grafana reads them as a flame graph.
+
+```
+┌────────────────────┐    pprof      ┌─────────────┐
+│    Foldergram      │ ────────────▶ │  Pyroscope  │ ──▶ Grafana (flame graph)
+│  (Node.js process) │               │  (obs01)    │
+└────────────────────┘               └─────────────┘
+```
+
+The profiles go straight to Pyroscope: the application pushes them with the
+official Node.js client, so there is no Collector in between. The Collector
+is only needed for the metrics and the traces.
+
+### Turning it on
+
+Profiling is **off** unless `PYROSCOPE_SERVER_ADDRESS` says where the
+profiles go. When it is off the profiler is not even loaded, so there is no
+cost at all.
+
+```bash
+# /etc/systemd/system/foldergram.service.d/profiling.conf
+[Service]
+Environment=PYROSCOPE_SERVER_ADDRESS=http://10.0.2.254:4040
+Environment=PYROSCOPE_APPLICATION_NAME=foldergram
+```
+
+```bash
+systemctl daemon-reload
+systemctl restart foldergram
+journalctl -u foldergram -n 20 --no-pager | grep -i profiling
+```
+
+```
+[server] Profiling enabled | server=http://10.0.2.254:4040 | app=foldergram | heap=off
+```
+
+The profiles carry the same resource attributes as the metrics (`env`,
+`host`), so a profile and a metric of the same deployment are labelled the
+same way.
+
+### What the profile types mean
+
+| Profile type | What it is |
+| --- | --- |
+| `wall` | The wall clock: the time the process spent, including the time it spent **waiting**. |
+| `cpu` | The CPU time: the time the process spent computing. |
+| `memory` | The allocations. Only with `PYROSCOPE_HEAP_PROFILING=1`. |
+
+The `wall` profile is the interesting one for the database: the time spent
+waiting for PostgreSQL is charged to the stack that was waiting for it, so
+the flame graph shows the round trip to the database as the width of the
+frames of `pg` and of the socket, not as a hole.
+
+### Reading the flame graph
+
+The frames of the Node.js process carry the file and the line, so the graph
+points at the code:
+
+```
+node:net:afterConnect:1590
+node:events:onceWrapper:628
+pg/lib/connection.js:(anonymous:L#47:C#42):47     <- waiting for the answer
+```
+
+In Grafana, the Pyroscope app reads the data source called `Pyroscope` and
+draws the flame graph of the application `foldergram`. The profile type to
+choose is `wall` for the time and `cpu` for the computation.
+
+### Checking that it works
+
+```bash
+# The application is pushing
+journalctl -u foldergram --since '-10 min' --no-pager | grep -i profiling
+
+# The profiles arrived (the client only logs a failure when it cannot push)
+# In Grafana: Explore -> Pyroscope -> application "foldergram"
+```
+
+## The traces in Tempo
+
+The Collector can also hand the traces to a Tempo, which is where they become
+a tree of spans that can be read one request at a time.
+
+```yaml
+# /opt/otelcol/config.yaml
+exporters:
+  otlp/tempo:
+    endpoint: 10.0.2.254:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo, debug]
+```
+
+After the change, the Collector has to be restarted:
+
+```bash
+systemctl restart otelcol
+```
+
+In Grafana, the `Tempo` data source reads them. A trace of a request that
+was slow looks like this:
+
+```
+http.request  http.route=/api/feed  http.duration_ms=783
+├── db.query   db.operation=SELECT  db.sql.table=images  db.duration_ms=507
+└── db.query   db.operation=SELECT  db.sql.table=images  db.duration_ms=267
+```
 
 ## Sending the data somewhere else
 
@@ -476,13 +676,13 @@ End to end, from the application to the backend:
 
 ```bash
 # 1. the service has the variables
-systemctl show foldergram -p Environment --value | tr ' ' '\n' | grep -E 'TELEMETRY|OTEL'
+systemctl show foldergram -p Environment --value | tr ' ' '\n' | grep -E 'TELEMETRY|OTEL|PYROSCOPE'
 
 # 2. the Collector is alive
 curl -s http://127.0.0.1:13133/
 
 # 3. the data reaches the Collector
-curl -s http://127.0.0.1:8889/metrics | grep '^foldergram_ai'
+curl -s http://127.0.0.1:8889/metrics | grep -E '^foldergram_(ai|db|http)'
 
 # 4. the traces reach the Collector
 journalctl -u otelcol --since '-5 minutes' --no-pager | grep -i 'Traces'
@@ -494,6 +694,18 @@ failure if it cannot push:
 ```bash
 journalctl -u foldergram --since '-1 hour' --no-pager | grep -i 'telemetry'
 ```
+
+**No profile in Pyroscope.** Check that the service has
+`PYROSCOPE_SERVER_ADDRESS`, that the application is reachable from the
+Pyroscope (`curl -s http://<pyroscope>:4040/ready`), and that the profiles
+are not being rejected: the Pyroscope journal says `profile rejected` when it
+drops one. The client only logs a failure when it cannot push, and only with
+`DEBUG=pyroscope`.
+
+**The flame graph is empty.** The profiles arrive with the time of the
+profile, so a query over a range that does not include them finds nothing.
+The Pyroscope API takes the range in **milliseconds**, not in seconds: a
+query in seconds looks at January 1970 and quietly returns nothing.
 
 ## Troubleshooting
 
@@ -538,8 +750,16 @@ fault.
 | File | What it holds |
 | --- | --- |
 | `server/src/observability/telemetry.ts` | The exporter setup and the AI metric facade (`recordAiUsage`, `recordAiQueueDepth`, `recordAiPause`, `startAiAnalysisSpan`). |
+| `server/src/observability/db-telemetry.ts` | The database metrics and the `db.query` spans (`recordDbQuery`, `describeQuery`). |
+| `server/src/observability/http-telemetry.ts` | The request metrics and the `http.request` spans (`recordHttpRequest`, `startHttpRequestSpan`, `resolveRoute`). |
+| `server/src/observability/pyroscope.ts` | The profiler (`startProfiling`, `stopProfiling`). |
+| `server/src/observability/instruments.ts` | The instruments, rebuilt when the meter provider changes. |
+| `server/src/db/driver/postgres-driver.ts` | Measures every query, the failed ones included. |
+| `server/src/db/driver/sqlite-driver.ts` | The same, for SQLite. |
 | `server/src/index.ts` | Starts the pipeline at boot, flushes it on shutdown. |
 | `plugins/ai-analysis/src/storage.ts` | Emits the usage of every analysis. |
 | `plugins/ai-analysis/src/analyzer.ts` | Opens the trace and the stage spans. |
 | `plugins/ai-analysis/src/worker.ts` | Emits the queue depth and the pauses. |
-| `server/test/telemetry.test.ts` | The tests of both the metrics and the traces. |
+| `server/test/telemetry.test.ts` | The tests of the AI metrics and traces. |
+| `server/test/db-telemetry.test.ts` | The tests of the database metrics and spans. |
+| `server/test/http-telemetry.test.ts` | The tests of the request metrics and spans. |
