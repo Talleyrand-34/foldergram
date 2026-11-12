@@ -422,6 +422,28 @@
               >
                 {{ smartState(provider.id)?.probeError }}
               </span>
+
+              <!-- Every window the plan publishes, and what is left of it. -->
+              <ul
+                v-else-if="smartState(provider.id)?.windows?.length"
+                class="m-0 p-0 list-none grid gap-[0.2rem]"
+              >
+                <li
+                  v-for="window in smartState(provider.id)?.windows"
+                  :key="window.kind"
+                  class="text-[0.78rem] tabular-nums text-muted flex flex-wrap items-baseline gap-x-2"
+                >
+                  <span class="font-semibold text-text">
+                    {{ window.kind === 'interval' ? t('ai.config.planWindowInterval') : t('ai.config.planWindowWeekly') }}
+                  </span>
+                  <span>{{ window.remainingPercent }}% {{ t('ai.config.planLeft') }}</span>
+                  <span v-if="window.hoursLeft !== null">
+                    · {{ t('ai.config.planLasts') }} ~{{ formatSpan(window.hoursLeft * 3600) }}
+                  </span>
+                  <span>· {{ t('ai.config.planRollsOver') }}: {{ formatSpan(window.rollsOverInSeconds) }}</span>
+                </li>
+              </ul>
+
               <span
                 v-else
                 class="text-[0.78rem] tabular-nums text-muted"
@@ -1038,6 +1060,26 @@ function formatDate(value: string | null | undefined): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleString(locale.value);
+}
+
+/**
+ * A span of time as a short, readable length: "3 d 4 h", "2 h 10 m", "45 s".
+ *
+ * The plan's windows are hours and days long, so a clock would be no use.
+ */
+function formatSpan(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) {
+    return '—';
+  }
+
+  const total = Math.round(seconds);
+  const days = Math.floor(total / 86_400);
+  const hours = Math.floor((total % 86_400) / 3_600);
+  const minutes = Math.floor((total % 3_600) / 60);
+
+  if (days > 0) return `${days} d ${hours} h`;
+  if (hours > 0) return `${hours} h ${minutes} m`;
+  return `${Math.max(1, minutes)} m`;
 }
 
 /** What one provider has spent. */

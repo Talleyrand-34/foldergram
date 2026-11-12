@@ -247,6 +247,31 @@ export interface AiProviderUsageLimitsView
   smart: AiSmartUsageView;
 }
 
+/** One of the plan's windows, as the provider's plan reports it. */
+export interface AiPlanWindow {
+  /** Which window this is: the plan's interval, or its week. */
+  kind: 'interval' | 'weekly';
+  /** How much of the window is left, as a percentage. */
+  remainingPercent: number;
+  /** The plan's absolute allowance. Zero when the plan publishes none. */
+  total: number;
+  /** How much of it is used — by everybody. */
+  used: number;
+  /** When the window starts, in epoch milliseconds. */
+  startTime: number;
+  /** When the window ends, in epoch milliseconds. */
+  endTime: number;
+  /** How long until the window rolls over, in seconds. */
+  rollsOverInSeconds: number;
+  /**
+   * How long the window lasts at the rate it is being spent, in hours.
+   *
+   * Null when the plan is not being spent, or when there is not enough
+   * history yet to tell how fast it is going.
+   */
+  hoursLeft: number | null;
+}
+
 /** What the smart mode says about one provider's plan. */
 export interface AiSmartProviderState {
   providerId: string;
@@ -278,6 +303,8 @@ export interface AiSmartProviderState {
    * absolute allowance this is the only number there is.
    */
   poolRemainingPercent: number | null;
+  /** Every window the plan publishes, with what is left of each. */
+  windows: AiPlanWindow[];
   /** We have taken our share. */
   blocked: boolean;
   /** When the watched window rolls over. */
