@@ -338,6 +338,38 @@ Current non-admin behavior:
 | Regenerate Thumbnails | Clears generated thumbnails and video poster images, then rebuilds them from indexed media only. |
 | Rebuild Library Index | Clears indexed folders, posts, likes, folder scan state, and scan history, then rescans the active gallery root and reuses matching cached derivatives when possible. In lazy derivative mode it does not pre-generate missing thumbnails or previews. |
 
+## Telemetry for the AI resources
+
+The application reports how it consumes the AI resources as OpenTelemetry
+metrics and traces, so the numbers can be read with the tools the operator
+already has - an OpenTelemetry Collector, Prometheus, Grafana or a hosted
+backend - instead of a chart inside the application.
+
+Nothing leaves the machine unless telemetry is configured. With no exporter
+the cost is a function call.
+
+What is reported:
+
+- how many analyses ran, with which provider and model, and how they ended
+- how long an analysis takes, and how that time splits between the frames,
+  the transcription and the model call
+- how many tokens were spent, input and output, which is the number that
+  decides the budget
+- which failures happen and how often
+- how much work is waiting in the queue, and why the queue stopped
+
+The configuration is the standard OpenTelemetry one, so an existing Collector
+setup works unchanged:
+
+```bash
+TELEMETRY_ENABLED=1
+OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
+OTEL_SERVICE_NAME=foldergram
+```
+
+The metric names, their labels and the available variables are listed in
+[Configuration](configuration.md#telemetry-opentelemetry).
+
 ## Theme, language, and local UI preferences
 
 The client also persists a few local browser preferences:
