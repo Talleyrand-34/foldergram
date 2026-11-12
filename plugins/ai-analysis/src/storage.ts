@@ -1180,6 +1180,21 @@ export async function getStatusSummary(): Promise<StatusSummary> {
   return { totalVideos: total, byStatus, oldestPendingAt: oldest?.oldest ?? null };
 }
 
+/**
+ * How many videos are waiting to be analyzed.
+ *
+ * This is the real backlog: the in-memory queue of the worker is only a
+ * fast path for the videos that were just indexed.
+ */
+export async function countPendingAnalyses(): Promise<number> {
+  const row = (await get(
+    `SELECT COUNT(*) as n FROM images
+     WHERE media_type = 'video' AND is_deleted = 0 AND ai_status = 'pending'`,
+  )) as { n: number } | undefined;
+
+  return Number(row?.n ?? 0);
+}
+
 /** Pull the next pending video and lock it as running. Returns null if queue empty. */
 export async function claimNextPending(): Promise<{ imageId: number; folderId: number; absolutePath: string; mtimeMs: number } | null> {
   const row = (await get(

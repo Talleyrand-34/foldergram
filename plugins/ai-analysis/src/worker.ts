@@ -28,7 +28,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
 import type { IndexedVideoAsset, PluginContext } from "../../../server/dist/plugins/types.js";
-import { recordAiPause, recordAiQueueDepth } from "../../../server/dist/observability/telemetry.js";
+import { recordAiPause, setAiQueueDepth } from "../../../server/dist/observability/telemetry.js";
 import { analyzeVideo } from "./analyzer.js";
 import {
   getRecanonicalizationState,
@@ -44,6 +44,7 @@ import {
 } from "./lib/smart-usage.js";
 import {
   claimNextPending,
+  countPendingAnalyses,
   getDistinctFolderIdsWithPendingOrUnanalyzedVideos,
   getStatusSummary,
   markFailed,
@@ -57,8 +58,29 @@ import {
 const POLL_INTERVAL_MS = 5_000;
 const RETRY_DELAY_MS = 30_000;
 
+/**
+ * How often the queue depth is read from the database, in milliseconds.
+ *
+ * The count is not cheap on a big library - it is a scan over every pending
+ * video - so it is read every few minutes instead of on every tick. A queue
+ * depth that is five minutes old is still worth more than no queue depth.
+ */
+const QUEUE_DEPTH_REFRESH_MS = 300_000;
+
 let queue: IndexedVideoAsset[] = [];
 let draining = false;
+
+/**
+ * The provider the vision stage spends from.
+ *
+ * The worker refreshes it from the configuration on every tick, so the
+ * telemetry can name the provider that caused a pause instead of saying
+ * "unknown".
+ */
+let activeProviderId: string | null = null;
+
+/** When the queue depth was last read from the database. */
+let lastQueueDepthRead = 0;
 let timer: NodeJS.Timeout | null = null;
 let log: PluginContext["log"] = ((msg) => console.log(`[ai-analysis] ${msg}`));
 
@@ -368,7 +390,6 @@ export function enqueueAnalysis(asset: IndexedVideoAsset): void {
   // The worker loop checks the DB, so we don't need to keep an in-memory queue
   // — but we keep one for fast pickup on first iteration.
   queue.push(asset);
-  recordAiQueueDepth(1);
   if (timer === null) {
     // Start the loop on first enqueue.
     timer = setInterval(tick, POLL_INTERVAL_MS);
@@ -454,7 +475,7 @@ export function noteRateLimited(retryAfterSec: number): void {
   if (!isPaused()) pausedAt = Date.now();
   rateLimitedUntil = Date.now() + Math.max(1, retryAfterSec) * 1000 + 1000;
   lastRetryAfterSec = retryAfterSec;
-  recordAiPause({ providerId: null, cause: "rate_limit" });
+  recordAiPause({ providerId: activeProviderId, cause: "rate_limit" });
   log(`rate-limited upstream: pausing until ${new Date(rateLimitedUntil).toISOString()} (retry-after=${retryAfterSec}s)`);
 }
 
@@ -481,6 +502,7 @@ export async function noteUpstreamUnavailable(err: UpstreamUnavailableError, ima
     quotaPausedUntil = Date.now() + minutes * 60_000;
     upstreamError = err.message;
     if (!manualPaused) pausedAt = Date.now();
+    recordAiPause({ providerId: activeProviderId, cause: "upstream_quota" });
     log(
       `upstream ${err.kind} — waiting ${minutes} min before retrying, id=${imageId} back to pending`
     );
@@ -491,10 +513,36 @@ export async function noteUpstreamUnavailable(err: UpstreamUnavailableError, ima
   const wasPaused = upstreamPaused;
   upstreamPaused = true;
   upstreamError = err.message;
-  recordAiPause({ providerId: null, cause: "upstream" });
+  recordAiPause({ providerId: activeProviderId, cause: "upstream" });
   if (!wasPaused && !manualPaused) pausedAt = Date.now();
   log(`upstream unavailable — queue paused, id=${imageId} back to pending: ${err.message}`);
   log("fix the model/API key, then resume the queue with POST /api/plugins/ai-analysis/resume");
+}
+
+/**
+ * Publishes how much work is waiting.
+ *
+ * The count comes from the database, where the real queue lives. The
+ * in-memory list is only the fast path for the videos that were just
+ * indexed, and it is empty most of the time.
+ */
+async function refreshQueueDepth(): Promise<void> {
+  const now = Date.now();
+
+  if (now - lastQueueDepthRead < QUEUE_DEPTH_REFRESH_MS) {
+    return;
+  }
+
+  lastQueueDepthRead = now;
+
+  try {
+    setAiQueueDepth(await countPendingAnalyses());
+  } catch (e) {
+    console.error(
+      '[ai-analysis] could not read the queue depth:',
+      e instanceof Error ? e.message : String(e)
+    );
+  }
 }
 
 /**
@@ -506,6 +554,10 @@ export async function noteUpstreamUnavailable(err: UpstreamUnavailableError, ima
  */
 async function applyUsageLimit(): Promise<void> {
   const config = await readAiConfig();
+
+  // Refreshed here because this runs on every tick, before anything can
+  // pause the queue.
+  activeProviderId = config.stages.vision.providerId || null;
   // A provider in smart mode that ignores the hard windows is not judged by
   // them: the plan's own wall is the limit there.
   const limited = config.providers.filter(
@@ -530,6 +582,12 @@ async function applyUsageLimit(): Promise<void> {
   const blocking = status.providers.find((provider) => provider.blocked);
   if (usagePause?.providers.find((entry) => entry.blocked)?.providerId !== blocking?.providerId) {
     log(`usage limit reached: ${usageMessage(status)}`);
+  }
+  // Only the start of the pause is counted. The tick repeats every few
+  // seconds, and a pause that is still on must not be counted again and
+  // again.
+  if (usagePause === null) {
+    recordAiPause({ providerId: blocking?.providerId ?? null, cause: "usage_limit" });
   }
   usagePause = status;
 }
@@ -580,6 +638,10 @@ async function applySharedPlan(): Promise<void> {
   ) {
     log(sharedPlanMessage(blocking));
   }
+  // Only the start of the pause is counted, for the same reason as above.
+  if (smartPause === null) {
+    recordAiPause({ providerId: blocking.providerId, cause: "shared_plan" });
+  }
   smartPause = blocking;
   if (!manualPaused) pausedAt = Date.now();
 }
@@ -619,6 +681,10 @@ async function tick(): Promise<void> {
   if (draining) return;
   draining = true;
   try {
+    // The depth is published before anything else, so it is fresh even
+    // while the queue is paused - which is when it matters most.
+    await refreshQueueDepth();
+
     // The usage limit is checked before anything is claimed: a poll that
     // would blow through the budget must not start.
     await applyUsageLimit();
@@ -649,7 +715,6 @@ async function tick(): Promise<void> {
       // A pause can be raised while we work (upstream fault, operator).
       if (isPaused()) return;
       const asset = queue.shift()!;
-      recordAiQueueDepth(-1);
       try {
         await processOne(asset);
       } catch (e) {

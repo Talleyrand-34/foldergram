@@ -21,7 +21,7 @@
  *   OTEL_METRIC_EXPORT_INTERVAL=15000   how often the metrics are pushed
  */
 
-import { context, metrics, trace, type Attributes, type Span } from '@opentelemetry/api';
+import { context, metrics, SpanStatusCode, trace, type Attributes } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
@@ -191,6 +191,8 @@ interface AiInstruments {
 
 let instruments: AiInstruments | null = null;
 let instrumentsProvider: unknown = null;
+/** The last queue depth that was published, to turn it into a delta. */
+let lastQueueDepth = 0;
 
 function getInstruments(): AiInstruments {
   const provider = metrics.getMeterProvider();
@@ -231,6 +233,9 @@ function getInstruments(): AiInstruments {
     })
   };
   instrumentsProvider = provider;
+  // A new provider starts from zero, so the delta that brings the counter
+  // back to the real depth is computed against zero.
+  lastQueueDepth = 0;
 
   return instruments;
 }
@@ -287,14 +292,24 @@ export function recordAiUsage(sample: AiUsageSample): void {
   }
 }
 
-/** Moves the AI queue depth by `delta` (positive when something is added). */
-export function recordAiQueueDepth(delta: number): void {
+/**
+ * Publishes the current AI queue depth.
+ *
+ * The depth is read from the database, where the real queue lives, so it is
+ * published as an absolute value. The up-down counter needs a delta, so the
+ * difference with the last published value is what gets added.
+ */
+export function setAiQueueDepth(value: number): void {
+  const depth = Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+  const delta = depth - lastQueueDepth;
+
   if (delta === 0) {
     return;
   }
 
   try {
     getInstruments().queueDepth.add(delta);
+    lastQueueDepth = depth;
   } catch (error) {
     logTelemetryError('metrics', error);
   }
@@ -313,20 +328,42 @@ export function recordAiPause(sample: AiPauseSample): void {
 }
 
 /**
- * Opens a span for one AI analysis.
+ * A trace of one AI analysis.
  *
  * The span carries the ids and the outcome, which is what the metrics cannot
  * carry without exploding the cardinality.
+ */
+export interface AiAnalysisTrace {
+  /**
+   * Records one stage of the analysis as a child span.
+   *
+   * The stage is timed somewhere else, so the child span is given a start
+   * time in the past: that is the only way to turn a measured duration into
+   * a span that sits where it belongs in the trace.
+   */
+  stage(name: string, elapsedMs: number): void;
+  /** Closes the span with the outcome of the analysis. */
+  finish(
+    outcome: 'completed' | 'failed' | 'skipped',
+    options?: { readonly errorKind?: string | null; readonly model?: string | null }
+  ): void;
+}
+
+/**
+ * Opens a span for one AI analysis.
+ *
+ * With telemetry off this returns a handle that does nothing: the Open
+ * Tracing API hands out a non-recording span, so the cost is a function call.
  */
 export function startAiAnalysisSpan(sample: {
   readonly imageId: number | null;
   readonly folderId: number | null;
   readonly providerId: string | null;
   readonly model: string | null;
-}): Span {
+}): AiAnalysisTrace {
   const tracer = trace.getTracer(TRACER_NAME);
 
-  return tracer.startSpan('ai.analysis', {
+  const root = tracer.startSpan('ai.analysis', {
     attributes: {
       'ai.image_id': sample.imageId,
       'ai.folder_id': sample.folderId,
@@ -334,4 +371,69 @@ export function startAiAnalysisSpan(sample: {
       'ai.model': sample.model ?? 'unknown'
     }
   });
+
+  // The stages are children of the analysis span, so the trace reads as a
+  // tree instead of a flat list.
+  const parent = trace.setSpan(context.active(), root);
+  let finished = false;
+
+  return {
+    stage(name: string, elapsedMs: number): void {
+      if (finished || elapsedMs <= 0) {
+        return;
+      }
+
+      try {
+        const end = Date.now();
+        const child = tracer.startSpan(
+          `ai.stage.${name}`,
+          {
+            startTime: end - elapsedMs,
+            attributes: {
+              'ai.stage': name,
+              'ai.duration_ms': elapsedMs
+            }
+          },
+          parent
+        );
+
+        child.end(end);
+      } catch (error) {
+        logTelemetryError('traces', error);
+      }
+    },
+
+    finish(
+      outcome: 'completed' | 'failed' | 'skipped',
+      options?: { readonly errorKind?: string | null; readonly model?: string | null }
+    ): void {
+      if (finished) {
+        return;
+      }
+
+      finished = true;
+
+      try {
+        if (options?.model) {
+          root.setAttribute('ai.model', options.model);
+        }
+
+        root.setAttribute('ai.outcome', outcome);
+
+        if (options?.errorKind) {
+          root.setAttribute('ai.error_kind', options.errorKind);
+        }
+
+        if (outcome === 'failed') {
+          root.setStatus({ code: SpanStatusCode.ERROR });
+        } else {
+          root.setStatus({ code: SpanStatusCode.OK });
+        }
+
+        root.end();
+      } catch (error) {
+        logTelemetryError('traces', error);
+      }
+    }
+  };
 }

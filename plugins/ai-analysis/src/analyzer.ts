@@ -40,6 +40,7 @@ import {
   updateCaptionIfNull,
 } from "./storage.js";
 import type { IndexedVideoAsset } from "../../../server/dist/plugins/types.js";
+import { startAiAnalysisSpan } from "../../../server/dist/observability/telemetry.js";
 
 const TMP_ROOT = process.env.AI_ANALYSIS_TMP ?? "/tmp/ai-analysis";
 
@@ -84,15 +85,33 @@ export async function analyzeVideo(asset: IndexedVideoAsset): Promise<AnalysisRe
   let inputTokens = 0;
   let outputTokens = 0;
 
+  // The trace of this analysis. With telemetry off it does nothing, so it
+  // costs one function call per video.
+  const analysisTrace = startAiAnalysisSpan({
+    imageId: asset.imageId,
+    folderId: asset.folderId,
+    providerId: visionProviderId,
+    model: null
+  });
+
+  // How the analysis ended, for the trace. The metrics read it from the
+  // event recorded below; the trace has to be told separately.
+  const outcome = {
+    value: "failed" as "completed" | "failed" | "skipped",
+    errorKind: null as string | null
+  };
+
   try {
     // ----- probe -----
     const info = await probeVideo(asset.absolutePath);
 
     if (info.duration <= 0) {
+      outcome.value = "skipped";
       return { imageId: asset.imageId, status: "skipped", reason: "zero duration", durationMs: Date.now() - totalStart };
     }
 
     if (pipeline.minDurationSeconds > 0 && info.duration < pipeline.minDurationSeconds) {
+      outcome.value = "skipped";
       return {
         imageId: asset.imageId,
         status: "skipped",
@@ -102,6 +121,7 @@ export async function analyzeVideo(asset: IndexedVideoAsset): Promise<AnalysisRe
     }
 
     if (pipeline.maxDurationSeconds > 0 && info.duration > pipeline.maxDurationSeconds) {
+      outcome.value = "skipped";
       return {
         imageId: asset.imageId,
         status: "skipped",
@@ -121,18 +141,25 @@ export async function analyzeVideo(asset: IndexedVideoAsset): Promise<AnalysisRe
         framesDir
       );
       t.frameExtractMs = Date.now() - t0;
+      analysisTrace.stage("frames", t.frameExtractMs);
     }
 
     // ----- audio extraction + whisper transcription -----
     let transcript = "";
     if (info.hasAudio && pipeline.extractAudio) {
+      // The extraction is timed too: pulling the audio out of the video is
+      // a real cost, and a stage that is not measured is a cost nobody sees.
+      const a0 = Date.now();
       const audioPath = await extractAudio(asset.absolutePath, tmpDir);
+      t.audioExtractMs = Date.now() - a0;
+      analysisTrace.stage("audio", t.audioExtractMs);
       try {
         const w0 = Date.now();
         const r = await transcribe({ filePath: audioPath });
         transcript = r.text.trim();
         detectedLanguage = (r.raw as { language?: string }).language ?? "auto";
         t.whisperMs = Date.now() - w0;
+        analysisTrace.stage("transcribe", t.whisperMs);
       } catch (e) {
         transcript = "";
         detectedLanguage = "unknown";
@@ -198,6 +225,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
         ],
       });
       t.llmMs = Date.now() - llmStart;
+      analysisTrace.stage("llm", t.llmMs);
       model = llmResult.model;
       inputTokens = llmResult.usage.prompt_tokens;
       outputTokens = llmResult.usage.completion_tokens;
@@ -221,7 +249,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
         timings: {
           durationMs: Date.now() - totalStart,
           frameExtractMs: t.frameExtractMs,
-          audioExtractMs: 0,
+          audioExtractMs: t.audioExtractMs,
           whisperMs: t.whisperMs,
           llmMs: 0,
           inputTokens: 0,
@@ -231,6 +259,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
         errorKind: upstreamKind ?? "llm_request_failed",
         errorMessage: e instanceof Error ? e.message.slice(0, 500) : String(e).slice(0, 500),
       });
+      outcome.errorKind = upstreamKind ?? "llm_request_failed";
       if (upstreamKind) throw e;
       return {
         imageId: asset.imageId,
@@ -260,7 +289,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
         timings: {
           durationMs: Date.now() - totalStart,
           frameExtractMs: t.frameExtractMs,
-          audioExtractMs: 0,
+          audioExtractMs: t.audioExtractMs,
           whisperMs: t.whisperMs,
           llmMs: t.llmMs,
           inputTokens,
@@ -270,6 +299,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
         errorKind: "llm_json_parse_failed",
         errorMessage: llmResult.content.slice(0, 500),
       });
+      outcome.errorKind = "llm_json_parse_failed";
       return {
         imageId: asset.imageId,
         status: "failed",
@@ -278,6 +308,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
       };
     }
 
+    outcome.value = "completed";
     domainsCount = parsed.domains.length;
     detectedLanguage = parsed.language;
 
@@ -383,7 +414,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
       timings: {
         durationMs: Date.now() - totalStart,
         frameExtractMs: t.frameExtractMs,
-        audioExtractMs: 0,
+        audioExtractMs: t.audioExtractMs,
         whisperMs: t.whisperMs,
         llmMs: t.llmMs,
         inputTokens,
@@ -410,10 +441,12 @@ Return ONLY the JSON object. No prose, no markdown.`;
     // it can pause the queue; they are not a "failed" outcome for the video.
     if (e instanceof RateLimitedError) {
       console.log(`[ai-analysis] rate-limited during id=${asset.imageId}: ${e.message}`);
+      outcome.errorKind = "rate_limited";
       throw e;
     }
     if (e instanceof UpstreamUnavailableError) {
       console.log(`[ai-analysis] upstream unavailable during id=${asset.imageId}: ${e.message}`);
+      outcome.errorKind = "upstream_unavailable";
       throw e;
     }
     await recordAnalysisEvent({
@@ -426,7 +459,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
       timings: {
         durationMs: Date.now() - totalStart,
         frameExtractMs: t.frameExtractMs,
-        audioExtractMs: 0,
+        audioExtractMs: t.audioExtractMs,
         whisperMs: t.whisperMs,
         llmMs: t.llmMs,
         inputTokens,
@@ -436,6 +469,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
       errorKind: "unexpected_exception",
       errorMessage: (e instanceof Error ? e.message : String(e)).slice(0, 500),
     });
+    outcome.errorKind = "unexpected_exception";
     return {
       imageId: asset.imageId,
       status: "failed",
@@ -443,6 +477,7 @@ Return ONLY the JSON object. No prose, no markdown.`;
       durationMs: Date.now() - totalStart,
     };
   } finally {
+    analysisTrace.finish(outcome.value, { errorKind: outcome.errorKind, model: model || null });
     await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
 }
