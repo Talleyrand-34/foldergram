@@ -1,6 +1,6 @@
 import { defineComponent, ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
 import { useAuthStore } from '../stores/auth';
@@ -86,6 +86,39 @@ describe('ReelActionRail', () => {
 
     expect(wrapper.get('[data-test="parent-count"]').text()).toBe('0');
     expect(likesStore.isLiked(item.id)).toBe(true);
+  });
+
+  it('offers the file share only when the browser can share files', async () => {
+    const item = createFeedItem(23);
+    const stubs = {
+      RouterLink: {
+        props: ['to'],
+        template: '<a data-test="folder-link"><slot /></a>'
+      }
+    };
+
+    const withoutApi = mount(ReelActionRail, {
+      props: { item },
+      global: { stubs }
+    });
+
+    expect(withoutApi.find('button[aria-label="Share file"]').exists()).toBe(false);
+
+    const share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true, writable: true });
+    Object.defineProperty(navigator, 'canShare', { value: vi.fn().mockReturnValue(true), configurable: true, writable: true });
+
+    try {
+      const withApi = mount(ReelActionRail, {
+        props: { item },
+        global: { stubs }
+      });
+
+      expect(withApi.find('button[aria-label="Share file"]').exists()).toBe(true);
+    } finally {
+      Reflect.deleteProperty(navigator, 'share');
+      Reflect.deleteProperty(navigator, 'canShare');
+    }
   });
 
   it('renders the download control between the info toggle and folder link', () => {

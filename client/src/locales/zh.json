@@ -1660,5 +1660,14 @@
   "editableChip": {
     "remove": "移除 {value}",
     "createHint": "按 Enter 创建 \"{value}\""
+  },
+  "share": {
+    "file": {
+      "action": "分享文件",
+      "preparing": "正在准备文件…",
+      "tapToShare": "点击分享文件",
+      "tooLarge": "文件太大，无法作为文件分享",
+      "failed": "无法分享文件"
+    }
   }
 }

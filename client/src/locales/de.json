@@ -1660,5 +1660,14 @@
   "editableChip": {
     "remove": "{value} entfernen",
     "createHint": "Eingabetaste drücken, um „{value}“ zu erstellen"
+  },
+  "share": {
+    "file": {
+      "action": "Datei teilen",
+      "preparing": "Datei wird vorbereitet …",
+      "tapToShare": "Tippen, um die Datei zu teilen",
+      "tooLarge": "Zu groß, um als Datei geteilt zu werden",
+      "failed": "Die Datei konnte nicht geteilt werden"
+    }
   }
 }

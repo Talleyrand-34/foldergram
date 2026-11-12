@@ -183,6 +183,7 @@ The detail view includes:
 - like toggle
 - save and collection controls
 - original-media download control
+- a share control that hands the **file itself** to the operating system share sheet, when the browser supports it
 - original-file link
 - an admin-only "Set as Cover" action to customize the folder avatar, which highlights dynamically if the image is already the cover
 - trash and permanent-delete actions with confirmation for admin sessions only
@@ -195,6 +196,33 @@ The detail view includes:
 | `→` or `↓` | Next post |
 | `Space` | Play / pause (videos) |
 | `=` | Cycle playback speed — x1 → x2 → x3 → x1 (videos) |
+
+### Sharing a media file
+
+The share control hands the **original file** to the operating system share
+sheet, so the receiving app gets the media itself - a photo app receives the
+photo, a messaging app attaches the video. It is available in the reels rail
+and in the actions row of the post viewer.
+
+The browser decides what can be shared, and the rules are its own:
+
+- the API only exists in a **secure context**, so the control is not rendered
+  at all on a plain-HTTP origin. The LAN test instances need the HTTPS
+  deployment, or a reverse proxy in front of them.
+- the whole payload of one share may not exceed **50 MiB**. A bigger file is
+  not fetched: the control reports that it is too large, and the download
+  control next to it remains the way to get the file.
+- only a fixed list of file types is accepted. `.mov` and `.mkv` originals can
+  never be shared as files from a browser, so the control is not rendered for
+  them; the file is never renamed to fake a permitted container.
+
+The share sheet only opens inside a live user gesture, and that gesture lives
+for five seconds. The control therefore has two states: the first tap fetches
+the file, and the second one opens the sheet. When the file is small and fast
+enough, the sheet opens on the first tap.
+
+The research behind these limits, with the sources, is in
+`docs/plans/share-media-as-file.md`.
 
 ## Saved posts, likes, and collections
 

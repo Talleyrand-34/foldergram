@@ -1660,5 +1660,14 @@
   "editableChip": {
     "remove": "Remove {value}",
     "createHint": "Press Enter to create \"{value}\""
+  },
+  "share": {
+    "file": {
+      "action": "Share file",
+      "preparing": "Preparing the file…",
+      "tapToShare": "Tap to share the file",
+      "tooLarge": "Too large to share as a file",
+      "failed": "Couldn't share the file"
+    }
   }
 }

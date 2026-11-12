@@ -50,6 +50,8 @@
       <span class="reel-action-rail__icon i-fluent-arrow-download-20-regular" aria-hidden="true" />
     </a>
 
+    <ShareMediaButton :item="item" button-class="reel-action-rail__button" />
+
     <RouterLink
       class="reel-action-rail__button"
       :to="{ name: 'folder', params: { slug: item.folderSlug } }"
@@ -71,6 +73,7 @@ import { useLikesStore } from '../stores/likes';
 import type { FeedItem } from '../types/api';
 import { getOriginalMediaDownloadUrl } from '../utils/original-media';
 import CollectionBookmark from './CollectionBookmark.vue';
+import ShareMediaButton from './ShareMediaButton.vue';
 
 const props = defineProps<{
   item: FeedItem;

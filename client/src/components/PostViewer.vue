@@ -528,6 +528,8 @@
                 />
               </svg>
             </a>
+            <!-- Share the file itself -->
+            <ShareMediaButton :item="image" button-class="viewer__sidebar-action" />
             <!-- Open original -->
             <a
               class="viewer__sidebar-action inline-flex items-center justify-center p-0 border-0 bg-transparent cursor-pointer text-text transition-[opacity,transform] duration-180 hover:opacity-72 hover:-translate-y-px"
@@ -634,6 +636,7 @@
   import CollectionBookmark from "./CollectionBookmark.vue"
   import PostCaptionModal from "./PostCaptionModal.vue"
   import ResilientImage from "./ResilientImage.vue"
+  import ShareMediaButton from "./ShareMediaButton.vue"
   import VideoProgressFooter from "./VideoProgressFooter.vue"
   import { formatMediaDuration, formatVideoTimestamp, videoPreviewWouldDownscale } from "../utils/media"
 

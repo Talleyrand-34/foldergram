@@ -328,6 +328,46 @@ describe('PostViewer', () => {
     expect(originalLink.attributes('title')).toBe('Open original file');
   });
 
+  it('offers the file share in the actions row when the browser can share files', () => {
+    const withoutApi = mount(PostViewer, {
+      props: {
+        image: createImageDetail(19, {
+          previousImageId: null,
+          nextImageId: null
+        }),
+        isModal: true
+      },
+      global: {
+        stubs: globalStubs
+      }
+    });
+
+    expect(withoutApi.find('button[aria-label="Share file"]').exists()).toBe(false);
+
+    Object.defineProperty(navigator, 'share', { value: vi.fn(), configurable: true, writable: true });
+    Object.defineProperty(navigator, 'canShare', { value: vi.fn().mockReturnValue(true), configurable: true, writable: true });
+
+    try {
+      const withApi = mount(PostViewer, {
+        props: {
+          image: createImageDetail(19, {
+            previousImageId: null,
+            nextImageId: null
+          }),
+          isModal: true
+        },
+        global: {
+          stubs: globalStubs
+        }
+      });
+
+      expect(withApi.find('button[aria-label="Share file"]').exists()).toBe(true);
+    } finally {
+      Reflect.deleteProperty(navigator, 'share');
+      Reflect.deleteProperty(navigator, 'canShare');
+    }
+  });
+
   it('toggles video playback from stage clicks and shows the paused indicator', async () => {
     const wrapper = mount(PostViewer, {
       props: {
