@@ -29,6 +29,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import type { IndexedVideoAsset, PluginContext } from "../../../server/dist/plugins/types.js";
 import { recordAiPause, setAiQueueDepth } from "../../../server/dist/observability/telemetry.js";
+import { recordPlanState } from "../../../server/dist/observability/plan-metrics.js";
 import { analyzeVideo } from "./analyzer.js";
 import {
   getRecanonicalizationState,
@@ -647,6 +648,22 @@ async function applySharedPlan(): Promise<void> {
 
   const states = await evaluateSmartUsage(config.providers);
   smartStates = states;
+
+  // The plan is the limit the queue obeys, so its state is published as
+  // telemetry: what is left of each window, how long it lasts at the
+  // current rate, and whether somebody else is in the pool.
+  for (const state of states.values()) {
+    recordPlanState({
+      providerId: state.providerId,
+      contended: state.contended,
+      windows: state.windows.map((window) => ({
+        kind: window.kind,
+        remainingPercent: window.remainingPercent,
+        hoursLeft: window.hoursLeft,
+        rollsOverInSeconds: window.rollsOverInSeconds
+      }))
+    });
+  }
 
   // A shared pool is the more specific reason, so it wins over an exhausted
   // share.
