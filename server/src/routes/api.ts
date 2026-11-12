@@ -14,6 +14,12 @@ import { pluginHost } from '../plugins/host.js';
 import { log } from '../services/log-service.js';
 import { watcherService } from '../services/watcher-service.js';
 import { databaseManager } from '../db/database.js';
+import {
+  getTranscoderStatus,
+  readTranscoderSettings,
+  toTranscoderSettingsView,
+  writeTranscoderSettings
+} from '../services/transcoder/index.js';
 
 const router = express.Router();
 
@@ -100,6 +106,16 @@ const storiesModeBodySchema = z.object({
 });
 const excludedFoldersBodySchema = z.object({
   rules: z.array(z.string()).default([])
+});
+const transcoderBodySchema = z.object({
+  enabled: z.boolean().optional(),
+  url: z.string().trim().max(2048).optional(),
+  // An absent token keeps the stored one; an empty one clears it.
+  token: z.string().max(512).optional(),
+  encoder: z.enum(['auto', 'vaapi', 'software']).optional(),
+  operations: z.array(z.string().trim().min(1).max(64)).optional(),
+  fallback: z.enum(['local', 'off']).optional(),
+  maxUploadBytes: z.number().int().min(0).optional()
 });
 const collectionBodySchema = z.object({
   name: z.string().trim().min(1).max(80)
@@ -200,7 +216,8 @@ export const settingsRequestBodySchemas = {
   folderImageOrderDefault: folderImageOrderDefaultBodySchema,
   nestedFolderTitleFormat: nestedFolderTitleFormatBodySchema,
   storiesMode: storiesModeBodySchema,
-  excludedFolders: excludedFoldersBodySchema
+  excludedFolders: excludedFoldersBodySchema,
+  transcoder: transcoderBodySchema
 };
 
 export const routeParamSchemas = {
@@ -928,6 +945,31 @@ router.put(
   async (request, response) => {
     const body = excludedFoldersBodySchema.parse(request.body);
     response.json(await galleryService.setExcludedFolders(body.rules));
+  }
+);
+
+router.get(
+  '/admin/settings/transcoder',
+  requireCapability('canAccessSettings', 'Admin access is required.'),
+  async (_request, response) => {
+    const settings = await readTranscoderSettings();
+    response.json({
+      settings: toTranscoderSettingsView(settings),
+      status: await getTranscoderStatus()
+    });
+  }
+);
+
+router.put(
+  '/admin/settings/transcoder',
+  requireCapability('canAccessSettings', 'Admin access is required.'),
+  async (request, response) => {
+    const body = transcoderBodySchema.parse(request.body);
+    const settings = await writeTranscoderSettings(body);
+    response.json({
+      settings: toTranscoderSettingsView(settings),
+      status: await getTranscoderStatus()
+    });
   }
 );
 

@@ -1,0 +1,35 @@
+[Unit]
+Description=Foldergram transcoder agent
+Documentation=https://github.com/foldergram/foldergram
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /opt/foldergram-transcoder/agent.mjs
+Restart=always
+RestartSec=5
+User=root
+
+Environment=NODE_ENV=production
+Environment=FOLDERGRAM_TRANSCODER_HOST=0.0.0.0
+Environment=FOLDERGRAM_TRANSCODER_PORT=8787
+Environment=FOLDERGRAM_TRANSCODER_CONCURRENCY=2
+Environment=FOLDERGRAM_TRANSCODER_QUEUE=32
+Environment=FOLDERGRAM_TRANSCODER_TMP=/var/tmp/foldergram-transcoder
+Environment=FOLDERGRAM_TRANSCODER_TIMEOUT_MS=1800000
+# The shared secret the Foldergram server sends as a bearer token.
+Environment=FOLDERGRAM_TRANSCODER_TOKEN=change-me
+
+# The agent has to reach the render node to use the GPU.
+SupplementaryGroups=video render
+DeviceAllow=/dev/dri/renderD128 rw
+
+NoNewPrivileges=true
+PrivateTmp=false
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/tmp/foldergram-transcoder
+
+[Install]
+WantedBy=multi-user.target

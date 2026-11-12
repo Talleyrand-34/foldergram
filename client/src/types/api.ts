@@ -54,6 +54,40 @@ export interface StoriesModeSetting {
   treatStoriesAsFolders: boolean;
 }
 
+/** The kinds of work an external transcoder can take. */
+export type TranscoderOperation =
+  | 'video-preview'
+  | 'video-thumbnail'
+  | 'animated-avif-preview'
+  | 'animated-avif-thumbnail'
+  | 'ai-audio';
+
+/** The external transcoder configuration as the Settings page sees it. */
+export interface TranscoderSettings {
+  enabled: boolean;
+  url: string;
+  /** Whether a shared secret is stored. The secret itself never leaves the server. */
+  tokenSet: boolean;
+  encoder: 'auto' | 'vaapi' | 'software';
+  operations: TranscoderOperation[];
+  fallback: 'local' | 'off';
+  maxUploadBytes: number;
+}
+
+/** What the transcoder agent reports about itself. */
+export interface TranscoderStatus {
+  reachable: boolean;
+  encoder?: string;
+  device?: string;
+  ffmpeg?: string;
+  error?: string;
+}
+
+export interface TranscoderSettingsResult {
+  settings: TranscoderSettings;
+  status: TranscoderStatus;
+}
+
 export interface ExcludedFoldersSettings {
   envExcludedFolders: string[];
   customExcludedFolders: string[];

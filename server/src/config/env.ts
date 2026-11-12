@@ -33,6 +33,14 @@ const envSchema = z.object({
   GALLERY_EXCLUDED_FOLDERS: z.string().optional(),
   IMAGE_DETAIL_SOURCE: z.enum(['preview', 'original']).default('preview'),
   DERIVATIVE_MODE: z.enum(['eager', 'lazy']).default('eager'),
+  FFMPEG_TRANSCODER_MODE: z.enum(['local', 'remote', 'auto']).default('local'),
+  FFMPEG_TRANSCODER_URL: z.string().optional(),
+  FFMPEG_TRANSCODER_TOKEN: z.string().optional(),
+  FFMPEG_TRANSCODER_TIMEOUT_MS: z.coerce.number().int().min(1_000).default(900_000),
+  FFMPEG_TRANSCODER_ENCODER: z.enum(['auto', 'vaapi', 'software']).default('auto'),
+  FFMPEG_TRANSCODER_OPERATIONS: z.string().optional(),
+  FFMPEG_TRANSCODER_FALLBACK: z.enum(['local', 'off']).default('local'),
+  FFMPEG_TRANSCODER_MAX_UPLOAD_BYTES: z.coerce.number().int().min(0).default(536_870_912),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   DB_DRIVER: z.enum(['sqlite', 'postgres']).default('sqlite'),
   DATABASE_URL: z.string().optional(),
@@ -66,6 +74,23 @@ function resolveConfiguredPath(value: string | null | undefined, fallbackAbsolut
 
 function uniq(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+/**
+ * The derivative kinds that may leave the host.
+ *
+ * `*` means all of them. The default is the video preview: it is a full
+ * transcode and the one that hurts on a host without a GPU. A thumbnail is
+ * a single frame, so shipping the whole source to another machine costs
+ * more than the frame is worth.
+ */
+function parseTranscoderOperations(value: string | undefined): string[] {
+  const entries = (value ?? 'video-preview')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  return entries.length > 0 ? uniq(entries) : ['video-preview'];
 }
 
 function parseBooleanFlag(value: string | undefined): boolean {
@@ -113,6 +138,12 @@ const logVerbose = parseBooleanFlag(parsed.LOG_VERBOSE);
 const publicDemoMode = parseBooleanFlag(parsed.PUBLIC_DEMO_MODE);
 const csrfTrustedOrigins = parseConfiguredOrigins(parsed.CSRF_TRUSTED_ORIGINS);
 const galleryExcludedFolders = parseExcludedFolderRulesFromEnv(parsed.GALLERY_EXCLUDED_FOLDERS);
+
+const ffmpegTranscoderUrl = parsed.FFMPEG_TRANSCODER_URL?.trim() || undefined;
+
+if (parsed.FFMPEG_TRANSCODER_MODE === 'remote' && !ffmpegTranscoderUrl) {
+  throw new Error('Invalid storage configuration: FFMPEG_TRANSCODER_URL is required when FFMPEG_TRANSCODER_MODE=remote.');
+}
 
 const derivativeDirectoriesOverlap =
   isSameOrWithinPath(thumbnailsDir, previewsDir) || isSameOrWithinPath(previewsDir, thumbnailsDir);
@@ -174,6 +205,14 @@ export const appConfig = {
   geodataMetadataPath: path.join(geodataDir, 'geonames-cities500.meta.json'),
   imageDetailSource: parsed.IMAGE_DETAIL_SOURCE,
   derivativeMode: parsed.DERIVATIVE_MODE,
+  ffmpegTranscoderMode: parsed.FFMPEG_TRANSCODER_MODE,
+  ffmpegTranscoderUrl,
+  ffmpegTranscoderToken: parsed.FFMPEG_TRANSCODER_TOKEN?.trim() || undefined,
+  ffmpegTranscoderTimeoutMs: parsed.FFMPEG_TRANSCODER_TIMEOUT_MS,
+  ffmpegTranscoderEncoder: parsed.FFMPEG_TRANSCODER_ENCODER,
+  ffmpegTranscoderOperations: parseTranscoderOperations(parsed.FFMPEG_TRANSCODER_OPERATIONS),
+  ffmpegTranscoderFallback: parsed.FFMPEG_TRANSCODER_FALLBACK,
+  ffmpegTranscoderMaxUploadBytes: parsed.FFMPEG_TRANSCODER_MAX_UPLOAD_BYTES,
   dbDriver: parsed.DB_DRIVER,
   databaseUrl: parsed.DATABASE_URL,
   logSlowQueryMs: parsed.LOG_SLOW_QUERY_MS,

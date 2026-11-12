@@ -316,6 +316,44 @@
         "update": "No se pudieron actualizar los ajustes generales.",
         "partialUpdate": "Se guardaron algunos ajustes ({parts}), pero la actualización no terminó: {message}",
         "excludedFoldersEmpty": "Las reglas de carpetas excluidas no pueden estar vacías."
+      },
+      "transcoder": {
+        "title": "Transcodificador externo",
+        "description": "Manda el trabajo pesado de ffmpeg a otra máquina —con GPU dedicada— y deja este host para lo demás. Opcional: si está apagado, todo se hace aquí.",
+        "enable": "Usar un transcodificador externo",
+        "urlLabel": "Dirección del agente",
+        "tokenLabel": "Secreto compartido",
+        "tokenPlaceholder": "El secreto que pide el agente",
+        "tokenStored": "Ya hay un secreto guardado — escribe uno nuevo para cambiarlo",
+        "tokenHint": "El secreto nunca sale del servidor. Deja el campo vacío para conservar el guardado.",
+        "encoderLabel": "Codificador",
+        "encoder": {
+          "auto": "Automático (decide el agente)",
+          "vaapi": "Hardware (VAAPI)",
+          "software": "Software (libx264)"
+        },
+        "maxUploadLabel": "Tamaño máximo a enviar (MB)",
+        "maxUploadHint": "Los archivos mayores se quedan aquí. 0 envía todo.",
+        "operationsLabel": "Trabajo que se envía fuera",
+        "fallbackLabel": "Si el agente no está disponible, hacer el trabajo aquí",
+        "save": "Guardar ajustes del transcodificador",
+        "refresh": "Comprobar el agente",
+        "status": {
+          "off": "Apagado",
+          "unknown": "Desconocido",
+          "reachable": "Agente accesible",
+          "unreachable": "Agente inaccesible",
+          "encoder": "Codificador: {encoder}",
+          "device": "GPU: {device}",
+          "ffmpeg": "ffmpeg {version}"
+        },
+        "feedback": {
+          "saved": "Ajustes del transcodificador guardados."
+        },
+        "errors": {
+          "load": "No se han podido leer los ajustes del transcodificador.",
+          "save": "No se han podido guardar los ajustes del transcodificador."
+        }
       }
     },
     "library": {

@@ -21,12 +21,27 @@ import {
 import { safeJoin } from '../utils/path-utils.js';
 import { isNonemptyDerivative } from '../utils/derivative-cache.js';
 import { shouldGenerateVideoPreview } from '../utils/video-playback-policy.js';
+import { getTranscoder } from './transcoder/index.js';
+import type { TranscodePlan } from './transcoder/types.js';
 
 const execFileAsync = promisify(execFile);
 const DIRECT_VIDEO_PLAYBACK_ALLOWED_AUDIO_CODECS = new Set(['aac']);
 const DIRECT_VIDEO_PLAYBACK_ALLOWED_PIXEL_FORMATS = new Set(['yuv420p']);
 export const VIDEO_PREVIEW_MAX_LONG_EDGE = 1280;
 export const VIDEO_PREVIEW_MAX_SHORT_EDGE = 720;
+
+/**
+ * The size a preview is rendered at.
+ *
+ * Landscape videos keep up to 1280 pixels on the long edge; portrait and
+ * square videos keep the short edge at 720. The expressions are the ones the
+ * software encoder has always used, so a preview looks the same no matter
+ * which machine produced it.
+ */
+const VIDEO_PREVIEW_SCALE_WIDTH =
+  `trunc(if(gt(iw,ih),min(${VIDEO_PREVIEW_MAX_LONG_EDGE},iw),min(${VIDEO_PREVIEW_MAX_SHORT_EDGE},iw))/2)*2`;
+const VIDEO_PREVIEW_SCALE_HEIGHT =
+  `trunc(if(gt(iw,ih),min(${VIDEO_PREVIEW_MAX_LONG_EDGE},iw)*ih/iw,min(${VIDEO_PREVIEW_MAX_SHORT_EDGE},iw)*ih/iw)/2)*2`;
 
 interface FfprobeStream {
   codec_type?: string;
@@ -114,10 +129,83 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-async function runBinary(command: string, args: string[]): Promise<void> {
-  await execFileAsync(command, args, {
-    maxBuffer: 8 * 1024 * 1024
-  });
+/**
+ * The encoder plans for a video preview.
+ *
+ * The first plan is the one that uses the GPU of the machine that runs the
+ * job; the second is the software encoder every host can do. A runner picks
+ * the first plan it can execute, so the same recipe works on a host with a
+ * GPU and on one without.
+ */
+function buildVideoPreviewPlans(): TranscodePlan[] {
+  return [
+    {
+      encoder: 'vaapi',
+      args: [
+        '-y',
+        '-v',
+        'error',
+        '-hwaccel',
+        'vaapi',
+        '-hwaccel_device',
+        '{device}',
+        '-i',
+        '{input}',
+        '-map',
+        '0:v:0',
+        '-map',
+        '0:a?',
+        '-vf',
+        `format=nv12,hwupload,scale_vaapi=w='${VIDEO_PREVIEW_SCALE_WIDTH}':h='${VIDEO_PREVIEW_SCALE_HEIGHT}'`,
+        '-c:v',
+        'h264_vaapi',
+        '-rc_mode',
+        'CQP',
+        '-qp',
+        '26',
+        '-profile:v',
+        'high',
+        '-movflags',
+        '+faststart',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '128k',
+        '{output}'
+      ]
+    },
+    {
+      encoder: 'software',
+      args: [
+        '-y',
+        '-v',
+        'error',
+        '-i',
+        '{input}',
+        '-map',
+        '0:v:0',
+        '-map',
+        '0:a?',
+        '-vf',
+        `scale='${VIDEO_PREVIEW_SCALE_WIDTH}':'${VIDEO_PREVIEW_SCALE_HEIGHT}':flags=lanczos`,
+        '-c:v',
+        'libx264',
+        '-preset',
+        'veryfast',
+        '-crf',
+        '24',
+        '-pix_fmt',
+        'yuv420p',
+        '-movflags',
+        '+faststart',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '128k',
+        '{output}'
+      ]
+    }
+  ];
 }
 
 async function readMediaProbe(sourcePath: string): Promise<FfprobePayload> {
@@ -470,26 +558,38 @@ async function writeAnimatedAvifThumbnail(
 ): Promise<void> {
   await ensureParentDirectory(thumbnailAbsolutePath);
 
-  await runBinary('ffmpeg', [
-    '-y',
-    '-v',
-    'error',
-    '-i',
-    sourcePath,
-    '-map',
-    `0:v:${videoStreamIndex}`,
-    '-vf',
-    `thumbnail,scale='min(${THUMBNAIL_SIZE},iw)':-2:flags=lanczos`,
-    '-frames:v',
-    '1',
-    '-c:v',
-    'libwebp',
-    '-quality',
-    '82',
-    '-compression_level',
-    '4',
-    thumbnailAbsolutePath
-  ]);
+  const transcoder = await getTranscoder();
+
+  await transcoder.run({
+    plans: [
+      {
+        encoder: 'software',
+        args: [
+          '-y',
+          '-v',
+          'error',
+          '-i',
+          '{input}',
+          '-map',
+          `0:v:${videoStreamIndex}`,
+          '-vf',
+          `thumbnail,scale='min(${THUMBNAIL_SIZE},iw)':-2:flags=lanczos`,
+          '-frames:v',
+          '1',
+          '-c:v',
+          'libwebp',
+          '-quality',
+          '82',
+          '-compression_level',
+          '4',
+          '{output}'
+        ]
+      }
+    ],
+    inputPath: sourcePath,
+    outputPath: thumbnailAbsolutePath,
+    label: 'animated-avif-thumbnail'
+  });
 }
 
 async function writeAnimatedAvifPreview(
@@ -499,48 +599,73 @@ async function writeAnimatedAvifPreview(
 ): Promise<void> {
   await ensureParentDirectory(previewAbsolutePath);
 
-  await runBinary('ffmpeg', [
-    '-y',
-    '-v',
-    'error',
-    '-i',
-    sourcePath,
-    '-map',
-    `0:v:${videoStreamIndex}`,
-    '-vf',
-    `scale='min(${PREVIEW_MAX_WIDTH},iw)':-2:flags=lanczos`,
-    '-c:v',
-    'libwebp',
-    '-quality',
-    '86',
-    '-compression_level',
-    '4',
-    '-loop',
-    '0',
-    previewAbsolutePath
-  ]);
+  const transcoder = await getTranscoder();
+
+  await transcoder.run({
+    plans: [
+      {
+        encoder: 'software',
+        args: [
+          '-y',
+          '-v',
+          'error',
+          '-i',
+          '{input}',
+          '-map',
+          `0:v:${videoStreamIndex}`,
+          '-vf',
+          `scale='min(${PREVIEW_MAX_WIDTH},iw)':-2:flags=lanczos`,
+          '-c:v',
+          'libwebp',
+          '-quality',
+          '86',
+          '-compression_level',
+          '4',
+          '-loop',
+          '0',
+          '{output}'
+        ]
+      }
+    ],
+    inputPath: sourcePath,
+    outputPath: previewAbsolutePath,
+    label: 'animated-avif-preview'
+  });
 }
 
 async function writeVideoThumbnail(sourcePath: string, thumbnailAbsolutePath: string): Promise<void> {
   await ensureParentDirectory(thumbnailAbsolutePath);
-  await runBinary('ffmpeg', [
-    '-y',
-    '-v',
-    'error',
-    '-i',
-    sourcePath,
-    '-vf',
-    `thumbnail,scale='min(${THUMBNAIL_SIZE},iw)':-2:flags=lanczos`,
-    '-frames:v',
-    '1',
-    '-c:v',
-    'libwebp',
-    '-quality',
-    '82',
-    '-compression_level',
-    '4',
-    thumbnailAbsolutePath
-  ]);
+
+  const transcoder = await getTranscoder();
+
+  await transcoder.run({
+    plans: [
+      {
+        encoder: 'software',
+        args: [
+          '-y',
+          '-v',
+          'error',
+          '-i',
+          '{input}',
+          '-vf',
+          `thumbnail,scale='min(${THUMBNAIL_SIZE},iw)':-2:flags=lanczos`,
+          '-frames:v',
+          '1',
+          '-c:v',
+          'libwebp',
+          '-quality',
+          '82',
+          '-compression_level',
+          '4',
+          '{output}'
+        ]
+      }
+    ],
+    inputPath: sourcePath,
+    outputPath: thumbnailAbsolutePath,
+    label: 'video-thumbnail'
+  });
 }
 
 export async function writeVideoPreview(sourcePath: string, previewAbsolutePath: string): Promise<void> {
@@ -548,38 +673,14 @@ export async function writeVideoPreview(sourcePath: string, previewAbsolutePath:
   // Landscape videos target up to 1280x720. Portrait and square videos cap their
   // short edge at 720 while preserving aspect ratio. Output dimensions are rounded
   // to even numbers for yuv420p compatibility.
-  const scaleFilter =
-    `scale=` +
-    `'trunc(if(gt(iw,ih),min(${VIDEO_PREVIEW_MAX_LONG_EDGE},iw),min(${VIDEO_PREVIEW_MAX_SHORT_EDGE},iw))/2)*2':` +
-    `'trunc(if(gt(iw,ih),min(${VIDEO_PREVIEW_MAX_LONG_EDGE},iw)*ih/iw,min(${VIDEO_PREVIEW_MAX_SHORT_EDGE},iw)*ih/iw)/2)*2':flags=lanczos`;
-  await runBinary('ffmpeg', [
-    '-y',
-    '-v',
-    'error',
-    '-i',
-    sourcePath,
-    '-map',
-    '0:v:0',
-    '-map',
-    '0:a?',
-    '-vf',
-    scaleFilter,
-    '-c:v',
-    'libx264',
-    '-preset',
-    'veryfast',
-    '-crf',
-    '24',
-    '-pix_fmt',
-    'yuv420p',
-    '-movflags',
-    '+faststart',
-    '-c:a',
-    'aac',
-    '-b:a',
-    '128k',
-    previewAbsolutePath
-  ]);
+  const transcoder = await getTranscoder();
+
+  await transcoder.run({
+    plans: buildVideoPreviewPlans(),
+    inputPath: sourcePath,
+    outputPath: previewAbsolutePath,
+    label: 'video-preview'
+  });
 }
 
 async function generateImageDerivatives(

@@ -298,6 +298,18 @@ These flags are independent:
 - `Rebuild Library Index` refreshes the SQLite-backed index; in lazy mode it does not pre-generate missing derivatives
 - `Regenerate Thumbnails` remains a manual thumbnail and video-poster rebuild only; it does not rebuild previews
 
+### Remote Transcoding
+
+A container has no GPU, and a video preview is a full transcode. The transcoder agent runs the heavy ffmpeg work on another host that does have one:
+
+- turn it on in **Settings → General → External transcoder**: agent address, shared secret, encoder and how much work may leave the host
+- the agent falls back to `libx264` when its GPU cannot handle a codec, and Foldergram falls back to the local ffmpeg when the agent is down
+- the page shows whether the agent answers and with which GPU
+
+The environment variables (`FFMPEG_TRANSCODER_URL` and friends) are the starting point: a deployment that sets them works out of the box, and the Settings page shows those values until it is saved.
+
+The agent is a single file with no dependencies — see [`services/transcoder/README.md`](services/transcoder/README.md).
+
 ### Access Protection
 
 Access protection is configured from the Settings page, not from `.env`.

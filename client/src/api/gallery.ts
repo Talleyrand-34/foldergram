@@ -17,6 +17,8 @@ import type {
   NestedFolderTitleFormatSetting,
   ReelsFeedDefaultSetting,
   StoriesModeSetting,
+  TranscoderSettings,
+  TranscoderSettingsResult,
   ViewerAccessMode,
   DeleteImageResult,
   DeleteFolderResult,
@@ -510,5 +512,25 @@ export function updateExcludedFolders(rules: string[]) {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ rules })
+  });
+}
+
+export function getTranscoderSettings() {
+  return requestJson<TranscoderSettingsResult>('/api/admin/settings/transcoder');
+}
+
+export function updateTranscoderSettings(settings: {
+  enabled?: boolean;
+  url?: string;
+  token?: string;
+  encoder?: TranscoderSettings['encoder'];
+  operations?: TranscoderSettings['operations'];
+  fallback?: TranscoderSettings['fallback'];
+  maxUploadBytes?: number;
+}) {
+  return requestJson<TranscoderSettingsResult>('/api/admin/settings/transcoder', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(settings)
   });
 }

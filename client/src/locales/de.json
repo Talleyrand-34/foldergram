@@ -316,6 +316,44 @@
         "update": "Die allgemeinen Einstellungen konnten nicht aktualisiert werden.",
         "partialUpdate": "Einige Einstellungen wurden gespeichert ({parts}), aber die Aktualisierung wurde nicht abgeschlossen: {message}",
         "excludedFoldersEmpty": "Regeln für ausgeschlossene Ordner dürfen nicht leer sein."
+      },
+      "transcoder": {
+        "title": "Externer Transcoder",
+        "description": "Die schweren ffmpeg-Aufgaben an einen anderen Host mit eigener GPU schicken und diesen Host für alles andere nutzen. Optional: ist es aus, läuft alles hier.",
+        "enable": "Externen Transcoder verwenden",
+        "urlLabel": "Adresse des Agenten",
+        "tokenLabel": "Gemeinsames Geheimnis",
+        "tokenPlaceholder": "Das Geheimnis, das der Agent verlangt",
+        "tokenStored": "Ein Geheimnis ist gespeichert — ein neues ersetzt es",
+        "tokenHint": "Das Geheimnis verlässt den Server nie. Das Feld leer lassen, um das gespeicherte zu behalten.",
+        "encoderLabel": "Encoder",
+        "encoder": {
+          "auto": "Automatisch (der Agent entscheidet)",
+          "vaapi": "Hardware (VAAPI)",
+          "software": "Software (libx264)"
+        },
+        "maxUploadLabel": "Größte Quelle, die gesendet wird (MB)",
+        "maxUploadHint": "Größere Quellen bleiben auf diesem Host. 0 sendet alles.",
+        "operationsLabel": "Arbeit, die nach außen geht",
+        "fallbackLabel": "Wenn der Agent nicht erreichbar ist, die Arbeit hier erledigen",
+        "save": "Transcoder-Einstellungen speichern",
+        "refresh": "Agent prüfen",
+        "status": {
+          "off": "Aus",
+          "unknown": "Unbekannt",
+          "reachable": "Agent erreichbar",
+          "unreachable": "Agent nicht erreichbar",
+          "encoder": "Encoder: {encoder}",
+          "device": "GPU: {device}",
+          "ffmpeg": "ffmpeg {version}"
+        },
+        "feedback": {
+          "saved": "Transcoder-Einstellungen gespeichert."
+        },
+        "errors": {
+          "load": "Die Transcoder-Einstellungen konnten nicht gelesen werden.",
+          "save": "Die Transcoder-Einstellungen konnten nicht gespeichert werden."
+        }
       }
     },
     "library": {

@@ -174,8 +174,80 @@ When `DERIVATIVE_MODE=lazy` and a preview is explicitly requested, it is transco
 - portrait and square output that keeps the short edge at or below `720`
 - even-numbered output dimensions for encoder compatibility
 
-## Direct-original video playback
+## Remote transcoding
 
+A Foldergram server that runs in a container has no GPU and a handful of CPU
+cores, and a video preview is a full transcode. The transcoder agent lets
+the same recipes run on another host — one with a dedicated GPU.
+
+The server keeps the recipes; the agent keeps the hardware. For every
+derivative the server sends the agent an ordered list of encoder plans:
+
+| plan | encoder | what it does |
+| --- | --- | --- |
+| 1 | `vaapi` | hardware decode and encode through the GPU of the agent |
+| 2 | `software` | `libx264` on the CPU of the agent |
+
+The agent runs the first plan its hardware supports and falls through to the
+next one when a plan fails, so a codec the GPU cannot decode still gets
+encoded by the CPU. The output of the plan that worked comes back as the
+answer, so neither host needs a shared filesystem.
+
+### Configuration
+
+The **Settings page** is where the external transcoder is configured:
+*Settings → General → External transcoder*. It holds:
+
+| field | meaning |
+| --- | --- |
+| Use an external transcoder | the master switch; with it off everything runs here |
+| Agent address | the base URL of the agent |
+| Shared secret | the token the agent asks for; it never leaves the server |
+| Encoder | `auto` lets the agent decide, `vaapi` and `software` force one |
+| Largest source to send | sources above this size stay on this host; `0` sends everything |
+| Work to send away | which kinds of derivative may leave the host |
+| Fall back to this host | what happens when the agent cannot do the job |
+
+The page also shows whether the agent answers, and with which encoder and
+which GPU.
+
+The environment variables are the starting point, not the source of truth.
+A deployment that sets `FFMPEG_TRANSCODER_URL` works out of the box, and
+the Settings page shows those values as the current configuration; from
+there the administrator can turn the external transcoder off or move it.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `FFMPEG_TRANSCODER_MODE` | `local` | `local`, `remote` or `auto` |
+| `FFMPEG_TRANSCODER_URL` | unset | Base URL of the agent |
+| `FFMPEG_TRANSCODER_TOKEN` | unset | Shared secret |
+| `FFMPEG_TRANSCODER_ENCODER` | `auto` | `auto`, `vaapi` or `software` |
+| `FFMPEG_TRANSCODER_OPERATIONS` | `video-preview` | Which kinds may leave the host |
+| `FFMPEG_TRANSCODER_FALLBACK` | `local` | `local` or `off` |
+| `FFMPEG_TRANSCODER_MAX_UPLOAD_BYTES` | `536870912` | Sources above this stay local |
+
+The agent itself is documented in [`services/transcoder/README.md`](https://github.com/foldergram/foldergram/blob/main/services/transcoder/README.md).
+
+### What is worth sending away
+
+Only a video preview is sent by default. It is a full transcode, and on a
+host without a GPU it is the slowest thing Foldergram does. A thumbnail is
+a single frame: shipping the whole source to another machine costs more than
+the frame is worth, so it stays local unless the Settings page says
+otherwise.
+
+A source larger than the upload limit also stays local.
+
+### When the agent is down
+
+A remote job that fails is retried with the local ffmpeg, so a dead agent
+slows the derivatives down but never breaks them. The Settings page can turn
+that fallback off to let the failure through instead.
+
+The result is written to a temporary file and renamed afterwards, so an
+interrupted job never leaves a half-written derivative behind.
+
+## Direct-original video playback
 Foldergram marks the original video as eligible for direct playback when all of these are true:
 
 - the file extension is `.mp4`

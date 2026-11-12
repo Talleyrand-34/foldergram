@@ -684,4 +684,89 @@ describe('SettingsView', () => {
     expect(wrapper.get('button[role="switch"]').attributes('aria-checked')).toBe('true');
     expect(scrollIntoViewSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('shows the external transcoder and the state of the agent', async () => {
+    vi.spyOn(galleryApi, 'getTranscoderSettings').mockResolvedValue({
+      settings: {
+        enabled: true,
+        url: 'http://10.0.2.31:8787',
+        tokenSet: true,
+        encoder: 'auto',
+        operations: ['video-preview'],
+        fallback: 'local',
+        maxUploadBytes: 536870912
+      },
+      status: {
+        reachable: true,
+        encoder: 'vaapi',
+        device: '/dev/dri/renderD128',
+        ffmpeg: '7.1.5'
+      }
+    });
+
+    const wrapper = mountSettingsView();
+    await flushPromises();
+    await openGeneralSettingsSidebarTab(wrapper);
+
+    expect(wrapper.text()).toContain('External transcoder');
+    expect(wrapper.text()).toContain('Agent reachable');
+    expect(wrapper.text()).toContain('Video previews');
+
+    const urlInput = wrapper.find('input[type="url"]');
+    expect(urlInput.exists()).toBe(true);
+    expect((urlInput.element as HTMLInputElement).value).toBe('http://10.0.2.31:8787');
+  });
+
+  it('saves the external transcoder configuration', async () => {
+    const updateSpy = vi.spyOn(galleryApi, 'updateTranscoderSettings').mockResolvedValue({
+      settings: {
+        enabled: true,
+        url: 'http://10.0.2.31:8787',
+        tokenSet: true,
+        encoder: 'software',
+        operations: ['video-preview'],
+        fallback: 'local',
+        maxUploadBytes: 536870912
+      },
+      status: { reachable: true, encoder: 'software' }
+    });
+
+    vi.spyOn(galleryApi, 'getTranscoderSettings').mockResolvedValue({
+      settings: {
+        enabled: false,
+        url: '',
+        tokenSet: false,
+        encoder: 'auto',
+        operations: ['video-preview'],
+        fallback: 'local',
+        maxUploadBytes: 536870912
+      },
+      status: { reachable: false }
+    });
+
+    const wrapper = mountSettingsView();
+    await flushPromises();
+    await openGeneralSettingsSidebarTab(wrapper);
+
+    const enabledToggle = wrapper
+      .findAll('input[type="checkbox"]')
+      .find((input) =>
+        input.element.closest('label')?.textContent?.includes('Use an external transcoder')
+      );
+
+    expect(enabledToggle).toBeDefined();
+    await enabledToggle!.setValue(true);
+    await flushPromises();
+
+    const saveButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Save transcoder settings');
+
+    expect(saveButton).toBeDefined();
+    await saveButton!.trigger('click');
+    await flushPromises();
+
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(updateSpy.mock.calls[0]?.[0]).toMatchObject({ enabled: true });
+  });
 });

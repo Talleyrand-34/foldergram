@@ -11,6 +11,8 @@ import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { getTranscoder } from "../../../../server/dist/services/transcoder/index.js";
+
 const FFMPEG = process.env.FFMPEG ?? "ffmpeg";
 const FFPROBE = process.env.FFPROBE ?? "ffprobe";
 
@@ -298,26 +300,45 @@ export async function extractFramesAtPositions(
   return paths;
 }
 
-/** Extract the full audio track as 16 kHz mono WAV (whisper's preferred format). */
+/**
+ * Extract the full audio track as 16 kHz mono WAV (whisper's preferred format).
+ *
+ * The extraction goes through the transcoder, so an external agent can take
+ * it when one is configured. The agent that is not there is not a problem:
+ * the job is done here instead.
+ */
 export async function extractAudio(videoPath: string, outDir?: string): Promise<string> {
   const dir = outDir ?? (await mkTempDir("aip-audio-"));
   const outPath = join(dir, "audio.wav");
-  await runProcess(FFMPEG, [
-    "-nostdin",
-    "-v",
-    "error",
-    "-y",
-    "-i",
-    videoPath,
-    "-vn",
-    "-ac",
-    "1",
-    "-ar",
-    "16000",
-    "-f",
-    "wav",
-    outPath,
-  ]);
+  const transcoder = await getTranscoder();
+
+  await transcoder.run({
+    plans: [
+      {
+        encoder: "software",
+        args: [
+          "-nostdin",
+          "-v",
+          "error",
+          "-y",
+          "-i",
+          "{input}",
+          "-vn",
+          "-ac",
+          "1",
+          "-ar",
+          "16000",
+          "-f",
+          "wav",
+          "{output}",
+        ],
+      },
+    ],
+    inputPath: videoPath,
+    outputPath: outPath,
+    label: "ai-audio",
+  });
+
   return outPath;
 }
 

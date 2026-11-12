@@ -36,6 +36,13 @@ yourself.
 | `SCAN_MEDIA_ERROR_MODE` | `skip` | `skip` reports supported-media scan failures and continues. `fail` aborts on the first such error. |
 | `SCAN_DISCOVERY_CONCURRENCY` | `4` | Discovery concurrency, validated from `1` to `32`. |
 | `SCAN_DERIVATIVE_CONCURRENCY` | `4` | Derivative concurrency, validated from `1` to `32`. |
+| `FFMPEG_TRANSCODER_MODE` | `local` | The starting point for the external transcoder. `local` runs every ffmpeg job on this host. `remote` sends them to the transcoder agent. `auto` uses the agent when `FFMPEG_TRANSCODER_URL` is set. The Settings page overrides this. |
+| `FFMPEG_TRANSCODER_URL` | unset | Base URL of the transcoder agent, e.g. `http://10.0.2.31:8787`. Required when `FFMPEG_TRANSCODER_MODE=remote`. |
+| `FFMPEG_TRANSCODER_TOKEN` | unset | Shared secret sent to the agent as a bearer token. |
+| `FFMPEG_TRANSCODER_ENCODER` | `auto` | `auto` lets the agent pick the encoder its hardware supports. `vaapi` and `software` force one. |
+| `FFMPEG_TRANSCODER_OPERATIONS` | `video-preview` | The derivative kinds that may leave the host: a comma-separated list of `video-preview`, `video-thumbnail`, `animated-avif-preview`, `animated-avif-thumbnail`, `ai-audio`, or `*` for all of them. |
+| `FFMPEG_TRANSCODER_FALLBACK` | `local` | `local` retries a failed remote job with the local ffmpeg. `off` lets the failure through. |
+| `FFMPEG_TRANSCODER_MAX_UPLOAD_BYTES` | `536870912` | Sources larger than this stay on the local host. |
 | `PUBLIC_DEMO_MODE` | `0` | When enabled, mutating API routes return `403` for read-only demo deployments. |
 | `CSRF_TRUSTED_ORIGINS` | unset | Comma-separated extra browser origins allowed for mutating API requests. Useful behind reverse proxies or HTTPS terminators. |
 

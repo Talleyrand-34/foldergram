@@ -1011,6 +1011,136 @@
             </div>
           </section>
 
+          <section class="card grid gap-[1.15rem] p-8">
+            <div class="flex items-start justify-between gap-4 max-sm:flex-col max-sm:items-start">
+              <div>
+                <h2 class="m-0 text-[1.18rem]">{{ t('settings.general.transcoder.title') }}</h2>
+                <p class="m-0 mt-[0.35rem] text-muted">{{ t('settings.general.transcoder.description') }}</p>
+              </div>
+              <span
+                class="inline-flex items-center justify-center min-h-8 px-[0.7rem] py-[0.35rem] rounded-full text-[0.76rem] font-bold whitespace-nowrap"
+                :class="transcoderStatusTone"
+              >
+                {{ transcoderStatusLabel }}
+              </span>
+            </div>
+
+            <p v-if="transcoderStatusDetail" class="m-0 text-[0.82rem] text-muted">{{ transcoderStatusDetail }}</p>
+
+            <label class="inline-flex items-center gap-[0.5rem] cursor-pointer">
+              <input v-model="transcoderForm.enabled" type="checkbox" class="accent-current" />
+              <span class="text-[0.94rem] font-semibold text-text">{{ t('settings.general.transcoder.enable') }}</span>
+            </label>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <label class="grid gap-1.5">
+                <span class="text-[0.74rem] font-bold tracking-[0.08em] uppercase text-muted">{{ t('settings.general.transcoder.urlLabel') }}</span>
+                <input
+                  v-model="transcoderForm.url"
+                  type="url"
+                  placeholder="http://10.0.2.31:8787"
+                  autocomplete="off"
+                  class="h-[2.9rem] w-full rounded-[0.9rem] border border-border bg-[color-mix(in_srgb,var(--surface-alt)_80%,transparent_20%)] px-3 text-[0.9rem] text-text outline-none transition-[border-color,box-shadow] duration-180 focus:border-[color-mix(in_srgb,var(--accent)_35%,var(--border)_65%)] focus:shadow-[0_0_0_4px_color-mix(in_srgb,var(--accent-soft)_76%,transparent_24%)] disabled:opacity-60"
+                  :disabled="!transcoderForm.enabled"
+                />
+              </label>
+
+              <label class="grid gap-1.5">
+                <span class="text-[0.74rem] font-bold tracking-[0.08em] uppercase text-muted">{{ t('settings.general.transcoder.tokenLabel') }}</span>
+                <input
+                  v-model="transcoderForm.token"
+                  type="password"
+                  autocomplete="new-password"
+                  :placeholder="transcoderForm.tokenSet ? t('settings.general.transcoder.tokenStored') : t('settings.general.transcoder.tokenPlaceholder')"
+                  class="h-[2.9rem] w-full rounded-[0.9rem] border border-border bg-[color-mix(in_srgb,var(--surface-alt)_80%,transparent_20%)] px-3 text-[0.9rem] text-text outline-none transition-[border-color,box-shadow] duration-180 focus:border-[color-mix(in_srgb,var(--accent)_35%,var(--border)_65%)] focus:shadow-[0_0_0_4px_color-mix(in_srgb,var(--accent-soft)_76%,transparent_24%)] disabled:opacity-60"
+                  :disabled="!transcoderForm.enabled"
+                />
+                <span class="text-[0.78rem] text-muted">{{ t('settings.general.transcoder.tokenHint') }}</span>
+              </label>
+
+              <label class="grid gap-1.5">
+                <span class="text-[0.74rem] font-bold tracking-[0.08em] uppercase text-muted">{{ t('settings.general.transcoder.encoderLabel') }}</span>
+                <select
+                  v-model="transcoderForm.encoder"
+                  class="h-[2.9rem] w-full rounded-[0.9rem] border border-border bg-[color-mix(in_srgb,var(--surface-alt)_80%,transparent_20%)] px-3 text-[0.9rem] font-semibold text-text outline-none transition-[border-color,box-shadow] duration-180 focus:border-[color-mix(in_srgb,var(--accent)_35%,var(--border)_65%)] focus:shadow-[0_0_0_4px_color-mix(in_srgb,var(--accent-soft)_76%,transparent_24%)] disabled:opacity-60"
+                  :disabled="!transcoderForm.enabled"
+                >
+                  <option value="auto">{{ t('settings.general.transcoder.encoder.auto') }}</option>
+                  <option value="vaapi">{{ t('settings.general.transcoder.encoder.vaapi') }}</option>
+                  <option value="software">{{ t('settings.general.transcoder.encoder.software') }}</option>
+                </select>
+              </label>
+
+              <label class="grid gap-1.5">
+                <span class="text-[0.74rem] font-bold tracking-[0.08em] uppercase text-muted">{{ t('settings.general.transcoder.maxUploadLabel') }}</span>
+                <input
+                  v-model.number="transcoderForm.maxUploadMegabytes"
+                  type="number"
+                  min="0"
+                  step="64"
+                  class="h-[2.9rem] w-full rounded-[0.9rem] border border-border bg-[color-mix(in_srgb,var(--surface-alt)_80%,transparent_20%)] px-3 text-[0.9rem] tabular-nums text-text outline-none transition-[border-color,box-shadow] duration-180 focus:border-[color-mix(in_srgb,var(--accent)_35%,var(--border)_65%)] focus:shadow-[0_0_0_4px_color-mix(in_srgb,var(--accent-soft)_76%,transparent_24%)] disabled:opacity-60"
+                  :disabled="!transcoderForm.enabled"
+                />
+                <span class="text-[0.78rem] text-muted">{{ t('settings.general.transcoder.maxUploadHint') }}</span>
+              </label>
+            </div>
+
+            <fieldset class="grid gap-2 m-0 border-0 p-0">
+              <legend class="text-[0.74rem] font-bold tracking-[0.08em] uppercase text-muted mb-1">
+                {{ t('settings.general.transcoder.operationsLabel') }}
+              </legend>
+              <label
+                v-for="option in transcoderOperationOptions"
+                :key="option.id"
+                class="flex items-start gap-[0.55rem] cursor-pointer"
+              >
+                <input v-model="transcoderForm.operations" type="checkbox" :value="option.id" class="accent-current mt-[0.2rem]" />
+                <span class="grid gap-[0.1rem]">
+                  <span class="text-[0.9rem] font-semibold text-text">{{ option.label }}</span>
+                  <span class="text-[0.78rem] text-muted">{{ option.description }}</span>
+                </span>
+              </label>
+            </fieldset>
+
+            <label class="inline-flex items-center gap-[0.5rem] cursor-pointer">
+              <input
+                :checked="transcoderForm.fallback === 'local'"
+                type="checkbox"
+                class="accent-current"
+                :disabled="!transcoderForm.enabled"
+                @change="transcoderForm.fallback = ($event.target as HTMLInputElement).checked ? 'local' : 'off'"
+              />
+              <span class="text-[0.9rem] text-text">{{ t('settings.general.transcoder.fallbackLabel') }}</span>
+            </label>
+
+            <p
+              v-if="transcoderFeedback"
+              class="m-0 rounded-[0.95rem] border px-4 py-3 text-[0.86rem]"
+              :class="transcoderFeedback.tone === 'error' ? 'border-[rgba(214,48,49,0.24)] text-[#c0392b] bg-[rgba(214,48,49,0.08)]' : 'border-[rgba(24,119,242,0.2)] text-accent-strong bg-[rgba(24,119,242,0.08)]'"
+            >
+              {{ transcoderFeedback.message }}
+            </p>
+
+            <div class="flex items-center gap-3 max-sm:flex-col max-sm:items-stretch">
+              <button
+                class="btn-ghost"
+                type="button"
+                :disabled="transcoderBusy || !transcoderLoaded"
+                @click="loadTranscoderSettings"
+              >
+                {{ t('settings.general.transcoder.refresh') }}
+              </button>
+              <button
+                class="btn-primary min-w-[13rem]"
+                type="button"
+                :disabled="transcoderBusy"
+                @click="saveTranscoderSettings"
+              >
+                {{ t('settings.general.transcoder.save') }}
+              </button>
+            </div>
+          </section>
+
         </template>
 
         <!-- CATEGORY: PLACES -->
@@ -1272,6 +1402,7 @@ import AiDomainManager from '../components/AiDomainManager.vue';
 import AiFolderKnowledgeManager from '../components/AiFolderKnowledgeManager.vue';
 import {
   fetchAdminStats,
+  getTranscoderSettings,
   triggerLibraryRebuild,
   triggerManualScan,
   triggerThumbnailRebuild,
@@ -1281,7 +1412,8 @@ import {
   updateHomeFeedDefault,
   updateNestedFolderTitleFormat,
   updateReelsFeedDefault,
-  updateStoriesMode
+  updateStoriesMode,
+  updateTranscoderSettings
 } from '../api/gallery';
 import { SUPPORTED_LOCALES, type SupportedLocale } from '../locales';
 import { useAppStore } from '../stores/app';
@@ -1292,7 +1424,7 @@ import { useLikesStore } from '../stores/likes';
 import { useMomentsStore } from '../stores/moments';
 import { usePlacesStore } from '../stores/places';
 import { useViewerStore } from '../stores/viewer';
-import type { AppStats, FeedMode, FolderImageOrder, NestedFolderTitleFormat, ReelsFeedMode, ViewerAccessMode } from '../types/api';
+import type { AppStats, FeedMode, FolderImageOrder, NestedFolderTitleFormat, ReelsFeedMode, TranscoderOperation, TranscoderStatus, ViewerAccessMode } from '../types/api';
 
 const { t, locale } = useI18n();
 const appStore = useAppStore();
@@ -1317,6 +1449,153 @@ const confirmThumbnailRebuildOpen = ref(false);
 const authFeedback = ref<{ tone: 'success' | 'error'; message: string } | null>(null);
 const viewerFeedback = ref<{ tone: 'success' | 'error'; message: string } | null>(null);
 const generalSettingsFeedback = ref<{ tone: 'success' | 'error'; message: string } | null>(null);
+
+/**
+ * The external transcoder.
+ *
+ * The form is the draft; the saved configuration is what the server uses.
+ * The token is never sent to the browser, so the field stays empty unless
+ * the administrator types a new one.
+ */
+const transcoderForm = ref({
+  enabled: false,
+  url: '',
+  token: '',
+  tokenSet: false,
+  encoder: 'auto' as 'auto' | 'vaapi' | 'software',
+  operations: ['video-preview'] as TranscoderOperation[],
+  fallback: 'local' as 'local' | 'off',
+  maxUploadMegabytes: 512
+});
+const transcoderStatus = ref<TranscoderStatus | null>(null);
+const transcoderFeedback = ref<{ tone: 'success' | 'error'; message: string } | null>(null);
+const transcoderBusy = ref(false);
+const transcoderLoaded = ref(false);
+
+/** The kinds of work that can be delegated. */
+const transcoderOperationOptions: Array<{ id: TranscoderOperation; label: string; description: string }> = [
+  { id: 'video-preview', label: 'Video previews', description: 'The full transcode. This is the one that hurts on a host without a GPU.' },
+  { id: 'video-thumbnail', label: 'Video thumbnails', description: 'A single frame. Worth it when the source is on a shared disk.' },
+  { id: 'animated-avif-preview', label: 'Animated AVIF previews', description: 'Animated WebP previews of image sequences.' },
+  { id: 'animated-avif-thumbnail', label: 'Animated AVIF thumbnails', description: 'Static WebP posters of image sequences.' },
+  { id: 'ai-audio', label: 'AI analysis audio', description: 'The 16 kHz mono track the transcription reads.' }
+];
+
+const transcoderStatusLabel = computed(() => {
+  if (!transcoderForm.value.enabled) {
+    return t('settings.general.transcoder.status.off');
+  }
+
+  if (!transcoderStatus.value) {
+    return t('settings.general.transcoder.status.unknown');
+  }
+
+  return transcoderStatus.value.reachable
+    ? t('settings.general.transcoder.status.reachable')
+    : t('settings.general.transcoder.status.unreachable');
+});
+
+const transcoderStatusTone = computed(() => {
+  if (!transcoderForm.value.enabled) {
+    return 'text-muted bg-surface-alt';
+  }
+
+  if (!transcoderStatus.value) {
+    return 'text-muted bg-surface-alt';
+  }
+
+  return transcoderStatus.value.reachable
+    ? 'text-accent-strong bg-[color-mix(in_srgb,var(--accent-soft)_78%,transparent_22%)]'
+    : 'text-[#c0392b] bg-[rgba(214,48,49,0.12)]';
+});
+
+const transcoderStatusDetail = computed(() => {
+  const status = transcoderStatus.value;
+  if (!status || !transcoderForm.value.enabled) {
+    return '';
+  }
+
+  if (!status.reachable) {
+    return status.error ?? t('settings.general.transcoder.status.unreachable');
+  }
+
+  const parts = [
+    t('settings.general.transcoder.status.encoder', { encoder: status.encoder ?? 'software' })
+  ];
+
+  if (status.device) {
+    parts.push(t('settings.general.transcoder.status.device', { device: status.device }));
+  }
+
+  if (status.ffmpeg) {
+    parts.push(t('settings.general.transcoder.status.ffmpeg', { version: status.ffmpeg }));
+  }
+
+  return parts.join(' · ');
+});
+
+/** Load the configuration and the state of the agent. */
+async function loadTranscoderSettings(): Promise<void> {
+  try {
+    const payload = await getTranscoderSettings();
+    transcoderForm.value = {
+      enabled: payload.settings.enabled,
+      url: payload.settings.url,
+      token: '',
+      tokenSet: payload.settings.tokenSet,
+      encoder: payload.settings.encoder,
+      operations: [...payload.settings.operations],
+      fallback: payload.settings.fallback,
+      maxUploadMegabytes: Math.round(payload.settings.maxUploadBytes / (1024 * 1024))
+    };
+    transcoderStatus.value = payload.status;
+    transcoderLoaded.value = true;
+  } catch (error) {
+    transcoderFeedback.value = {
+      tone: 'error',
+      message: error instanceof Error ? error.message : t('settings.general.transcoder.errors.load')
+    };
+  }
+}
+
+/** Store the configuration. */
+async function saveTranscoderSettings(): Promise<void> {
+  transcoderBusy.value = true;
+  transcoderFeedback.value = null;
+
+  try {
+    const payload = await updateTranscoderSettings({
+      enabled: transcoderForm.value.enabled,
+      url: transcoderForm.value.url,
+      ...(transcoderForm.value.token.length > 0 ? { token: transcoderForm.value.token } : {}),
+      encoder: transcoderForm.value.encoder,
+      operations: transcoderForm.value.operations,
+      fallback: transcoderForm.value.fallback,
+      maxUploadBytes: Math.max(0, transcoderForm.value.maxUploadMegabytes) * 1024 * 1024
+    });
+
+    transcoderForm.value = {
+      ...transcoderForm.value,
+      token: '',
+      tokenSet: payload.settings.tokenSet,
+      operations: [...payload.settings.operations],
+      maxUploadMegabytes: Math.round(payload.settings.maxUploadBytes / (1024 * 1024))
+    };
+    transcoderStatus.value = payload.status;
+    transcoderFeedback.value = {
+      tone: 'success',
+      message: t('settings.general.transcoder.feedback.saved')
+    };
+  } catch (error) {
+    transcoderFeedback.value = {
+      tone: 'error',
+      message: error instanceof Error ? error.message : t('settings.general.transcoder.errors.save')
+    };
+  } finally {
+    transcoderBusy.value = false;
+  }
+}
+
 const adminStats = ref<AppStats | null>(null);
 const showChangePasswordForm = ref(false);
 const showDisablePasswordForm = ref(false);
@@ -2849,6 +3128,7 @@ onMounted(async () => {
   }
   await placesStore.fetchStatus();
   await loadAdminStats().catch(() => {});
+  await loadTranscoderSettings();
 });
 
 watch(

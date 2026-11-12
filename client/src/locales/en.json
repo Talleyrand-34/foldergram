@@ -316,6 +316,44 @@
         "update": "Unable to update the general settings.",
         "partialUpdate": "Some settings were saved ({parts}), but the update did not finish: {message}",
         "excludedFoldersEmpty": "Excluded folder rules cannot be empty."
+      },
+      "transcoder": {
+        "title": "External transcoder",
+        "description": "Send the heavy ffmpeg work to another host — one with a dedicated GPU — and keep this host for everything else. Optional: with it off, everything runs here.",
+        "enable": "Use an external transcoder",
+        "urlLabel": "Agent address",
+        "tokenLabel": "Shared secret",
+        "tokenPlaceholder": "The secret the agent asks for",
+        "tokenStored": "A secret is stored — type a new one to replace it",
+        "tokenHint": "The secret never leaves the server. Leave the field empty to keep the stored one.",
+        "encoderLabel": "Encoder",
+        "encoder": {
+          "auto": "Automatic (the agent decides)",
+          "vaapi": "Hardware (VAAPI)",
+          "software": "Software (libx264)"
+        },
+        "maxUploadLabel": "Largest source to send (MB)",
+        "maxUploadHint": "Bigger sources stay on this host. 0 sends everything.",
+        "operationsLabel": "Work to send away",
+        "fallbackLabel": "When the agent is unavailable, do the work here instead",
+        "save": "Save transcoder settings",
+        "refresh": "Check the agent",
+        "status": {
+          "off": "Off",
+          "unknown": "Unknown",
+          "reachable": "Agent reachable",
+          "unreachable": "Agent unreachable",
+          "encoder": "Encoder: {encoder}",
+          "device": "GPU: {device}",
+          "ffmpeg": "ffmpeg {version}"
+        },
+        "feedback": {
+          "saved": "Transcoder settings saved."
+        },
+        "errors": {
+          "load": "The transcoder settings could not be read.",
+          "save": "The transcoder settings could not be saved."
+        }
       }
     },
     "library": {

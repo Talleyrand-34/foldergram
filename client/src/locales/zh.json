@@ -316,6 +316,44 @@
         "update": "无法更新常规设置。",
         "partialUpdate": "部分设置已保存（{parts}），但更新未能完成：{message}",
         "excludedFoldersEmpty": "排除文件夹规则不能为空。"
+      },
+      "transcoder": {
+        "title": "外部转码器",
+        "description": "把繁重的 ffmpeg 工作交给另一台带独立显卡的主机，这台主机只做其他事情。可选：关闭时所有工作都在本地完成。",
+        "enable": "使用外部转码器",
+        "urlLabel": "代理地址",
+        "tokenLabel": "共享密钥",
+        "tokenPlaceholder": "代理要求的密钥",
+        "tokenStored": "已保存密钥 — 输入新的即可替换",
+        "tokenHint": "密钥不会离开服务器。留空表示保留已保存的密钥。",
+        "encoderLabel": "编码器",
+        "encoder": {
+          "auto": "自动（由代理决定）",
+          "vaapi": "硬件（VAAPI）",
+          "software": "软件（libx264）"
+        },
+        "maxUploadLabel": "可发送的最大文件（MB）",
+        "maxUploadHint": "更大的文件留在本机。填 0 表示全部发送。",
+        "operationsLabel": "发送到外部的工作",
+        "fallbackLabel": "代理不可用时改在本机处理",
+        "save": "保存转码器设置",
+        "refresh": "检查代理",
+        "status": {
+          "off": "已关闭",
+          "unknown": "未知",
+          "reachable": "代理可访问",
+          "unreachable": "代理无法访问",
+          "encoder": "编码器：{encoder}",
+          "device": "GPU：{device}",
+          "ffmpeg": "ffmpeg {version}"
+        },
+        "feedback": {
+          "saved": "转码器设置已保存。"
+        },
+        "errors": {
+          "load": "无法读取转码器设置。",
+          "save": "无法保存转码器设置。"
+        }
       }
     },
     "library": {
