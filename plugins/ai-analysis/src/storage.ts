@@ -1195,6 +1195,92 @@ export async function countPendingAnalyses(): Promise<number> {
   return Number(row?.n ?? 0);
 }
 
+/**
+ * One reading of one window of a provider's plan.
+ *
+ * The readings are kept so the rate the plan is being spent at survives a
+ * restart: without them the projection is gone until the plan has lost
+ * enough whole percentages for the rate to mean anything.
+ */
+export interface PlanReading {
+  /** The provider the plan belongs to. */
+  providerId: string;
+  /** Which window: the plan's interval, or its week. */
+  windowKind: string;
+  /** When the window started, in epoch milliseconds. */
+  windowStart: number;
+  /** When the window ends, in epoch milliseconds. */
+  windowEnd: number;
+  /** How much of the window was left, as a percentage. */
+  remainingPercent: number;
+  /** When the reading was taken, in epoch milliseconds. */
+  readAt: number;
+}
+
+/** Keeps one reading of one window. */
+export async function recordPlanReading(reading: PlanReading): Promise<void> {
+  await run(
+    `INSERT INTO ai_plan_readings
+       (provider_id, window_kind, window_start, window_end, remaining_percent, read_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      reading.providerId,
+      reading.windowKind,
+      reading.windowStart,
+      reading.windowEnd,
+      reading.remainingPercent,
+      reading.readAt
+    ]
+  );
+}
+
+/**
+ * Forgets the readings that are older than a moment.
+ *
+ * The readings are only useful to measure a rate over a stretch of a
+ * window, and the plan's longest window is a week. Anything older than
+ * that belongs to a window that has rolled over.
+ */
+export async function prunePlanReadings(beforeMs: number): Promise<void> {
+  await run(`DELETE FROM ai_plan_readings WHERE read_at < ?`, [beforeMs]);
+}
+
+/**
+ * The readings of a provider's windows, from the newest to the oldest.
+ *
+ * Only the ones of the last `sinceMs` are returned: an older reading
+ * belongs to a window that has rolled over, and comparing across the
+ * rollover would say the plan had been refilled.
+ */
+export async function loadPlanReadings(
+  providerId: string,
+  sinceMs: number
+): Promise<PlanReading[]> {
+  const rows = (await all(
+    `SELECT provider_id, window_kind, window_start, window_end, remaining_percent, read_at
+       FROM ai_plan_readings
+      WHERE provider_id = ? AND read_at >= ?
+      ORDER BY read_at DESC`,
+    [providerId, sinceMs]
+  )) as Array<{
+    provider_id: string;
+    window_kind: string;
+    window_start: number;
+    window_end: number;
+    remaining_percent: number;
+    read_at: number;
+  }>;
+
+  return rows.map((row) => ({
+    providerId: row.provider_id,
+    windowKind: row.window_kind,
+    windowStart: Number(row.window_start),
+    windowEnd: Number(row.window_end),
+    remainingPercent: Number(row.remaining_percent),
+    readAt: Number(row.read_at)
+  }));
+}
+
 /** Pull the next pending video and lock it as running. Returns null if queue empty. */
 export async function claimNextPending(): Promise<{ imageId: number; folderId: number; absolutePath: string; mtimeMs: number } | null> {
   const row = (await get(

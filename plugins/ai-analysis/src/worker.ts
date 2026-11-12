@@ -42,11 +42,15 @@ import { getCachedUsageStatus, type UsageStatus } from "./usage.js";
 import {
   evaluateSmartUsage,
   poolReading,
+  seedPlanHistory,
   type SmartProviderState
 } from "./lib/smart-usage.js";
 import {
   claimNextPending,
   countPendingAnalyses,
+  loadPlanReadings,
+  prunePlanReadings,
+  recordPlanReading,
   getDistinctFolderIdsWithPendingOrUnanalyzedVideos,
   getStatusSummary,
   markFailed,
@@ -83,6 +87,41 @@ let activeProviderId: string | null = null;
 
 /** When the queue depth was last read from the database. */
 let lastQueueDepthRead = 0;
+
+/**
+ * How far back the readings of a plan are looked for.
+ *
+ * It has to cover the plan's longest window, so the rate can be measured
+ * over a whole stretch of it.
+ */
+const PLAN_HISTORY_MS = 8 * 24 * 3_600_000;
+
+/**
+ * How often the readings that are too old are forgotten.
+ */
+const PLAN_PRUNE_MS = 3_600_000;
+
+/**
+ * The providers whose plan history has already been brought back from the
+ * database.
+ *
+ * The readings outlive the process, so the rate the plan is being spent at
+ * does not have to be measured from scratch after every restart.
+ */
+const planHistorySeeded = new Set<string>();
+
+/**
+ * When the plan was last read, per provider.
+ *
+ * The pool is read every couple of minutes and cached in between, so the
+ * worker sees the same reading many times. Only the new ones are kept:
+ * the readings are the history the rate is measured against, and filling it
+ * with copies of the same reading would say nothing.
+ */
+const lastPlanReadAt = new Map<string, number>();
+
+/** When the readings that are too old were last forgotten. */
+let lastPlanPrune = 0;
 let timer: NodeJS.Timeout | null = null;
 let log: PluginContext["log"] = ((msg) => console.log(`[ai-analysis] ${msg}`));
 
@@ -621,6 +660,57 @@ async function applyUsageLimit(): Promise<void> {
 }
 
 /**
+ * Brings back the readings of a provider's plan that were taken before
+ * this process started.
+ */
+async function seedPlanHistoryFromDatabase(providerId: string): Promise<void> {
+  try {
+    const readings = await loadPlanReadings(providerId, Date.now() - PLAN_HISTORY_MS);
+    if (readings.length === 0) return;
+
+    seedPlanHistory(
+      providerId,
+      readings.map((reading) => ({
+        windowKind: reading.windowKind,
+        windowStart: reading.windowStart,
+        windowEnd: reading.windowEnd,
+        remainingPercent: reading.remainingPercent,
+        readAt: reading.readAt
+      }))
+    );
+
+    log(`plan history restored: ${readings.length} reading(s) for ${providerId}`);
+  } catch (e) {
+    console.error(
+      '[ai-analysis] could not restore the plan history:',
+      e instanceof Error ? e.message : String(e)
+    );
+  }
+}
+
+/** Keeps the readings of a provider's plan, so the next process finds them. */
+async function recordPlanWindows(state: SmartProviderState): Promise<void> {
+  for (const window of state.windows) {
+    try {
+      await recordPlanReading({
+        providerId: state.providerId,
+        windowKind: window.kind,
+        windowStart: window.startTime,
+        windowEnd: window.endTime,
+        remainingPercent: window.remainingPercent,
+        readAt: Date.now()
+      });
+    } catch (e) {
+      console.error(
+        '[ai-analysis] could not keep the plan reading:',
+        e instanceof Error ? e.message : String(e)
+      );
+      return;
+    }
+  }
+}
+
+/**
  * Stop the queue when the plan is shared with somebody else, or when the
  * plan has no room left.
  *
@@ -637,6 +727,21 @@ async function applyUsageLimit(): Promise<void> {
  */
 async function applySharedPlan(): Promise<void> {
   const config = await readAiConfig();
+
+  // The readings that belong to a window that has rolled over are of no
+  // use, and the table would grow forever without this.
+  if (Date.now() - lastPlanPrune > PLAN_PRUNE_MS) {
+    lastPlanPrune = Date.now();
+    try {
+      await prunePlanReadings(Date.now() - PLAN_HISTORY_MS);
+    } catch (e) {
+      console.error(
+        '[ai-analysis] could not prune the plan readings:',
+        e instanceof Error ? e.message : String(e)
+      );
+    }
+  }
+
   const shared = config.providers.filter(
     (provider) => provider.usageLimits.enabled && provider.usageLimits.mode === "smart"
   );
@@ -649,10 +754,19 @@ async function applySharedPlan(): Promise<void> {
   const states = await evaluateSmartUsage(config.providers);
   smartStates = states;
 
-  // The plan is the limit the queue obeys, so its state is published as
-  // telemetry: what is left of each window, how long it lasts at the
-  // current rate, and whether somebody else is in the pool.
   for (const state of states.values()) {
+    // The first time a provider is seen, the readings that were taken
+    // before this process started are brought back: the rate is measured
+    // between two readings, and without them it has to be measured from
+    // scratch, which takes the plan losing whole percentages.
+    if (!planHistorySeeded.has(state.providerId)) {
+      planHistorySeeded.add(state.providerId);
+      await seedPlanHistoryFromDatabase(state.providerId);
+    }
+
+    // The plan is the limit the queue obeys, so its state is published as
+    // telemetry: what is left of each window, how long it lasts at the
+    // current rate, and whether somebody else is in the pool.
     recordPlanState({
       providerId: state.providerId,
       contended: state.contended,
@@ -663,6 +777,14 @@ async function applySharedPlan(): Promise<void> {
         rollsOverInSeconds: window.rollsOverInSeconds
       }))
     });
+
+    // And it is kept, so the next process finds it. Only when the plan
+    // was really read: the pool is cached for a couple of minutes, and
+    // the worker sees the same reading many times in between.
+    if (lastPlanReadAt.get(state.providerId) !== state.readAt) {
+      lastPlanReadAt.set(state.providerId, state.readAt);
+      await recordPlanWindows(state);
+    }
   }
 
   // A shared pool is the more specific reason, so it wins over an exhausted

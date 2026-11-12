@@ -256,6 +256,68 @@ export function resetSmartUsage(): void {
 }
 
 /**
+ * A reading of one window of a plan, as it was taken before this process
+ * started.
+ *
+ * The readings outlive the process so the rate survives a restart: the
+ * plan publishes whole percentages, and a rate that rests on one point
+ * says nothing.
+ */
+export interface StoredPlanReading {
+  /** Which window: the plan's interval, or its week. */
+  readonly windowKind: string;
+  /** When the window started, in epoch milliseconds. */
+  readonly windowStart: number;
+  /** When the window ends, in epoch milliseconds. */
+  readonly windowEnd: number;
+  /** How much of the window was left, as a percentage. */
+  readonly remainingPercent: number;
+  /** When the reading was taken, in epoch milliseconds. */
+  readonly readAt: number;
+}
+
+/**
+ * Puts the readings that were taken before this process started back into
+ * the history.
+ *
+ * They are what the rate is measured against, so without them the
+ * projection is gone until the plan has lost enough whole percentages for
+ * the rate to mean anything.
+ */
+export function seedPlanHistory(
+  providerId: string,
+  readings: readonly StoredPlanReading[]
+): void {
+  const history = readingHistory.get(providerId) ?? [];
+
+  for (const reading of readings) {
+    const state: PoolState = {
+      providerId,
+      ok: true,
+      error: null,
+      model: null,
+      readAt: reading.readAt,
+      windows: [
+        {
+          kind: reading.windowKind === 'weekly' ? 'weekly' : 'interval',
+          total: 0,
+          used: 0,
+          remainingPercent: reading.remainingPercent,
+          startTime: reading.windowStart,
+          endTime: reading.windowEnd
+        }
+      ]
+    };
+
+    history.push({ state, at: reading.readAt });
+  }
+
+  // The history is ordered from the oldest to the newest.
+  history.sort((a, b) => a.at - b.at);
+  readingHistory.set(providerId, history);
+}
+
+/**
  * How fast the plan is being spent, as percentage points per hour.
  *
  * The rate is measured between the oldest and the newest reading that
