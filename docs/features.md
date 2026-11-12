@@ -370,6 +370,10 @@ OTEL_SERVICE_NAME=foldergram
 The metric names, their labels and the available variables are listed in
 [Configuration](configuration.md#telemetry-opentelemetry).
 
+The full guide - the architecture, the exact Prometheus series names, the
+PromQL queries, and how to connect a Collector, Prometheus or Grafana - is in
+[Telemetry](telemetry.md).
+
 ## Theme, language, and local UI preferences
 
 The client also persists a few local browser preferences:

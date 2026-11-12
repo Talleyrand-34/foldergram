@@ -16,6 +16,7 @@ const productItems = [
 
 const referenceItems = [
   { text: 'API', link: '/api' },
+  { text: 'Telemetry', link: '/telemetry' },
   { text: 'Development', link: '/development' },
   { text: 'Troubleshooting', link: '/troubleshooting' },
   { text: 'FAQ', link: '/faq' }

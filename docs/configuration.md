@@ -345,9 +345,13 @@ make every series unique and blow up the backend. They are attributes of the
 ### Traces
 
 Every analysis opens an `ai.analysis` span with the media id, the folder id,
-the provider and the model. The stages are not separate spans, but their
-durations are in the `foldergram.ai.stage.duration` histogram, so the cost
-breakdown does not need a trace backend.
+the provider and the model. Every stage that ran opens a child span
+(`ai.stage.frames`, `ai.stage.transcribe`, `ai.stage.llm`) with its duration,
+so the cost breakdown can be read either from the histogram or from the
+trace.
+
+The full guide - how to connect a Collector, Prometheus or Grafana to this
+data - is in [Telemetry](telemetry.md).
 
 ## Concurrency tuning
 
