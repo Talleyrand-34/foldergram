@@ -502,8 +502,16 @@ export async function evaluateSmartUsage(
       // long it lasts. This is the projection the operator cannot get from
       // the percentage alone.
       const burnRate = burnRatePerHour(history, w.kind, now);
-      const hoursLeft =
+      let hoursLeft =
         burnRate && burnRate > 0 ? w.remainingPercent / burnRate : null;
+
+      // The window renews before that, and what is not spent is lost: the
+      // plan does not carry the remainder over. So the window that ends
+      // first is the limit, and the projection says so.
+      if (hoursLeft !== null) {
+        const untilRenewal = Math.max(0, (w.endTime - now) / 3_600_000);
+        hoursLeft = Math.min(hoursLeft, untilRenewal);
+      }
 
       windows.push({
         kind: w.kind,

@@ -253,13 +253,21 @@ describe('ai-analysis the plan wall', () => {
 });
 
 describe('ai-analysis the plan reading', () => {
-  /** A plan as the Token Plan publishes it: two windows, no counts. */
+  /** The clock the readings are taken at. */
+  const NOW = 1794519600000;
+
+  /**
+   * A plan as the Token Plan publishes it: two windows, no counts.
+   *
+   * The windows are built around the clock, so the one that renews is in
+   * the future — as it always is with a real plan.
+   */
   function planBody(intervalPercent: number, weeklyPercent: number) {
     return {
       model_remains: [
         {
-          start_time: 1794501600049,
-          end_time: 1794519600049,
+          start_time: NOW - 3 * 3_600_000,
+          end_time: NOW + 2 * 3_600_000,
           model_name: 'general',
           current_interval_total_count: 0,
           current_interval_usage_count: 0,
@@ -267,8 +275,8 @@ describe('ai-analysis the plan reading', () => {
           current_weekly_total_count: 0,
           current_weekly_usage_count: 0,
           current_weekly_remaining_percent: weeklyPercent,
-          weekly_start_time: 1794319215830,
-          weekly_end_time: 1794924015830
+          weekly_start_time: NOW - 24 * 3_600_000,
+          weekly_end_time: NOW + 6 * 24 * 3_600_000
         }
       ],
       base_resp: { status_code: 0, status_msg: 'success' }
@@ -303,7 +311,7 @@ describe('ai-analysis the plan reading', () => {
       }))
     );
 
-    const states = await evaluateSmartUsage([smartProvider()], Date.now());
+    const states = await evaluateSmartUsage([smartProvider()], NOW);
     const state = states.get('minimax')!;
 
     expect(state.probeOk).toBe(true);
@@ -334,7 +342,7 @@ describe('ai-analysis the plan reading', () => {
       })
     );
 
-    const start = Date.now();
+    const start = NOW;
     const first = await evaluateSmartUsage([smartProvider()], start);
     expect(first.get('minimax')?.windows.find((w) => w.kind === 'interval')?.hoursLeft).toBeNull();
 
@@ -344,8 +352,10 @@ describe('ai-analysis the plan reading', () => {
     const interval = second.get('minimax')?.windows.find((w) => w.kind === 'interval');
 
     // Ten points in half an hour: twenty points an hour, so the eighty
-    // that are left last four hours.
-    expect(interval?.hoursLeft).toBeCloseTo(4, 1);
+    // that are left would last four hours — but the window renews in two,
+    // and what is not spent is lost. The window is the limit, and by now
+    // it is an hour and a half away.
+    expect(interval?.hoursLeft).toBeCloseTo(1.5, 1);
   });
 
   it('does not measure a rate across a window that rolled over', () => {
