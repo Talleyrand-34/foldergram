@@ -525,39 +525,25 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
     );
   });
 
-  it('deduplicates concurrent requests for the same missing video preview', async () => {
+  it('never transcodes a video on demand, not even for concurrent requests', async () => {
     await reset('lazy');
 
     await maintenanceRepository.resetLibraryIndex();
     const folder = await folderRepository.upsert({ slug: 'videos', name: 'Videos', folderPath: 'videos' });
-    // A video that cannot be streamed directly still gets a generated preview.
+    // A video whose codec the scan could not confirm is still served from the
+    // original: the browser plays it and streams it with range requests.
     const video = await createIndexedMedia(folder, 'clip.mp4', 4000, 'preview', 5000);
-    let releaseGeneration: (() => void) | null = null;
-    const generationStarted = new Promise<void>((resolve) => {
-      generatePreviewDerivativeMock.mockImplementationOnce(async (_src: string, relativePath: string, _force = false, overrides?: { previewPath?: string }) => {
-        const previewPath = overrides?.previewPath ?? getPreviewRelativePath(relativePath, 'video');
-        const previewAbsolutePath = path.join(appConfig.previewsDir, previewPath);
-        resolve();
-        await new Promise<void>((generationResolve) => {
-          releaseGeneration = generationResolve;
-        });
-        await fs.mkdir(path.dirname(previewAbsolutePath), { recursive: true });
-        await fs.writeFile(previewAbsolutePath, 'video-preview:clip.mp4');
-      });
-    });
 
     const previewPath = `/${encodeRelativePath(video.preview_path)}`;
-    const firstRequest = dispatchRoute(lazyPreviewsRouter, previewPath);
-    await generationStarted;
-    const secondRequest = dispatchRoute(lazyPreviewsRouter, previewPath);
-    releaseGeneration?.();
+    const [firstResponse, secondResponse] = await Promise.all([
+      dispatchRoute(lazyPreviewsRouter, previewPath),
+      dispatchRoute(lazyPreviewsRouter, previewPath)
+    ]);
 
-    const [firstResponse, secondResponse] = await Promise.all([firstRequest, secondRequest]);
-    expect(firstResponse.statusCode).toBe(200);
-    expect(secondResponse.statusCode).toBe(200);
-    expect(firstResponse.body).toBe('video-preview:clip.mp4');
-    expect(secondResponse.body).toBe('video-preview:clip.mp4');
-    expect(generatePreviewDerivativeMock).toHaveBeenCalledOnce();
+    expect(firstResponse.redirectCode).toBe(302);
+    expect(secondResponse.redirectCode).toBe(302);
+    expect(firstResponse.redirectLocation).toBe(`/api/originals/${video.id}`);
+    expect(generatePreviewDerivativeMock).not.toHaveBeenCalled();
   });
 
   it('limits concurrent generation for different missing derivatives', async () => {
@@ -676,12 +662,13 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
     expect(response.body).toEqual({ message: 'Invalid derivative path.' });
   });
 
-  it('redirects a directly playable MP4 preview request to the original file', async () => {
+  it('redirects a video preview request to the original file instead of transcoding on demand', async () => {
     await reset('lazy');
 
     await maintenanceRepository.resetLibraryIndex();
     const folder = await folderRepository.upsert({ slug: 'direct', name: 'Direct', folderPath: 'direct' });
-    // mp4, original strategy, well under 24 MiB and 1500 px wide -> served as-is.
+    // The original is always playable: the browser streams it with range
+    // requests, whatever the codec is, so there is nothing to wait for.
     const video = await createIndexedMedia(folder, 'clip.mp4', 4000, 'original', 5000, {
       width: 1280,
       height: 720,
@@ -695,12 +682,11 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
     expect(generatePreviewDerivativeMock).not.toHaveBeenCalled();
   });
 
-  it('generates a preview for a video that is too wide to play directly', async () => {
+  it('redirects to the original even when the video is too wide to play directly', async () => {
     await reset('lazy');
 
     await maintenanceRepository.resetLibraryIndex();
     const folder = await folderRepository.upsert({ slug: 'wide', name: 'Wide', folderPath: 'wide' });
-    // 4K is over the 1500 px display width budget, so a preview is generated.
     const video = await createIndexedMedia(folder, 'clip.mp4', 4000, 'original', 5000, {
       width: 3840,
       height: 2160,
@@ -709,13 +695,12 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
 
     const response = await dispatchRoute(lazyPreviewsRouter, `/${encodeRelativePath(video.preview_path)}`);
 
-    expect(response.redirectCode).toBeNull();
-    expect(response.statusCode).toBe(200);
-    expect(response.body).toBe('video-preview:' + path.basename(video.preview_path));
-    expect(generatePreviewDerivativeMock).toHaveBeenCalledOnce();
+    expect(response.redirectCode).toBe(302);
+    expect(response.redirectLocation).toBe(`/api/originals/${video.id}`);
+    expect(generatePreviewDerivativeMock).not.toHaveBeenCalled();
   });
 
-  it('generates a preview for a video that is over the direct playback size budget', async () => {
+  it('redirects to the original even when the video is over the size budget', async () => {
     await reset('lazy');
 
     await maintenanceRepository.resetLibraryIndex();
@@ -728,8 +713,8 @@ describe.sequential('DERIVATIVE_MODE lazy behavior', () => {
 
     const response = await dispatchRoute(lazyPreviewsRouter, `/${encodeRelativePath(video.preview_path)}`);
 
-    expect(response.redirectCode).toBeNull();
-    expect(response.statusCode).toBe(200);
-    expect(generatePreviewDerivativeMock).toHaveBeenCalledOnce();
+    expect(response.redirectCode).toBe(302);
+    expect(response.redirectLocation).toBe(`/api/originals/${video.id}`);
+    expect(generatePreviewDerivativeMock).not.toHaveBeenCalled();
   });
 });

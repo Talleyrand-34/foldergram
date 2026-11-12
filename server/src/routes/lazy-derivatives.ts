@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 import express from 'express';
 import pLimit from 'p-limit';
 
@@ -12,7 +10,6 @@ import { resolveOriginalPath } from '../utils/media-paths.js';
 import { applyDerivativeErrorHeaders, applyProtectedMediaHeaders } from '../utils/media-response.js';
 import { normalizePath, safeJoin } from '../utils/path-utils.js';
 import { isNonemptyDerivative } from '../utils/derivative-cache.js';
-import { resolveVideoPlaybackSource } from '../utils/video-playback-policy.js';
 
 // In-memory map to deduplicate concurrent generation requests for the same derivative path.
 const inflightGenerations = new Map<string, Promise<void>>();
@@ -121,23 +118,17 @@ async function serveOrGenerate(
     return;
   }
 
-  // Videos that can be streamed straight from the original file are redirected
-  // there instead of being transcoded. Everything else falls through and gets a
-  // generated preview so remote viewers never download the raw file.
+  // A video whose preview is not on disk is served straight from the
+  // original: the browser can play the original whatever its codec is (a VP9
+  // in an MP4 container plays fine), and the original is streamed with range
+  // requests, so the user does not wait for a transcode.
+  //
+  // The preview is an optimisation for the deployments that generate it during
+  // the scan (eager mode), not a requirement for playback. Generating it here
+  // would block the request for the length of the transcode.
   if (kind === 'preview' && imageRecord.media_type === 'video') {
-    const playbackSource = resolveVideoPlaybackSource({
-      mediaType: imageRecord.media_type,
-      extension: imageRecord.extension || path.extname(imageRecord.relative_path),
-      fileSize: imageRecord.file_size,
-      width: imageRecord.width,
-      height: imageRecord.height,
-      playbackStrategy: imageRecord.playback_strategy
-    });
-
-    if (playbackSource === 'original') {
-      response.redirect(302, `/api/originals/${imageRecord.id}`);
-      return;
-    }
+    response.redirect(302, `/api/originals/${imageRecord.id}`);
+    return;
   }
 
   let generationPromise = inflightGenerations.get(absoluteOutputPath);
