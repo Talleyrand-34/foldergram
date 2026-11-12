@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   defaultSmartUsageLimits,
@@ -12,9 +12,12 @@ import {
   resolveProbeUrl
 } from '../../plugins/ai-analysis/src/lib/pool-probe.js';
 import {
+  burnRatePerHour,
   detectContention,
+  evaluateSmartUsage,
   PERCENTAGE_SAFETY_MARGIN,
-  poolIsSpent
+  poolIsSpent,
+  resetSmartUsage
 } from '../../plugins/ai-analysis/src/lib/smart-usage.js';
 import {
   noteProviderRequest,
@@ -246,6 +249,151 @@ describe('ai-analysis the plan wall', () => {
   it('gets out of the way when it may take nothing', () => {
     // A share of zero means "stop while somebody else is in the pool".
     expect(poolIsSpent(window(100), 0)).toBe(true);
+  });
+});
+
+describe('ai-analysis the plan reading', () => {
+  /** A plan as the Token Plan publishes it: two windows, no counts. */
+  function planBody(intervalPercent: number, weeklyPercent: number) {
+    return {
+      model_remains: [
+        {
+          start_time: 1794501600049,
+          end_time: 1794519600049,
+          model_name: 'general',
+          current_interval_total_count: 0,
+          current_interval_usage_count: 0,
+          current_interval_remaining_percent: intervalPercent,
+          current_weekly_total_count: 0,
+          current_weekly_usage_count: 0,
+          current_weekly_remaining_percent: weeklyPercent,
+          weekly_start_time: 1794319215830,
+          weekly_end_time: 1794924015830
+        }
+      ],
+      base_resp: { status_code: 0, status_msg: 'success' }
+    };
+  }
+
+  /** A provider that reads a plan, with a fast poll so the cache gets out of the way. */
+  function smartProvider() {
+    return provider({
+      apiKey: 'sk-test',
+      usageLimits: {
+        ...provider().usageLimits,
+        enabled: true,
+        mode: 'smart' as const,
+        smart: { ...defaultSmartUsageLimits(), pollMinutes: 1 }
+      }
+    });
+  }
+
+  afterEach(() => {
+    resetSmartUsage();
+    vi.unstubAllGlobals();
+  });
+
+  it('reports every window of the plan with what is left of it', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(planBody(87, 67))
+      }))
+    );
+
+    const states = await evaluateSmartUsage([smartProvider()], Date.now());
+    const state = states.get('minimax')!;
+
+    expect(state.probeOk).toBe(true);
+    expect(state.poolRemainingPercent).toBe(87);
+    expect(state.windows).toHaveLength(2);
+
+    const interval = state.windows.find((w) => w.kind === 'interval')!;
+    expect(interval.remainingPercent).toBe(87);
+    expect(interval.total).toBe(0);
+    expect(interval.rollsOverInSeconds).toBeGreaterThan(0);
+
+    const weekly = state.windows.find((w) => w.kind === 'weekly')!;
+    expect(weekly.remainingPercent).toBe(67);
+  });
+
+  it('projects how long the plan lasts at the rate it is being spent', async () => {
+    let call = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        call += 1;
+        // The first reading says 90 % left, the second 80 %.
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify(planBody(call === 1 ? 90 : 80, 90))
+        };
+      })
+    );
+
+    const start = Date.now();
+    const first = await evaluateSmartUsage([smartProvider()], start);
+    expect(first.get('minimax')?.windows.find((w) => w.kind === 'interval')?.hoursLeft).toBeNull();
+
+    // Half an hour later the plan has lost ten points.
+    const later = start + 30 * 60_000;
+    const second = await evaluateSmartUsage([smartProvider()], later);
+    const interval = second.get('minimax')?.windows.find((w) => w.kind === 'interval');
+
+    // Ten points in half an hour: twenty points an hour, so the eighty
+    // that are left last four hours.
+    expect(interval?.hoursLeft).toBeCloseTo(4, 1);
+  });
+
+  it('does not measure a rate across a window that rolled over', () => {
+    const history = [
+      {
+        state: {
+          providerId: 'minimax',
+          ok: true,
+          error: null,
+          model: 'general',
+          readAt: 0,
+          windows: [
+            {
+              kind: 'interval' as const,
+              total: 0,
+              used: 0,
+              remainingPercent: 50,
+              startTime: 1000,
+              endTime: 2000
+            }
+          ]
+        },
+        at: 0
+      },
+      {
+        state: {
+          providerId: 'minimax',
+          ok: true,
+          error: null,
+          model: 'general',
+          readAt: 0,
+          windows: [
+            {
+              kind: 'interval' as const,
+              total: 0,
+              used: 0,
+              remainingPercent: 100,
+              startTime: 2000,
+              endTime: 3000
+            }
+          ]
+        },
+        at: 3_600_000
+      }
+    ];
+
+    // The second reading is a new window: the plan was refilled, not spent.
+    expect(burnRatePerHour(history, 'interval', 3_600_000)).toBeNull();
   });
 });
 

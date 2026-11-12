@@ -33,6 +33,32 @@ import {
 import { providerRequestsBetween, providerRequestsSince } from "./request-counter.js";
 import { tokensBetween } from "../usage.js";
 
+/** One of the plan's windows, as the operator sees it. */
+export interface PlanWindowView {
+  /** Which window this is: the plan's interval, or its week. */
+  kind: "interval" | "weekly";
+  /** How much of the window is left, as a percentage. */
+  remainingPercent: number;
+  /** The plan's absolute allowance. Zero when the plan publishes none. */
+  total: number;
+  /** How much of it is used — by everybody. */
+  used: number;
+  /** When the window starts, in epoch milliseconds. */
+  startTime: number;
+  /** When the window ends, in epoch milliseconds. */
+  endTime: number;
+  /** How long until the window rolls over, in seconds. */
+  rollsOverInSeconds: number;
+  /**
+   * How long the window has left at the rate it is being spent, in hours.
+   *
+   * Null when the plan is not being spent, or when there is not enough
+   * history yet to tell how fast it is going. This is the number that
+   * answers "when does this run out".
+   */
+  hoursLeft: number | null;
+}
+
 /** What the smart mode decided about one provider. */
 export interface SmartProviderState {
   /** The provider this is about. */
@@ -66,6 +92,8 @@ export interface SmartProviderState {
    * absolute allowance it is the only one there is.
    */
   poolRemainingPercent: number | null;
+  /** Every window the plan publishes, with what is left of each. */
+  windows: PlanWindowView[];
   /** We have taken our share; the queue must stop until the window rolls. */
   blocked: boolean;
   /** When the watched window rolls over. */
@@ -177,6 +205,37 @@ function toleranceFor(drain: number, contentionPercent: number): number {
 /** The last reading of each pool, so the next one can be compared with it. */
 const lastReading = new Map<string, { state: PoolState; at: number }>();
 
+/**
+ * The recent readings of each pool, so the rate it is being spent at can be
+ * measured over more than one poll.
+ *
+ * The plan publishes whole percentages, so a single poll says almost
+ * nothing: two minutes of spending is a fraction of a point. The rate
+ * needs a longer stretch to mean anything.
+ */
+const readingHistory = new Map<string, { state: PoolState; at: number }[]>();
+
+/**
+ * How long the readings are kept.
+ *
+ * The plan publishes whole percentages, so a point is worth many minutes of
+ * spending: the rate can only be measured over a stretch long enough for
+ * the plan to have moved a whole point. Twelve hours covers a whole
+ * five-hour window, which is the shortest one the plan has.
+ */
+const HISTORY_MS = 12 * 3_600_000;
+
+/** How many readings are kept, so the memory stays bounded. */
+const HISTORY_ENTRIES = 400;
+
+/**
+ * The shortest stretch the rate is measured over.
+ *
+ * Below this the numbers are noise: the plan's granularity alone is worth
+ * more than the difference.
+ */
+const MINIMUM_RATE_SPAN_MS = 15 * 60_000;
+
 /** The cached reading of each pool, so the endpoint is not polled too often. */
 const cachedReading = new Map<string, { state: PoolState; at: number }>();
 
@@ -184,6 +243,55 @@ const cachedReading = new Map<string, { state: PoolState; at: number }>();
 export function resetSmartUsage(): void {
   lastReading.clear();
   cachedReading.clear();
+  readingHistory.clear();
+}
+
+/**
+ * How fast the plan is being spent, as percentage points per hour.
+ *
+ * The rate is measured between the oldest and the newest reading that
+ * belong to the same window: a window that rolled over is a different
+ * window, and comparing across the rollover would say the plan was
+ * refilled.
+ *
+ * Null when the plan is not being spent, or when there is not enough
+ * history yet.
+ */
+export function burnRatePerHour(
+  history: { state: PoolState; at: number }[],
+  kind: "interval" | "weekly",
+  now: number
+): number | null {
+  const current = history[history.length - 1];
+  if (!current) return null;
+
+  const window = current.state.windows.find((w) => w.kind === kind);
+  if (!window) return null;
+
+  // The oldest reading that is still in the same window. The history is
+  // ordered from the oldest to the newest, so the first match is it.
+  let oldest: { state: PoolState; at: number } | null = null;
+  for (const reading of history) {
+    const w = reading.state.windows.find((entry) => entry.kind === kind);
+    if (w && w.startTime === window.startTime) {
+      oldest = reading;
+      break;
+    }
+  }
+
+  if (!oldest) return null;
+
+  const oldestWindow = oldest.state.windows.find((w) => w.kind === kind);
+  if (!oldestWindow) return null;
+
+  const span = now - oldest.at;
+  if (span < MINIMUM_RATE_SPAN_MS) return null;
+
+  const hours = span / 3_600_000;
+  const drop = oldestWindow.remainingPercent - window.remainingPercent;
+  if (drop <= 0) return null;
+
+  return drop / hours;
 }
 
 /**
@@ -249,6 +357,7 @@ export async function evaluateSmartUsage(
         ourUsage: 0,
         cap: 0,
         poolRemainingPercent: null,
+        windows: [],
         blocked: false,
         resetsAt: null,
         readAt: state.readAt
@@ -272,12 +381,27 @@ export async function evaluateSmartUsage(
         ourUsage: 0,
         cap: 0,
         poolRemainingPercent: null,
+        windows: [],
         blocked: false,
         resetsAt: null,
         readAt: state.readAt
       });
       continue;
     }
+
+    // The reading joins the history: the rate the plan is being spent at
+    // is measured between the oldest and the newest reading of the same
+    // window.
+    const history = readingHistory.get(provider.id) ?? [];
+    history.push({ state, at: now });
+    while (history.length > HISTORY_ENTRIES) {
+      history.shift();
+    }
+    // The readings older than the window are of no use.
+    while (history.length > 1 && now - history[0].at > HISTORY_MS) {
+      history.shift();
+    }
+    readingHistory.set(provider.id, history);
 
     // What we sent since the window started.
     const ourUsage = providerRequestsSince(provider.id, window.startTime);
@@ -349,6 +473,8 @@ export async function evaluateSmartUsage(
     // always knows when it does.
     let resetsAt = new Date(window.endTime).toISOString();
 
+    const windows: PlanWindowView[] = [];
+
     for (const w of state.windows) {
       let spent: boolean;
 
@@ -371,6 +497,24 @@ export async function evaluateSmartUsage(
           resetsAt = new Date(w.endTime).toISOString();
         }
       }
+
+      // How fast this window is being spent, and what that means for how
+      // long it lasts. This is the projection the operator cannot get from
+      // the percentage alone.
+      const burnRate = burnRatePerHour(history, w.kind, now);
+      const hoursLeft =
+        burnRate && burnRate > 0 ? w.remainingPercent / burnRate : null;
+
+      windows.push({
+        kind: w.kind,
+        remainingPercent: w.remainingPercent,
+        total: w.total,
+        used: w.used,
+        startTime: w.startTime,
+        endTime: w.endTime,
+        rollsOverInSeconds: Math.max(0, Math.round((w.endTime - now) / 1000)),
+        hoursLeft
+      });
     }
 
     lastReading.set(provider.id, { state, at: now });
@@ -391,6 +535,9 @@ export async function evaluateSmartUsage(
       // What the plan says is left of the watched window. For a plan that
       // publishes no absolute allowance this is the only number there is.
       poolRemainingPercent: window.remainingPercent,
+      // Every window the plan publishes, with what is left of each and how
+      // long it lasts at the rate it is going.
+      windows,
       // Over our share of the pool, or out of room in one of its windows:
       // the queue waits for the window to roll.
       blocked,
