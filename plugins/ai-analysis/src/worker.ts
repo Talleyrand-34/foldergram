@@ -28,6 +28,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
 import type { IndexedVideoAsset, PluginContext } from "../../../server/dist/plugins/types.js";
+import { recordAiPause, recordAiQueueDepth } from "../../../server/dist/observability/telemetry.js";
 import { analyzeVideo } from "./analyzer.js";
 import {
   getRecanonicalizationState,
@@ -315,6 +316,7 @@ export function pauseWorker(reason?: string): WorkerPauseState {
   manualReason = reason && reason.trim() ? reason.trim().slice(0, 200) : null;
   if (!wasPaused) {
     pausedAt = Date.now();
+    recordAiPause({ providerId: null, cause: "manual" });
     log(`paused by operator${manualReason ? `: ${manualReason}` : ""}`);
   }
   return getPauseState();
@@ -366,6 +368,7 @@ export function enqueueAnalysis(asset: IndexedVideoAsset): void {
   // The worker loop checks the DB, so we don't need to keep an in-memory queue
   // — but we keep one for fast pickup on first iteration.
   queue.push(asset);
+  recordAiQueueDepth(1);
   if (timer === null) {
     // Start the loop on first enqueue.
     timer = setInterval(tick, POLL_INTERVAL_MS);
@@ -451,6 +454,7 @@ export function noteRateLimited(retryAfterSec: number): void {
   if (!isPaused()) pausedAt = Date.now();
   rateLimitedUntil = Date.now() + Math.max(1, retryAfterSec) * 1000 + 1000;
   lastRetryAfterSec = retryAfterSec;
+  recordAiPause({ providerId: null, cause: "rate_limit" });
   log(`rate-limited upstream: pausing until ${new Date(rateLimitedUntil).toISOString()} (retry-after=${retryAfterSec}s)`);
 }
 
@@ -487,6 +491,7 @@ export async function noteUpstreamUnavailable(err: UpstreamUnavailableError, ima
   const wasPaused = upstreamPaused;
   upstreamPaused = true;
   upstreamError = err.message;
+  recordAiPause({ providerId: null, cause: "upstream" });
   if (!wasPaused && !manualPaused) pausedAt = Date.now();
   log(`upstream unavailable — queue paused, id=${imageId} back to pending: ${err.message}`);
   log("fix the model/API key, then resume the queue with POST /api/plugins/ai-analysis/resume");
@@ -644,6 +649,7 @@ async function tick(): Promise<void> {
       // A pause can be raised while we work (upstream fault, operator).
       if (isPaused()) return;
       const asset = queue.shift()!;
+      recordAiQueueDepth(-1);
       try {
         await processOne(asset);
       } catch (e) {

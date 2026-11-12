@@ -26,6 +26,7 @@ import { authService } from "./services/auth-service.js";
 import { pluginHost } from "./plugins/host.js";
 import { scannerService } from "./services/scanner-service.js";
 import { watcherService } from "./services/watcher-service.js";
+import { shutdownTelemetry, startTelemetry } from "./observability/telemetry.js";
 
 function logServerReady(): void {
   if (!appConfig.isDevelopment) {
@@ -50,6 +51,10 @@ function logServerReady(): void {
 }
 
 async function bootstrap(): Promise<void> {
+  // The telemetry pipeline is started before anything else so the first
+  // requests are already covered. Without an exporter this is a no-op.
+  startTelemetry();
+
   await initRepositories();
   await authService.initialize();
   await scannerService.initialize();
@@ -99,6 +104,8 @@ async function bootstrap(): Promise<void> {
   async function shutdown(signal: string): Promise<void> {
     log.info(`Received ${signal}, shutting down`);
     await watcherService.stop();
+    // Flush the last batch of metrics and traces before the process goes.
+    await shutdownTelemetry();
     server.close(() => process.exit(0));
   }
 

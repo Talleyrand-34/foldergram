@@ -24,6 +24,14 @@
     "build:check": "tsc -p tsconfig.json --noEmit && tsc -p ../plugins/ai-analysis/tsconfig.json --noEmit && tsc -p ../plugins/instagram-sync/tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/context-async-hooks": "^3.1.1",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.301.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.301.1",
+    "@opentelemetry/resources": "^3.1.1",
+    "@opentelemetry/sdk-metrics": "^3.1.1",
+    "@opentelemetry/sdk-trace": "^3.1.1",
+    "@opentelemetry/semantic-conventions": "^1.45.0",
     "chokidar": "^4.0.3",
     "dbmate": "^2.38.1",
     "dotenv": "^18.0.10",

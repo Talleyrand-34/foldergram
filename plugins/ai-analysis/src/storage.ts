@@ -26,6 +26,7 @@
 
 import { databaseManager } from "../../../server/dist/db/database.js";
 import type { IDbDriver } from "../../../server/dist/db/driver/types.js";
+import { recordAiUsage } from "../../../server/dist/observability/telemetry.js";
 
 export type AiStatus = "pending" | "running" | "ok" | "failed" | "skipped";
 
@@ -1273,6 +1274,24 @@ export interface AnalysisEventInput {
 /** Persist one analysis event. Failures to record are swallowed so a stats outage
  *  can't block the actual analysis pipeline. */
 export async function recordAnalysisEvent(input: AnalysisEventInput): Promise<void> {
+  // The telemetry mirror of the event: the numbers leave the app through
+  // OpenTelemetry instead of staying in a chart inside it.
+  recordAiUsage({
+    providerId: input.providerId ?? null,
+    model: input.timings.model || null,
+    status: input.eventType === 'failed' ? 'failed' : 'completed',
+    imageId: input.imageId,
+    folderId: input.folderId,
+    durationMs: input.timings.durationMs,
+    frameExtractMs: input.timings.frameExtractMs,
+    audioExtractMs: input.timings.audioExtractMs,
+    whisperMs: input.timings.whisperMs,
+    llmMs: input.timings.llmMs,
+    inputTokens: input.timings.inputTokens,
+    outputTokens: input.timings.outputTokens,
+    errorKind: input.errorKind ?? null
+  });
+
   try {
     const nowExpr = await nowLiteral();
     await run(

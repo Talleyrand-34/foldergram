@@ -302,6 +302,53 @@ PUBLIC_DEMO_MODE=0
 CSRF_TRUSTED_ORIGINS=
 ```
 
+## Telemetry (OpenTelemetry)
+
+The application can report how it consumes its AI resources as OpenTelemetry
+metrics and traces, so the numbers land in whatever the operator already runs -
+an OpenTelemetry Collector, Prometheus, Grafana, a hosted backend - instead of
+in a chart inside the app.
+
+Telemetry is **off** unless one of the variables below is set. With no
+exporter configured the cost is a function call and nothing leaves the
+machine.
+
+| Variable | Meaning |
+| --- | --- |
+| `TELEMETRY_ENABLED=1` | Turns telemetry on explicitly. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint for both metrics and traces, for example `http://collector:4318`. |
+| `OTEL_METRICS_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint for the metrics only. |
+| `OTEL_TRACES_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint for the traces only. |
+| `OTEL_SERVICE_NAME` | Service name in the backend. Defaults to `foldergram`. |
+| `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes, for example `env=production,host=box`. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | How often the metrics are pushed, in milliseconds. Defaults to `15000`. |
+
+The standard OpenTelemetry variables are honoured, so an existing Collector
+configuration works without changes.
+
+### Metrics
+
+| Metric | Type | Labels | What it answers |
+| --- | --- | --- | --- |
+| `foldergram.ai.analyses` | counter | `provider`, `model`, `status` | How many analyses ran, and with which provider and model. |
+| `foldergram.ai.analysis.duration` | histogram (ms) | `provider`, `model`, `status` | How long an analysis takes. |
+| `foldergram.ai.stage.duration` | histogram (ms) | `provider`, `stage` | Where the time goes: `frames`, `audio`, `transcribe`, `llm`. |
+| `foldergram.ai.tokens` | counter | `provider`, `model`, `direction` | How many tokens were spent, input and output. This is the number to watch for the budget. |
+| `foldergram.ai.errors` | counter | `provider`, `error_kind` | Which failures happen and how often. |
+| `foldergram.ai.queue.depth` | up-down counter | - | How much work is waiting. |
+| `foldergram.ai.pauses` | counter | `provider`, `cause` | Why the queue stopped: `manual`, `upstream`, `rate_limit`, `usage_limit`, `upstream_quota`, `shared_plan`. |
+
+The media and folder ids are deliberately **not** metric labels: they would
+make every series unique and blow up the backend. They are attributes of the
+`ai.analysis` trace instead, where they belong.
+
+### Traces
+
+Every analysis opens an `ai.analysis` span with the media id, the folder id,
+the provider and the model. The stages are not separate spans, but their
+durations are in the `foldergram.ai.stage.duration` histogram, so the cost
+breakdown does not need a trace backend.
+
 ## Concurrency tuning
 
 `SCAN_DISCOVERY_CONCURRENCY` affects filesystem stat and metadata discovery work.
