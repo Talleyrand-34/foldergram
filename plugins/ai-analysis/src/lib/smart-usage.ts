@@ -320,13 +320,22 @@ export function seedPlanHistory(
 /**
  * How fast the plan is being spent, as percentage points per hour.
  *
- * The rate is measured between the oldest and the newest reading that
- * belong to the same window: a window that rolled over is a different
- * window, and comparing across the rollover would say the plan was
- * refilled.
+ * Two measurements, and the recent one wins:
  *
- * Null when the plan is not being spent, or when there is not enough
- * history yet.
+ *  - the **recent rate**, between the oldest and the newest reading of the
+ *    same window. It says how fast the plan is going now, which is what
+ *    answers "when does this run out". A window that rolled over is a
+ *    different window, and comparing across the rollover would say the
+ *    plan had been refilled.
+ *  - the **average over the window**, when there is no history to measure
+ *    the recent rate with. The plan is whole when its window opens — the
+ *    quota returns to the tier's allowance — so the window's own start is
+ *    a reference that is always there. It is diluted by the stretches in
+ *    which the plan was not being spent, which is why it is the second
+ *    choice.
+ *
+ * Null when the plan is not being spent, or when neither measurement has
+ * enough signal to mean anything.
  */
 export function burnRatePerHour(
   history: { state: PoolState; at: number }[],
@@ -350,19 +359,27 @@ export function burnRatePerHour(
     }
   }
 
-  if (!oldest) return null;
+  if (oldest) {
+    const oldestWindow = oldest.state.windows.find((w) => w.kind === kind);
+    const span = now - oldest.at;
 
-  const oldestWindow = oldest.state.windows.find((w) => w.kind === kind);
-  if (!oldestWindow) return null;
+    if (oldestWindow && span >= MINIMUM_RATE_SPAN_MS) {
+      const drop = oldestWindow.remainingPercent - window.remainingPercent;
+      if (drop >= MINIMUM_RATE_POINTS) {
+        return drop / (span / 3_600_000);
+      }
+    }
+  }
 
-  const span = now - oldest.at;
-  if (span < MINIMUM_RATE_SPAN_MS) return null;
+  // No usable recent rate: the average over the window, from the moment
+  // it opened.
+  const elapsed = now - window.startTime;
+  if (elapsed < MINIMUM_RATE_SPAN_MS) return null;
 
-  const hours = span / 3_600_000;
-  const drop = oldestWindow.remainingPercent - window.remainingPercent;
+  const drop = 100 - window.remainingPercent;
   if (drop < MINIMUM_RATE_POINTS) return null;
 
-  return drop / hours;
+  return drop / (elapsed / 3_600_000);
 }
 
 /**

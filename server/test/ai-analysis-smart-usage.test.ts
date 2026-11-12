@@ -344,7 +344,10 @@ describe('ai-analysis the plan reading', () => {
 
     const start = NOW;
     const first = await evaluateSmartUsage([smartProvider()], start);
-    expect(first.get('minimax')?.windows.find((w) => w.kind === 'interval')?.hoursLeft).toBeNull();
+    // With no history there is no recent rate, but the window's own start
+    // is a reference: the plan was whole when it opened. Ten points in
+    // three hours, and the window renews in two.
+    expect(first.get('minimax')?.windows.find((w) => w.kind === 'interval')?.hoursLeft).toBeCloseTo(2, 1);
 
     // Half an hour later the plan has lost ten points.
     const later = start + 30 * 60_000;
@@ -408,9 +411,10 @@ describe('ai-analysis the plan reading', () => {
     expect(burnRatePerHour(history, 'interval', 3_600_000)).toBeCloseTo(20, 1);
   });
 
-  it('does not measure a rate that rests on a single point', () => {
-    // The plan publishes whole percentages, so a rate measured over one
-    // point can be wrong by a hundred per cent. It is not published.
+  it('does not measure a recent rate that rests on a single point', () => {
+    // The plan publishes whole percentages, so a recent rate measured over
+    // one point can be wrong by a hundred per cent. It is not measured —
+    // the average over the window is used instead.
     const history = [
       {
         state: {
@@ -454,7 +458,9 @@ describe('ai-analysis the plan reading', () => {
       }
     ];
 
-    expect(burnRatePerHour(history, 'interval', 3_600_000)).toBeNull();
+    // The window opened an hour ago at a hundred, and it is at eighty-nine:
+    // eleven points in an hour.
+    expect(burnRatePerHour(history, 'interval', 3_600_000)).toBeCloseTo(11, 0);
   });
 
   it('does not measure a rate across a window that rolled over', () => {
