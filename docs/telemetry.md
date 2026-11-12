@@ -242,10 +242,19 @@ is the current depth and not a growing sum.
   limit the queue obeys.**
 - **`foldergram_ai_plan_time_left_hours`** - how long each window lasts at
   the rate it is being spent. It is what is left divided by how fast the
-  plan is going, which is the answer to "when does this run out". It is
-  published only once there is enough history to measure the rate: the
-  plan publishes whole percentages, so a point is worth many minutes of
-  spending.
+  plan is going, which is the answer to "when does this run out". The
+  window that renews first is the limit, because what is not spent is
+  lost: the plan does not carry the remainder over.
+
+  The rate is measured two ways, and the recent one wins: between the
+  oldest and the newest reading of the same window, and — when there is
+  no history to measure that with — the average over the whole window,
+  from the moment it opened (the plan is whole then). The readings are
+  kept in the database, so the rate survives a restart.
+
+  It is published only when the measurement has enough signal: the plan
+  publishes whole percentages, so a rate that rests on one point can be
+  wrong by a hundred per cent.
 - **`foldergram_ai_plan_rolls_over_in_seconds`** - how long until each
   window rolls over and the plan is whole again.
 - **`foldergram_ai_plan_contended`** - whether somebody else is using the

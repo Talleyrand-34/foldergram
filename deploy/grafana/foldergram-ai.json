@@ -3678,7 +3678,7 @@
             "uid": "PAE45454D0EDB9216"
           },
           "editorMode": "code",
-          "expr": "sum(rate(foldergram_ai_tokens_total{provider=~\"$provider\"}[1h])) / clamp_min(sum(rate(foldergram_ai_analyses_total{provider=~\"$provider\"}[1h])), 0.0001)",
+          "expr": "sum(rate(foldergram_ai_tokens_total{provider=~\"$provider\"}[1h])) / clamp_min(sum(rate(foldergram_ai_analyses_total{provider=~\"$provider\", status=\"completed\"}[1h])), 0.0001)",
           "legendFormat": "tokens",
           "range": false,
           "refId": "A",

@@ -96,9 +96,12 @@ def main():
         row_y = row["gridPos"]["y"]
         stat_y = row_y + 1
 
+        # Solo los análisis completados: uno que falló no gastó tokens,
+        # y contarlo como si hubiera gastado abarata el análisis.
         expr = (
             'sum(rate(foldergram_ai_tokens_total{provider=~"$provider"}[1h]))'
-            ' / clamp_min(sum(rate(foldergram_ai_analyses_total{provider=~"$provider"}[1h])), 0.0001)'
+            ' / clamp_min(sum(rate(foldergram_ai_analyses_total'
+            '{provider=~"$provider", status="completed"}[1h])), 0.0001)'
         )
 
         panel = stat(
