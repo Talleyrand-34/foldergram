@@ -231,13 +231,64 @@ Two things are not settled, and both are measurable in an afternoon:
 Both are answered by the same thing: a couple of days of the plan's
 readings next to our own token counts, which the telemetry already keeps.
 
+## What has been done already, and what it measured
+
+Three of the steps are implemented and measured on the production host.
+
+### The pool instead of the batch - done
+
+A pool of workers, not a batch: a worker that finishes takes the next
+video at once. The measurements:
+
+| | before | after |
+| --- | --- | --- |
+| Analyses per minute | 4.4 - 7 | 16 - 32 |
+| Median analysis | 14.5 s | 7 - 11 s |
+
+### The database was the real bottleneck - done
+
+The profiling dashboard (`foldergram-profiling`) pointed at the database:
+`images` was eating 1.6 seconds of query time per second, and the updates
+the AI pipeline does on every analysis took 710 ms each.
+
+Two causes:
+
+1. **The cache was the default.** `shared_buffers` was 160 MB for a
+   511 MB database on a machine with 13 GB free. Every random read was a
+   disk read, and the disk here has a random latency of about 145 ms. With
+   the database in memory the same `UPDATE` takes 4 ms.
+2. **The table has 34 indexes.** A change to `ai_status` is not a HOT
+   update, so every `UPDATE` rewrites the row's 34 index entries: 41
+   buffers, 330 KB of random writes, for a row that changes two columns.
+
+The first is fixed (`docs/deployment.md` has the settings). The second is
+the next piece of work, and it is the biggest one left: moving the AI
+status out of `images` into its own small table would make those updates
+HOT, and the plan's cost would fall by a factor of eight.
+
+### The ramp - done, with the brake
+
+The workers walk towards what the room allows: with two workers and a room
+of two and a half, five would fit. They move one step at a time, because
+the room is measured against the current consumption and going straight to
+the target overshoots.
+
+The room is smoothed before it is used: the plan publishes whole
+percentages, so the raw ratio wanders by a few tenths and the queue would
+change the number of workers every few minutes for no reason.
+
+At the moment the room says 2.2 and the queue runs ten workers, which is
+the cap. The remaining limits are the machine's disk (24 % of its time
+waiting for I/O) and the provider, which has started answering 429.
+
 ## The order to do it in
 
-1. **The pool instead of the batch.** Twice the throughput, no extra plan
-   usage, no new concepts. It is also the safest change: it cannot make
-   the plan run out any sooner.
-2. **The cap from the machine.** Six workers instead of three. Watch the
-   CPU and the 429s.
-3. **The ramp.** The window's pace instead of the magic number, with the
-   weekly brake. This is the part that needs the scale measured, so it
-   comes last, and it comes with the brake that bounds it.
+1. **The pool instead of the batch.** Done: 4.4 - 7 became 16 - 32
+   analyses per minute, with the same plan usage.
+2. **The database in memory.** Done: `shared_buffers` 4 GB. The same
+   `UPDATE` went from 710 ms to 4 ms.
+3. **Fewer index writes per analysis.** The next one: the AI status out of
+   `images`, so the updates become HOT. It is worth about 8x on the
+   database cost.
+4. **The cap and the brake.** The cap is ten workers; the weekly window
+   is the brake and it has not fired. Both are in place.

@@ -232,6 +232,19 @@ function toleranceFor(drain: number, contentionPercent: number): number {
 const lastReading = new Map<string, { state: PoolState; at: number }>();
 
 /**
+ * The smoothed room ratio of each provider.
+ *
+ * The plan publishes whole percentages, so the ratio that comes out of it
+ * wanders by a few tenths around its true value. The queue follows the
+ * smoothed one: the noise would make it change the number of workers every
+ * few minutes for no reason, and the room really does move slowly.
+ */
+const smoothedRoomRatio = new Map<string, number>();
+
+/** How much of the new reading counts when the room is smoothed. */
+const ROOM_RATIO_SMOOTHING = 0.4;
+
+/**
  * The recent readings of each pool, so the rate it is being spent at can be
  * measured over more than one poll.
  *
@@ -279,6 +292,7 @@ export function resetSmartUsage(): void {
   lastReading.clear();
   cachedReading.clear();
   readingHistory.clear();
+  smoothedRoomRatio.clear();
 }
 
 /**
@@ -699,6 +713,19 @@ export async function evaluateSmartUsage(
 
     lastReading.set(provider.id, { state, at: now });
 
+    // The room is smoothed: the plan publishes whole percentages, and the
+    // noise in the ratio would make the queue change the number of workers
+    // every few minutes for no reason at all.
+    let smoothed = paceRatio;
+    if (paceRatio !== null) {
+      const previous = smoothedRoomRatio.get(provider.id);
+      smoothed =
+        previous === undefined
+          ? paceRatio
+          : previous * (1 - ROOM_RATIO_SMOOTHING) + paceRatio * ROOM_RATIO_SMOOTHING;
+      smoothedRoomRatio.set(provider.id, smoothed);
+    }
+
     result.set(provider.id, {
       providerId: provider.id,
       label: provider.label,
@@ -720,7 +747,7 @@ export async function evaluateSmartUsage(
       windows,
       // How much faster the plan could be spent before the window that
       // renews soonest runs out before it renews.
-      roomRatio: paceRatio,
+      roomRatio: smoothed,
       // The brake: the worst of the other windows.
       brakeRatio: paceRatio === brakeRatio ? null : brakeRatio,
       // Over our share of the pool, or out of room in one of its windows:

@@ -178,6 +178,26 @@ For TLS connections to a managed database, use `sslmode=require` or `sslmode=ver
 
 For typical home or small-team use, SQLite is simpler and equally capable.
 
+### Give PostgreSQL room to cache
+
+The default `shared_buffers` is 160 MB. On a library of a hundred thousand
+media items the database is half a gigabyte, and with a cache that small
+every random read is a disk read: an `UPDATE` of one row took 710 ms warm
+and six seconds cold, and the AI analysis queue could not get past four
+analyses a minute even with the plan allowing twenty times more.
+
+Put the database in memory. On the production host (a 14 GB machine, a
+511 MB database):
+
+```ini
+# /etc/postgresql/17/main/postgresql.conf
+shared_buffers = 4GB
+effective_cache_size = 8GB
+```
+
+The same `UPDATE` then takes 4 ms, and the analysis takes 7 seconds instead
+of 14.
+
 ---
 
 ## Reverse proxy
