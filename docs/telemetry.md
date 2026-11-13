@@ -394,6 +394,9 @@ The number of workers changes slowly, and only when the room has said the
 same thing twice in a row, so the queue does not breathe in and out with
 every reading. `AI_ANALYSIS_MAX_PARALLEL` caps it (three by default).
 
+What that buys today, and what it does not, is worked out in
+[Using the whole plan](plan-pacing-proposal.md).
+
 ## Reading the data with PromQL
 
 The examples below assume Prometheus is scraping the Collector on
