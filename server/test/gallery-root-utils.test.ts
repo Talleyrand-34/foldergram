@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { countSupportedRootMediaFiles } from '../src/utils/gallery-root-utils.js';
+import { countSupportedRootMediaFiles, resetRootMediaCount } from '../src/utils/gallery-root-utils.js';
 
 describe('gallery root media detection', () => {
   let tempRoot = '';
@@ -27,10 +27,29 @@ describe('gallery root media detection', () => {
       fs.writeFile(path.join(tempRoot, 'album-one', 'nested-photo.jpg'), 'e')
     ]);
 
-    expect(countSupportedRootMediaFiles(tempRoot)).toBe(2);
+    resetRootMediaCount();
+    expect(await countSupportedRootMediaFiles(tempRoot)).toBe(2);
   });
 
   it('returns zero when the gallery root does not exist', async () => {
-    expect(countSupportedRootMediaFiles(path.join(tempRoot, 'missing-root'))).toBe(0);
+    resetRootMediaCount();
+    expect(await countSupportedRootMediaFiles(path.join(tempRoot, 'missing-root'))).toBe(0);
+  });
+
+  it('keeps the count for a while instead of reading the folder again', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'insta-gallery-root-count-'));
+    try {
+      await fs.writeFile(path.join(root, 'photo-1.jpg'), 'a');
+      resetRootMediaCount();
+
+      expect(await countSupportedRootMediaFiles(root)).toBe(1);
+
+      // The file is gone, but the count is kept: the status page asks for it
+      // on every poll, and the gallery root is on a network disk.
+      await fs.rm(path.join(root, 'photo-1.jpg'));
+      expect(await countSupportedRootMediaFiles(root)).toBe(1);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 });

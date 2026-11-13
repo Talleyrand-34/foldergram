@@ -35,7 +35,7 @@ import {
   toConfigView
 } from "./configStore.js";
 import { countDomains } from "./storage.js";
-import { getUsageStatus, invalidateUsageCache } from "./usage.js";
+import { getCachedUsageStatus, getUsageStatus, invalidateUsageCache } from "./usage.js";
 import { listProviderModels } from "./lib/provider-models.js";
 import { buildProviderHeaders, providerUrl } from "./lib/litellm-client.js";
 
@@ -258,7 +258,10 @@ export function registerRoutes(ctx: PluginContext): void {
           res.json({
             config: toConfigView(config),
             errors: validateAiConfig(config),
-            usage: await getUsageStatus(config.providers),
+            // The usage is kept for a while: it is a sum over the events of
+            // the last hours, and a page that is read twice in a minute does
+            // not need the sum twice.
+            usage: await getCachedUsageStatus(config.providers),
             smart: getSmartStates()
           });
         } catch (e) {

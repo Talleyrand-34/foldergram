@@ -1971,7 +1971,9 @@ export const galleryService = {
       libraryIndex: {
         rebuildRequired,
         reason: rebuildRequired ? 'gallery_root_changed' : null,
-        ignoredRootMediaCount: storageState.libraryAvailable ? countSupportedRootMediaFiles(appConfig.galleryRoot) : 0
+        ignoredRootMediaCount: storageState.libraryAvailable
+          ? await countSupportedRootMediaFiles(appConfig.galleryRoot)
+          : 0
       },
       preferences: {
         defaultLocale,
@@ -2069,7 +2071,9 @@ export const galleryService = {
         lastSuccessfulGalleryRoot,
         legacyDerivativeMigrationPending: pendingDerivativeMigrationRows > 0,
         pendingDerivativeMigrationRows,
-        ignoredRootMediaCount: storageState.libraryAvailable ? countSupportedRootMediaFiles(currentGalleryRoot) : 0
+        ignoredRootMediaCount: storageState.libraryAvailable
+          ? await countSupportedRootMediaFiles(currentGalleryRoot)
+          : 0
       },
       preferences: {
         defaultLocale,
