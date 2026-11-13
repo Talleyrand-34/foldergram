@@ -1202,7 +1202,15 @@
       "failed": "失败",
       "failures": "将在下次扫描时重试",
       "hint": "使用每个文件夹或每个帖子的按钮将更多视频加入队列。默认禁用自动排队。",
-      "error": "无法加载 AI 状态。"
+      "error": "无法加载 AI 状态。",
+      "queueRunning": "队列正在工作",
+      "queuePaused": "队列已停止",
+      "queueStart": "启动队列",
+      "queueStop": "停止队列",
+      "queueStarted": "队列重新开始工作。",
+      "queueStopped": "队列已停止。正在分析的视频会完成。",
+      "queueLiftsItself": "此暂停会自动恢复。",
+      "queueFailed": "无法更改队列。"
     },
     "folderSummary": {
       "heading": "此文件夹的 AI 知识",

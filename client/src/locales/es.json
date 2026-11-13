@@ -1202,7 +1202,15 @@
       "failed": "Fallidos",
       "failures": "se reintentarán en el próximo escaneo",
       "hint": "Usa los botones por carpeta o por publicación para encolar más videos. El auto-queue está desactivado por defecto.",
-      "error": "No se pudo cargar el estado de IA."
+      "error": "No se pudo cargar el estado de IA.",
+      "queueRunning": "La cola está trabajando",
+      "queuePaused": "La cola está parada",
+      "queueStart": "Arrancar la cola",
+      "queueStop": "Parar la cola",
+      "queueStarted": "La cola vuelve a trabajar.",
+      "queueStopped": "La cola está parada. Los vídeos que ya se estaban analizando terminan.",
+      "queueLiftsItself": "Esta pausa se levanta sola.",
+      "queueFailed": "No se pudo cambiar la cola."
     },
     "folderSummary": {
       "heading": "Conocimiento de IA de esta carpeta",

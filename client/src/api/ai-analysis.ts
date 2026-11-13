@@ -33,6 +33,24 @@ export interface AiStatusSummary {
   totalVideos: number;
   byStatus: Record<string, number>;
   oldestPendingAt: string | null;
+  /** The state of the worker that analyses the queue. */
+  worker?: AiWorkerState;
+}
+
+/** Why the queue is stopped, and whether an operator has to lift it. */
+export interface AiWorkerState {
+  /** True while the worker claims nothing new. */
+  paused: boolean;
+  /** What caused the pause; null when it is running. */
+  cause: string | null;
+  /** A sentence explaining it, in the language the operator reads. */
+  message: string | null;
+  /** When the pause lifts by itself; null when only an operator can lift it. */
+  resumeAt: string | null;
+  /** True when only the operator can lift the pause. */
+  requiresAction: boolean;
+  /** When the pause started. */
+  pausedAt: string | null;
 }
 
 export interface AiImageStatus {
@@ -156,6 +174,8 @@ export interface AiCanonicalizerStage {
 export interface AiPipelineConfig {
   frameCount: number;
   framePositions: number[];
+  /** The widest a frame is sent at, in pixels. */
+  frameWidth?: number;
   extractAudio: boolean;
   writeCaption: boolean;
   updateKnowledgeGraph: boolean;
@@ -490,6 +510,25 @@ export interface VideoStats {
 
 export async function fetchAiStatus(): Promise<AiStatusSummary> {
   return await requestJson<AiStatusSummary>('/api/plugins/ai-analysis/status');
+}
+
+/**
+ * Stops the queue: the worker claims nothing new.
+ *
+ * The videos already being worked on finish; the queue keeps them for
+ * later.
+ */
+export async function pauseAiAnalysis(): Promise<AiStatusSummary> {
+  return await requestJson<AiStatusSummary>('/api/plugins/ai-analysis/pause', {
+    method: 'POST',
+  });
+}
+
+/** Starts the queue again, after it was stopped. */
+export async function resumeAiAnalysis(): Promise<AiStatusSummary> {
+  return await requestJson<AiStatusSummary>('/api/plugins/ai-analysis/resume', {
+    method: 'POST',
+  });
 }
 
 export interface AiSearchParams {

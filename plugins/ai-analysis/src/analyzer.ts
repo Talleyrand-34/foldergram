@@ -138,7 +138,8 @@ export async function analyzeVideo(asset: IndexedVideoAsset): Promise<AnalysisRe
       await extractFramesAtPositions(
         asset.absolutePath,
         pipeline.framePositions,
-        framesDir
+        framesDir,
+        pipeline.frameWidth
       );
       t.frameExtractMs = Date.now() - t0;
       analysisTrace.stage("frames", t.frameExtractMs);
@@ -482,18 +483,94 @@ Return ONLY the JSON object. No prose, no markdown.`;
   }
 }
 
-function parseJsonLenient<T>(raw: string): T | null {
+/**
+ * Reads the JSON the model answered with, being forgiving about how.
+ *
+ * The model usually answers with the JSON it was asked for, but it does
+ * not always: it may wrap it in a code fence, add a word before it, or -
+ * when it thinks too long and hits the output limit - leave it cut in the
+ * middle of a sentence. A truncated answer is still worth most of its
+ * content: the summary and the domains are usually at the beginning.
+ *
+ * So the text is read in three steps: as it is, then the object inside it,
+ * and then - if it was cut off - with the open string and braces closed.
+ */
+export function parseJsonLenient<T>(raw: string): T | null {
   if (!raw) return null;
-  const stripped = raw.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+  const stripped = raw
+    .replace(/^```(?:json)?\s*\n?/i, "")
+    .replace(/\n?```\s*$/i, "")
+    .trim();
+
   try {
     return JSON.parse(stripped) as T;
   } catch {
-    const match = stripped.match(/\{[\s\S]*\}/);
-    if (!match) return null;
+    // Not JSON on its own: the object may be inside a longer answer.
+  }
+
+  const match = stripped.match(/\{[\s\S]*\}/);
+  if (match) {
     try {
       return JSON.parse(match[0]) as T;
     } catch {
-      return null;
+      // Not a complete object either.
     }
   }
+
+  const repaired = repairTruncatedJson(stripped);
+  if (repaired === null) return null;
+
+  try {
+    return JSON.parse(repaired) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Closes a JSON object that was cut off.
+ *
+ * The answer was stopped in the middle of a string or an object: the open
+ * parts are closed, and a dangling comma is dropped. What came before the
+ * cut is kept, which is most of the answer: the summary and the domains
+ * are at the beginning, and they are what the answer is for.
+ */
+function repairTruncatedJson(raw: string): string | null {
+  const start = raw.indexOf("{");
+  if (start < 0) return null;
+
+  let repaired = raw.slice(start);
+
+  // Where does the text end: inside a string, or between values?
+  let inString = false;
+  let escaped = false;
+
+  for (const char of repaired) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      if (inString) escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+    }
+  }
+
+  // Close the string that was left open.
+  if (inString) repaired += '"';
+
+  // Drop the comma that would be dangling after it.
+  repaired = repaired.replace(/,\s*$/, "");
+
+  // Close the brackets and braces that were left open.
+  const openBrackets = (repaired.match(/\[/g) ?? []).length - (repaired.match(/\]/g) ?? []).length;
+  const openBraces = (repaired.match(/\{/g) ?? []).length - (repaired.match(/\}/g) ?? []).length;
+
+  repaired += "]".repeat(Math.max(0, openBrackets));
+  repaired += "}".repeat(Math.max(0, openBraces));
+
+  return repaired;
 }

@@ -257,10 +257,20 @@ export async function extractSampleFrames(
  * divides the timeline into equal slices. Seeking per frame can, and it
  * costs one short ffmpeg process per frame.
  */
+/**
+ * The widest a frame is sent at.
+ *
+ * The cost of a frame in tokens goes with its area, so this is the
+ * biggest lever on how fast the queue can go: the provider counts the
+ * tokens of every minute, and the frames are most of them.
+ */
+export const DEFAULT_FRAME_WIDTH = 1280;
+
 export async function extractFramesAtPositions(
   videoPath: string,
   positions: number[],
   outDir?: string,
+  maxWidth: number = DEFAULT_FRAME_WIDTH,
 ): Promise<string[]> {
   const dir = outDir ?? (await mkTempDir("aip-frames-"));
   const info = await probeVideo(videoPath);
@@ -285,7 +295,7 @@ export async function extractFramesAtPositions(
         "-frames:v",
         "1",
         "-vf",
-        "scale='min(1280,iw)':-2",
+        `scale='min(${Math.max(64, Math.round(maxWidth))},iw)':-2`,
         "-q:v",
         "3",
         outPath,

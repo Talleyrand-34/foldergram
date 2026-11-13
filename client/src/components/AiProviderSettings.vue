@@ -913,7 +913,7 @@ const canonicalizationBusy = ref(false);
 const providers = ref<ProviderForm[]>([]);
 
 const stages = reactive({
-  vision: { providerId: '', model: '', maxTokens: 2000, timeoutMs: 120000, jsonMode: true },
+  vision: { providerId: '', model: '', maxTokens: 4000, timeoutMs: 120000, jsonMode: true },
   audio: { providerId: '', model: '', timeoutMs: 300000, language: null as string | null },
   embed: { providerId: '', model: '', enabled: false, timeoutMs: 60000 },
   canonicalizer: { enabled: true, url: '', timeoutMs: 30000, verify: true },
@@ -922,6 +922,7 @@ const stages = reactive({
 const pipeline = reactive({
   frameCount: 3,
   framePositions: [0.1, 0.5, 0.95] as number[],
+  frameWidth: 1280,
   extractAudio: true,
   writeCaption: true,
   updateKnowledgeGraph: true,
@@ -999,6 +1000,7 @@ function applyConfig(config: AiAnalysisConfig) {
 
   pipeline.frameCount = config.pipeline.frameCount;
   pipeline.framePositions = [...config.pipeline.framePositions];
+  pipeline.frameWidth = config.pipeline.frameWidth ?? 1280;
   pipeline.extractAudio = config.pipeline.extractAudio;
   pipeline.writeCaption = config.pipeline.writeCaption;
   pipeline.updateKnowledgeGraph = config.pipeline.updateKnowledgeGraph;

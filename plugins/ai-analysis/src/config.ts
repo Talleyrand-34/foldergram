@@ -225,6 +225,14 @@ export interface AiPipelineStageConfig {
   frameCount: number;
   /** Where to sample them, as a fraction of the duration (0..1). */
   framePositions: number[];
+  /**
+   * The widest a frame is sent at, in pixels.
+   *
+   * The cost of a frame in tokens goes with its area, so this is the
+   * biggest lever on how fast the queue can go: the provider counts the
+   * tokens of every minute it gives, and the frames are most of them.
+   */
+  frameWidth: number;
   /** Extract audio and transcribe it. */
   extractAudio: boolean;
   /** Write the AI summary into the post's caption when it is empty. */
@@ -269,6 +277,11 @@ export const MIN_FRAMES = 1;
 export const MAX_FRAMES = 12;
 export const MIN_TIMEOUT_MS = 1_000;
 export const MAX_TIMEOUT_MS = 30 * 60_000;
+/** The narrowest a frame may be sent at: too small and the model sees nothing. */
+export const MIN_FRAME_WIDTH = 256;
+/** The widest a frame may be sent at. */
+export const MAX_FRAME_WIDTH = 4096;
+
 export const MIN_TOKENS = 128;
 export const MAX_TOKENS = 64_000;
 /** The share of a budget a window may use, as a percentage. */
@@ -304,7 +317,10 @@ export function defaultAiConfig(): AiAnalysisConfig {
       vision: {
         providerId: DEFAULT_PROVIDER_ID,
         model: "",
-        maxTokens: 2000,
+        // The model sometimes thinks at length before answering, and the
+        // answer was being cut in the middle: the JSON never closed and
+        // seven per cent of the calls were thrown away.
+        maxTokens: 4000,
         timeoutMs: 120_000,
         jsonMode: true
       },
@@ -330,6 +346,7 @@ export function defaultAiConfig(): AiAnalysisConfig {
     pipeline: {
       frameCount: 3,
       framePositions: defaultFramePositions(3),
+      frameWidth: 1280,
       extractAudio: true,
       writeCaption: true,
       updateKnowledgeGraph: true,
@@ -637,6 +654,7 @@ export function normalizeAiConfig(raw: unknown): AiAnalysisConfig {
     pipeline: {
       frameCount,
       framePositions: normalizeFramePositions(rawPipeline.framePositions, frameCount),
+      frameWidth: clampInt(rawPipeline.frameWidth, MIN_FRAME_WIDTH, MAX_FRAME_WIDTH, fallback.pipeline.frameWidth),
       extractAudio: toBoolean(rawPipeline.extractAudio, fallback.pipeline.extractAudio),
       writeCaption: toBoolean(rawPipeline.writeCaption, fallback.pipeline.writeCaption),
       updateKnowledgeGraph: toBoolean(

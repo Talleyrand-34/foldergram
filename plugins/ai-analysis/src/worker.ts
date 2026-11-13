@@ -548,7 +548,16 @@ export function noteRateLimited(retryAfterSec: number): void {
   rateLimitedUntil = Date.now() + Math.max(1, retryAfterSec) * 1000 + 1000;
   lastRetryAfterSec = retryAfterSec;
   recordAiPause({ providerId: activeProviderId, cause: "rate_limit" });
-  log(`rate-limited upstream: pausing until ${new Date(rateLimitedUntil).toISOString()} (retry-after=${retryAfterSec}s)`);
+
+  // The provider is saying no. Half the pace, straight away, and the
+  // queue will creep back up if it keeps saying yes.
+  rateLimitWorkers = Math.max(1, Math.floor(rateLimitWorkers / 2));
+  lastRateLimitRecovery = Date.now();
+
+  log(
+    `rate-limited upstream: pausing until ${new Date(rateLimitedUntil).toISOString()} ` +
+    `(retry-after=${retryAfterSec}s) — down to ${rateLimitWorkers} video(s) at a time`
+  );
 }
 
 /**
@@ -921,6 +930,28 @@ const PARALLEL_HYSTERESIS = 3;
 /** The number of workers right now. */
 let parallelAnalyses = 1;
 
+/** The pace the provider is willing to give, before it says otherwise. */
+const DEFAULT_PARALLEL = 10;
+
+/**
+ * The number of workers the provider is willing to give.
+ *
+ * The provider answers 429 when it is being pushed too hard, and it does
+ * not publish the limit. So the queue learns it: every 429 halves the
+ * number of workers, and every stretch without one lets it creep back up.
+ * That is the same dance TCP does with its congestion window, and it finds
+ * the pace the provider is willing to give.
+ *
+ * The plan's room is the ceiling; this is the pace under it.
+ */
+let rateLimitWorkers = DEFAULT_PARALLEL;
+
+/** When the pace was last allowed to creep back up. */
+let lastRateLimitRecovery = 0;
+
+/** How long without a 429 it takes to try one more worker. */
+const RATE_LIMIT_RECOVERY_MS = 5 * 60_000;
+
 /** How many readings in a row have said the same thing. */
 let parallelAgreement = 0;
 
@@ -990,6 +1021,15 @@ function analysisConcurrency(): number {
     1,
     Math.min(maxParallelAnalyses(), parallelAnalyses + step)
   );
+
+  // The provider has the last word: a 429 halves the pace, and the pace
+  // creeps back up if the provider keeps saying yes.
+  if (Date.now() - lastRateLimitRecovery > RATE_LIMIT_RECOVERY_MS) {
+    rateLimitWorkers = Math.min(maxParallelAnalyses(), rateLimitWorkers + 1);
+    lastRateLimitRecovery = Date.now();
+  }
+
+  wanted = Math.min(wanted, rateLimitWorkers);
 
   // The brake: the plan would be spent faster than its window allows.
   if (brake !== null && brake < BRAKE_RATIO) {

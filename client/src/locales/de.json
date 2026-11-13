@@ -1202,7 +1202,15 @@
       "failed": "Fehlgeschlagen",
       "failures": "wird beim nächsten Scan erneut versucht",
       "hint": "Nutze die Schaltflächen je Ordner oder je Beitrag, um weitere Videos einzureihen. Automatisches Einreihen ist standardmäßig aus.",
-      "error": "Der KI-Status konnte nicht geladen werden."
+      "error": "Der KI-Status konnte nicht geladen werden.",
+      "queueRunning": "Die Warteschlange arbeitet",
+      "queuePaused": "Die Warteschlange ist angehalten",
+      "queueStart": "Warteschlange starten",
+      "queueStop": "Warteschlange anhalten",
+      "queueStarted": "Die Warteschlange arbeitet wieder.",
+      "queueStopped": "Die Warteschlange ist angehalten. Die Videos, die gerade analysiert werden, laufen fertig.",
+      "queueLiftsItself": "Diese Pause hebt sich von selbst auf.",
+      "queueFailed": "Die Warteschlange konnte nicht geändert werden."
     },
     "folderSummary": {
       "heading": "KI-Wissen zu diesem Ordner",

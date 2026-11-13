@@ -52,6 +52,38 @@
       </p>
     </div>
 
+    <!-- Whether the queue is working, and the button that stops it. -->
+    <div
+      class="flex items-center gap-[0.5rem] flex-wrap px-3 py-2 rounded-[0.55rem] border border-border bg-surface-alt"
+    >
+      <span class="i-fluent-text-recognition-24-regular w-[1rem] h-[1rem]" aria-hidden="true" />
+      <span class="text-[0.8rem] font-semibold">
+        {{ queuePaused ? t('ai.status.queuePaused') : t('ai.status.queueRunning') }}
+      </span>
+      <span v-if="queuePaused && queueCause" class="text-[0.78rem] text-muted">
+        · {{ queueCause }}
+      </span>
+      <button
+        type="button"
+        class="inline-flex items-center gap-[0.35rem] px-3 py-[0.5rem] text-[0.78rem] font-semibold leading-none rounded-[0.55rem] border border-border bg-surface-hover text-text hover:bg-border transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+        :disabled="queueBusy"
+        @click="toggleQueue"
+      >
+        <span
+          :class="queuePaused ? 'i-fluent-play-16-filled' : 'i-fluent-pause-16-filled'"
+          class="w-[0.95rem] h-[0.95rem]"
+          aria-hidden="true"
+        />
+        {{ queuePaused ? t('ai.status.queueStart') : t('ai.status.queueStop') }}
+      </button>
+      <span v-if="queueResult" class="text-[0.78rem] text-muted italic">
+        {{ queueResult }}
+      </span>
+      <span v-if="queuePaused && !queueNeedsOperator" class="text-[0.76rem] text-muted italic">
+        {{ t('ai.status.queueLiftsItself') }}
+      </span>
+    </div>
+
     <div class="flex items-center gap-[0.5rem] flex-wrap">
       <button
         type="button"
@@ -105,6 +137,8 @@ import { useI18n } from 'vue-i18n';
 import {
   fetchAiStatus,
   fetchRateLimit,
+  pauseAiAnalysis,
+  resumeAiAnalysis,
   triggerAutoBackfill,
   type AiStatusSummary,
   type RateLimitState,
@@ -120,6 +154,23 @@ const lastUpdated = ref<number | null>(null);
 const rateLimit = ref<RateLimitState | null>(null);
 const backfillBusy = ref(false);
 const backfillResult = ref<string | null>(null);
+const queueBusy = ref(false);
+const queueResult = ref<string | null>(null);
+
+/** True when the worker is not claiming anything new. */
+const queuePaused = computed(() => status.value?.worker?.paused === true);
+
+/** Why the queue is stopped, when it is. */
+const queueCause = computed(() => status.value?.worker?.cause ?? null);
+
+/**
+ * Whether the operator is the one who has to lift the pause.
+ *
+ * The queue lifts itself when the pause is the provider's fault - a rate
+ * limit, an upstream fault, the plan running out of room. A pause an
+ * operator asked for only they can lift.
+ */
+const queueNeedsOperator = computed(() => status.value?.worker?.requiresAction === true);
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -138,6 +189,26 @@ async function refresh() {
     error.value = e instanceof Error ? e.message : t('ai.status.error');
   } finally {
     loading.value = false;
+  }
+}
+
+/**
+ * Stops the queue, or starts it again.
+ *
+ * The queue is the operator's to stop: the videos already being worked on
+ * finish, and the rest wait.
+ */
+async function toggleQueue() {
+  queueBusy.value = true;
+  queueResult.value = null;
+  try {
+    const r = queuePaused.value ? await resumeAiAnalysis() : await pauseAiAnalysis();
+    status.value = r;
+    queueResult.value = queuePaused.value ? t('ai.status.queueStopped') : t('ai.status.queueStarted');
+  } catch (e) {
+    queueResult.value = e instanceof Error ? e.message : t('ai.status.queueFailed');
+  } finally {
+    queueBusy.value = false;
   }
 }
 

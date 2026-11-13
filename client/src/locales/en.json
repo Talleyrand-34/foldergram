@@ -1202,7 +1202,15 @@
       "failed": "Failed",
       "failures": "will retry on next scan",
       "hint": "Use the per-folder or per-post buttons to enqueue more videos. Auto-queue is off by default.",
-      "error": "Could not load AI status."
+      "error": "Could not load AI status.",
+      "queueRunning": "The queue is working",
+      "queuePaused": "The queue is stopped",
+      "queueStart": "Start the queue",
+      "queueStop": "Stop the queue",
+      "queueStarted": "The queue is working again.",
+      "queueStopped": "The queue is stopped. The videos already being worked on finish.",
+      "queueLiftsItself": "This pause lifts by itself.",
+      "queueFailed": "The queue could not be changed."
     },
     "folderSummary": {
       "heading": "AI knowledge of this folder",
