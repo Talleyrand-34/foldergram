@@ -1030,7 +1030,8 @@ export const imageRepository = {
           playback_strategy = excluded.playback_strategy,
           is_deleted = 0,
           deleted_at = NULL,
-          updated_at = excluded.updated_at`
+          updated_at = excluded.updated_at
+        RETURNING *`
       : `INSERT INTO images (
           folder_id, asset_key, filename, extension, relative_path, absolute_path, file_size, width, height, display_orientation,
           media_type, mime_type, duration_ms, is_animated, checksum_or_fingerprint, mtime_ms, first_seen_at, sort_timestamp, taken_at, taken_at_source, exif_json,
@@ -1061,9 +1062,12 @@ export const imageRepository = {
           playback_strategy = excluded.playback_strategy,
           is_deleted = 0,
           deleted_at = NULL,
-          updated_at = excluded.updated_at`;
+          updated_at = excluded.updated_at
+        RETURNING *`;
 
-    await driver.execute(sql, [
+    // The row comes back with the statement that wrote it: reading it again
+    // would be a second round trip for a row that is already known.
+    const row = await driver.queryOne<ImageRecord>(sql, [
       input.folderId,
       input.assetKey ?? null,
       input.filename,
@@ -1090,11 +1094,14 @@ export const imageRepository = {
       input.playbackStrategy ?? 'preview',
       nowIso()
     ]);
-    return (await this.getByRelativePath(input.relativePath)) as ImageRecord;
+
+    return row as ImageRecord;
   },
 
   async refreshIndexed(input: RefreshIndexedImageInput): Promise<ImageRecord> {
-    await getDriver().execute(
+    // The row comes back with the statement that wrote it: reading it again
+    // would be a second round trip for a row that is already known.
+    const row = await getDriver().queryOne<ImageRecord>(
       `UPDATE images
       SET
         folder_id = ?,
@@ -1121,7 +1128,8 @@ export const imageRepository = {
         is_deleted = 0,
         deleted_at = NULL,
         updated_at = ?
-      WHERE relative_path = ?`,
+      WHERE relative_path = ?
+      RETURNING *`,
       [
         input.folderId,
         input.assetKey ?? null,
@@ -1148,7 +1156,8 @@ export const imageRepository = {
         input.relativePath
       ]
     );
-    return (await this.getByRelativePath(input.relativePath)) as ImageRecord;
+
+    return row as ImageRecord;
   },
 
   async markDeleted(relativePath: string): Promise<void> {
