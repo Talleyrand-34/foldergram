@@ -112,6 +112,15 @@ export interface SmartProviderState {
    */
   roomRatio: number | null;
   /**
+   * How fast the plan is being spent, in percentage points an hour.
+   *
+   * This is the whole plan, ours and whoever else is on it. Comparing it
+   * with our own pace is how the queue tells a rate limit that is ours
+   * from one that belongs to the other user: if the plan keeps draining at
+   * the same speed after we slow down, it was not us.
+   */
+  drainPointsPerHour: number | null;
+  /**
    * The worst ratio of the windows that do not decide the pace.
    *
    * It is a brake, not a target: the long budget of the plan belongs
@@ -293,6 +302,39 @@ export function resetSmartUsage(): void {
   cachedReading.clear();
   readingHistory.clear();
   smoothedRoomRatio.clear();
+}
+
+/**
+ * How fast a window is being spent, in percentage points an hour.
+ *
+ * It is measured over the recent readings rather than over the whole
+ * window: the question is what the plan is doing *now*, and the window's
+ * average answers a different one.
+ */
+export function planDrainRatePerHour(
+  history: { state: PoolState; at: number }[],
+  kind: "interval" | "weekly",
+  now: number
+): number | null {
+  const readings = history
+    .map((reading) => ({
+      at: reading.at,
+      window: reading.state.windows.find((w) => w.kind === kind)
+    }))
+    .filter((reading): reading is { at: number; window: PoolWindow } => !!reading.window);
+
+  if (readings.length < 3) return null;
+
+  // The oldest reading of the recent stretch.
+  const first = readings[0];
+  const last = readings[readings.length - 1];
+  const hours = (last.at - first.at) / 3_600_000;
+  if (hours <= 0) return null;
+
+  const drop = first.window.remainingPercent - last.window.remainingPercent;
+  if (drop <= 0) return 0;
+
+  return drop / hours;
 }
 
 /**
@@ -520,6 +562,7 @@ export async function evaluateSmartUsage(
         windows: [],
         roomRatio: null,
         brakeRatio: null,
+        drainPointsPerHour: null,
         blocked: false,
         resetsAt: null,
         readAt: state.readAt
@@ -546,6 +589,7 @@ export async function evaluateSmartUsage(
         windows: [],
         roomRatio: null,
         brakeRatio: null,
+        drainPointsPerHour: null,
         blocked: false,
         resetsAt: null,
         readAt: state.readAt
@@ -642,6 +686,7 @@ export async function evaluateSmartUsage(
     // one that is lost when it renews.
     let paceRatio: number | null = null;
     let paceWindowEnd = Number.POSITIVE_INFINITY;
+    let paceDrain: number | null = null;
     // The others are only a brake.
     let brakeRatio: number | null = null;
 
@@ -704,6 +749,7 @@ export async function evaluateSmartUsage(
       if (w.endTime < paceWindowEnd) {
         paceWindowEnd = w.endTime;
         paceRatio = ratio;
+        paceDrain = planDrainRatePerHour(history, w.kind, now);
       }
 
       if (brakeRatio === null || ratio < brakeRatio) {
@@ -748,6 +794,8 @@ export async function evaluateSmartUsage(
       // How much faster the plan could be spent before the window that
       // renews soonest runs out before it renews.
       roomRatio: smoothed,
+      // How fast the plan is going, ours and the other user's together.
+      drainPointsPerHour: paceDrain,
       // The brake: the worst of the other windows.
       brakeRatio: paceRatio === brakeRatio ? null : brakeRatio,
       // Over our share of the pool, or out of room in one of its windows:

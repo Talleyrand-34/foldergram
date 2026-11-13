@@ -621,6 +621,72 @@
       "fieldConfig": {
         "defaults": {
           "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 13
+      },
+      "id": 215,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PAE45454D0EDB9216"
+          },
+          "editorMode": "code",
+          "expr": "max by (provider) (foldergram_ai_plan_drain_rate{provider=~\"$provider\"})",
+          "legendFormat": "points/h",
+          "range": false,
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "The plan is being spent at",
+      "type": "stat",
+      "description": "How fast the plan is being spent, by everybody on it. When it does not slow down after the queue slows down, the rate limit belongs to the other user."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PAE45454D0EDB9216"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
             "mode": "palette-classic"
           },
           "custom": {
@@ -864,7 +930,7 @@
       "gridPos": {
         "h": 8,
         "w": 8,
-        "x": 0,
+        "x": 4,
         "y": 13
       },
       "id": 211,
@@ -908,8 +974,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 16,
-        "x": 8,
+        "w": 12,
+        "x": 12,
         "y": 13
       },
       "id": 212,
@@ -3968,5 +4034,5 @@
   "timezone": "browser",
   "title": "Foldergram - AI",
   "uid": "foldergram-ai",
-  "version": 7
+  "version": 8
 }

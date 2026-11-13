@@ -29,6 +29,7 @@ OWNED = [
     "The window resets in",
     "The room there is",
     "Videos at a time",
+    "The plan is being spent at",
     "What is left of the plan",
     "How long it lasts at this rate",
     "Is somebody else in the plan",
@@ -168,6 +169,7 @@ def build():
     contended = 'foldergram_ai_plan_contended{provider=~"$provider"}'
     rolls_over = "foldergram_ai_plan_rolls_over_in_seconds"
     room = 'foldergram_ai_plan_room_ratio{provider=~"$provider"}'
+    drain = 'foldergram_ai_plan_drain_rate{provider=~"$provider"}'
     concurrency = "foldergram_ai_analysis_concurrency"
 
     def match(metric, window):
@@ -215,6 +217,9 @@ def build():
              steps=[{"color": "green", "value": None}, {"color": "orange", "value": 2},
                     {"color": "red", "value": 4}],
              description="How many videos the queue analyses at the same time. It follows the room the plan leaves."),
+        stat(215, "The plan is being spent at", f"max by (provider) ({drain})",
+             "points/h", 0, 13, decimals=2,
+             description="How fast the plan is being spent, by everybody on it. When it does not slow down after the queue slows down, the rate limit belongs to the other user."),
         timeseries(209, "What is left of the plan",
                    [target(f'{plan}{{provider=~"$provider"}}', "{{provider}} - {{window}}")],
                    8, 5, unit="percent",
@@ -224,7 +229,7 @@ def build():
                    16, 5, unit="h",
                    description="What is left of each window divided by how fast it is being spent. Null while the plan is not being spent."),
         timeseries(211, "Is somebody else in the plan",
-                   [target(contended, "{{provider}}")], 0, 13,
+                   [target(contended, "{{provider}}")], 4, 13,
                    description="The plan is shared: the pool moved while nothing of ours was being sent. The queue yields half while that is so."),
         text(212, "How to read this row",
              "The **plan is the limit**, not the token budget in the settings.\n\n"
@@ -233,7 +238,7 @@ def build():
              "- *Room* is how much faster the plan could be spent without running out before its window renews. Above 1 the queue works harder; below 1 it would exhaust the plan early and idle until the window rolls over.\n"
              "- *Videos at a time* is the queue following that room.\n"
              "- *Shared* means somebody else is in the plan: the queue takes only its share while that is so.",
-             8, 13, w=16),
+             12, 13, w=12),
     ]
 
     return panels

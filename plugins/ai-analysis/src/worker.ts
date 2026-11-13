@@ -551,8 +551,22 @@ export function noteRateLimited(retryAfterSec: number): void {
 
   // The provider is saying no. Half the pace, straight away, and the
   // queue will creep back up if it keeps saying yes.
-  rateLimitWorkers = Math.max(1, Math.floor(rateLimitWorkers / 2));
+  //
+  // Unless the last review found that the limit belongs to the other
+  // user: then the queue keeps its pace, because slowing down would not
+  // change anything - the plan would keep filling up all the same.
+  if (rateLimitIsOurs) {
+    rateLimitWorkers = Math.max(1, Math.floor(rateLimitWorkers / 2));
+  }
   lastRateLimitRecovery = Date.now();
+
+  // Remember what the plan was doing when it happened: if it keeps
+  // draining at the same speed after we slow down, the limit was not ours.
+  rateLimitSuspect = {
+    drainAt429: currentDrainPointsPerHour(),
+    workersAt429: rateLimitWorkers * 2,
+    at: Date.now()
+  };
 
   log(
     `rate-limited upstream: pausing until ${new Date(rateLimitedUntil).toISOString()} ` +
@@ -793,6 +807,7 @@ async function applySharedPlan(): Promise<void> {
       providerId: state.providerId,
       contended: state.contended,
       roomRatio: state.roomRatio,
+      drainPointsPerHour: state.drainPointsPerHour,
       windows: state.windows.map((window) => ({
         kind: window.kind,
         remainingPercent: window.remainingPercent,
@@ -949,8 +964,47 @@ let rateLimitWorkers = DEFAULT_PARALLEL;
 /** When the pace was last allowed to creep back up. */
 let lastRateLimitRecovery = 0;
 
+/**
+ * What the queue suspects about the last rate limit.
+ *
+ * The subscription is often shared: the plan says what everybody used, and
+ * the limit it enforces is the limit of the whole thing. So a 429 is not
+ * necessarily ours - it can be the other user filling the plan while we
+ * sit quietly. The queue notices by watching what happens to the plan's
+ * drain after it slows down: if the plan keeps draining at the same speed,
+ * it was not us, and slowing down achieves nothing but a smaller backlog.
+ */
+/**
+ * Whether the rate limits are ours.
+ *
+ * It starts as true - the queue assumes it is pushing too hard - and the
+ * review changes it: if the plan keeps draining at the same speed after
+ * the queue slows down, the limit belongs to the other user, and backing
+ * off again on every 429 would only shrink the backlog.
+ */
+let rateLimitIsOurs = true;
+
+let rateLimitSuspect: {
+  /** How fast the plan was being spent when the 429 arrived. */
+  drainAt429: number | null;
+  /** The pace we were running when it arrived. */
+  workersAt429: number;
+  /** When it arrived. */
+  at: number;
+} | null = null;
+
 /** How long without a 429 it takes to try one more worker. */
 const RATE_LIMIT_RECOVERY_MS = 5 * 60_000;
+
+/** How long the queue waits before looking at what the plan did. */
+const RATE_LIMIT_REVIEW_MS = 3 * 60_000;
+
+/**
+ * How much of the plan's drain has to be left for the rate limit to be
+ * ours: if the plan is still being spent at more than this share of what
+ * it was, the other user is filling it.
+ */
+const RATE_LIMIT_OTHER_USER_SHARE = 0.7;
 
 /** How many readings in a row have said the same thing. */
 let parallelAgreement = 0;
@@ -967,6 +1021,98 @@ let parallelCandidate = 1;
  * at more than twice the pace its window allows.
  */
 const BRAKE_RATIO = 0.5;
+
+/**
+ * How fast the plan is being spent right now, in percentage points an hour.
+ *
+ * It is the whole plan: ours and whoever else is on it.
+ */
+function currentDrainPointsPerHour(): number | null {
+  for (const state of smartStates.values()) {
+    if (state.drainPointsPerHour !== null) {
+      return state.drainPointsPerHour;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Who the last rate limit belonged to.
+ *
+ * The plan is shared and the limit it enforces is the limit of the whole
+ * thing, so a 429 is not necessarily ours. The queue slows down and then
+ * looks at the plan: if the plan kept draining at the same speed, the
+ * limit was not caused by us.
+ *
+ *   - `ours` — the plan drained more slowly once the queue slowed down
+ *   - `theirs` — the plan drained at the same speed: somebody else is
+ *     filling it, and slowing down achieves nothing
+ *   - `unknown` — there was nothing to compare with
+ */
+export function rateLimitAttribution(
+  drainNow: number | null,
+  drainAt429: number | null
+): 'ours' | 'theirs' | 'unknown' {
+  if (drainNow === null || drainAt429 === null) return 'unknown';
+
+  return drainNow >= drainAt429 * RATE_LIMIT_OTHER_USER_SHARE ? 'theirs' : 'ours';
+}
+
+/**
+ * Checks whether the last rate limit was ours or the other user's.
+ *
+ * The plan is shared, and the limit it enforces is the limit of the whole
+ * thing. So when the provider says no, the queue slows down and then looks
+ * at the plan:
+ *
+ *   - the plan drained more slowly after the slowdown → it was us, and the
+ *     slower pace is the right one
+ *   - the plan drained at the same speed → somebody else is filling it,
+ *     and slowing down achieves nothing but a smaller backlog, so the pace
+ *     goes back to what it was
+ */
+function reviewRateLimitSuspect(): void {
+  if (!rateLimitSuspect) return;
+
+  const suspect = rateLimitSuspect;
+
+  // Give the plan a few minutes to show what it does.
+  if (Date.now() - suspect.at < RATE_LIMIT_REVIEW_MS) return;
+
+  rateLimitSuspect = null;
+
+  const drainNow = currentDrainPointsPerHour();
+  const attribution = rateLimitAttribution(drainNow, suspect.drainAt429);
+
+  if (attribution === 'unknown') {
+    // Nothing to compare with: keep the slower pace and let the slow
+    // recovery bring it back if the provider stops saying no.
+    return;
+  }
+
+  // The plan is not being spent any slower than before. Somebody else is
+  // filling it, and our pace is not what filled it.
+  if (attribution === 'theirs') {
+    const restored = Math.min(maxParallelAnalyses(), suspect.workersAt429);
+    rateLimitWorkers = restored;
+    lastRateLimitRecovery = Date.now();
+    rateLimitIsOurs = false;
+
+    log(
+      `the plan is still being spent at the same speed (${drainNow.toFixed(2)} points/h) ` +
+      `after slowing down: the rate limit is not ours — back to ${restored} video(s) at a time`
+    );
+    return;
+  }
+
+  // The plan drained more slowly once we slowed down: that was us.
+  rateLimitIsOurs = true;
+  log(
+    `the plan drained more slowly after the slowdown: the rate limit is ours — ` +
+    `staying at ${rateLimitWorkers} video(s) at a time`
+  );
+}
 
 /**
  * How many videos may be worked on at the same time.
@@ -1024,6 +1170,9 @@ function analysisConcurrency(): number {
 
   // The provider has the last word: a 429 halves the pace, and the pace
   // creeps back up if the provider keeps saying yes.
+  // Was the last rate limit ours, or the other user's?
+  reviewRateLimitSuspect();
+
   if (Date.now() - lastRateLimitRecovery > RATE_LIMIT_RECOVERY_MS) {
     rateLimitWorkers = Math.min(maxParallelAnalyses(), rateLimitWorkers + 1);
     lastRateLimitRecovery = Date.now();

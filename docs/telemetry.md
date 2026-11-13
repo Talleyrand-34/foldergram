@@ -193,6 +193,9 @@ becomes `_milliseconds`, and a counter gets a `_total` suffix.
 | `foldergram.ai.plan.time_left` | `foldergram_ai_plan_time_left_hours` | up-down counter | `provider`, `window` |
 | `foldergram.ai.plan.rolls_over_in` | `foldergram_ai_plan_rolls_over_in_seconds` | up-down counter | `provider`, `window` |
 | `foldergram.ai.plan.contended` | `foldergram_ai_plan_contended` | up-down counter | `provider` |
+| `foldergram.ai.plan.room_ratio` | `foldergram_ai_plan_room_ratio` | up-down counter | `provider` |
+| `foldergram.ai.plan.drain_rate` | `foldergram_ai_plan_drain_rate` | up-down counter | `provider` |
+| `foldergram.ai.analysis.concurrency` | `foldergram_ai_analysis_concurrency` | up-down counter | - |
 | `foldergram.db.query.duration` | `foldergram_db_query_duration_milliseconds_{bucket,sum,count}` | histogram (ms) | `dialect`, `operation`, `table`, `status` |
 | `foldergram.db.query.count` | `foldergram_db_query_count_total` | counter | `dialect`, `operation`, `table`, `status` |
 | `foldergram.http.request.duration` | `foldergram_http_request_duration_milliseconds_{bucket,sum,count}` | histogram (ms) | `method`, `route`, `status_class` |
@@ -260,6 +263,17 @@ is the current depth and not a growing sum.
 - **`foldergram_ai_plan_contended`** - whether somebody else is using the
   plan. It is `1` while the pool moves without any of ours being sent. The
   queue takes only its share while that is so.
+- **`foldergram_ai_plan_room_ratio`** - how much faster the plan could be
+  spent before a window runs out before it renews. Above one there is room
+  to spare; below one the plan would be exhausted early and the queue would
+  idle until the window rolls over.
+- **`foldergram_ai_plan_drain_rate`** - how fast the plan is being spent,
+  in percentage points an hour, **by everybody on it**. It is the number
+  that tells a rate limit of ours apart from one that belongs to the other
+  user: if the plan keeps draining at the same speed after the queue slows
+  down, the queue is not what filled it.
+- **`foldergram_ai_analysis_concurrency`** - how many videos the queue
+  analyses at the same time. It follows the room the plan leaves.
 
 ### Labels that come from the resource
 
@@ -392,7 +406,27 @@ queue works at.
 
 The number of workers changes slowly, and only when the room has said the
 same thing twice in a row, so the queue does not breathe in and out with
-every reading. `AI_ANALYSIS_MAX_PARALLEL` caps it (three by default).
+every reading. `AI_ANALYSIS_MAX_PARALLEL` caps it.
+
+### The rate limit is shared, and the queue knows it
+
+The subscription is often shared: the plan says what **everybody** used, and
+the limit the provider enforces is the limit of the whole thing. So a 429 is
+not necessarily ours - it can be the other user filling the plan while we
+sit quietly.
+
+The queue learns who it is by watching what happens to the plan when it
+slows down:
+
+- **the plan drains more slowly** once the queue slows down -> the limit
+  was ours, and the slower pace is the right one
+- **the plan drains at the same speed** -> somebody else is filling it, and
+  slowing down would achieve nothing but a smaller backlog, so the pace
+  goes back to what it was
+
+Until the answer is known, the queue assumes it is pushing too hard and
+halves its pace, the way a TCP congestion window does. Once it knows the
+limit is not its own, it stops backing off on every 429.
 
 What that buys today, and what it does not, is worked out in
 [Using the whole plan](plan-pacing-proposal.md).
