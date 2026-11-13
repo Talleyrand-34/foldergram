@@ -45,9 +45,41 @@ yourself.
 | `FFMPEG_TRANSCODER_MAX_UPLOAD_BYTES` | `536870912` | Sources larger than this stay on the local host. |
 | `PUBLIC_DEMO_MODE` | `0` | When enabled, mutating API routes return `403` for read-only demo deployments. |
 | `CSRF_TRUSTED_ORIGINS` | unset | Comma-separated extra browser origins allowed for mutating API requests. Useful behind reverse proxies or HTTPS terminators. |
+| `VALKEY_URL` | unset | Connection string of a Valkey (or Redis-compatible) server used as the cache. Example: `valkey://127.0.0.1:6379`. Unset means the cache lives inside the server process. |
+| `CACHE_KEY_PREFIX` | `foldergram:` | The prefix every cache key is stored under. Give every installation its own prefix when they share one cache server. |
+
+## Cache
+
+Some answers are expensive to compute and cheap to keep: how far the AI
+queue has come, how many videos are waiting, the languages that are already
+known. They are kept in a cache instead of being computed again for every
+reader.
+
+The cache has two backends, and the application does not have to know which
+one it got:
+
+| `VALKEY_URL` | What happens |
+| --- | --- |
+| unset | The cache lives inside the server process. It disappears when the server stops. |
+| set | The cache lives in a Valkey (or Redis-compatible) server. It is shared by every process that points at the same server, and it survives a restart. |
+
+A cache server that cannot be reached is not an error: the answers are then
+kept inside the process until the server answers again. So the cache can be
+turned on without changing the application.
+
+```bash
+# A cache server next to the app
+apt-get install valkey-server
+systemctl enable --now valkey-server
+
+# The app uses it
+VALKEY_URL=valkey://127.0.0.1:6379
+```
+
+Give every installation its own `CACHE_KEY_PREFIX` when several of them
+share one cache server.
 
 ## Database backends
-
 Foldergram supports two database backends selected by `DB_DRIVER`:
 
 | Driver | Connection | Use case |

@@ -46,6 +46,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().optional(),
   LOG_SLOW_QUERY_MS: z.coerce.number().int().min(0).default(200),
   REELS_CANDIDATE_LIMIT: z.coerce.number().int().min(100).default(2000),
+  VALKEY_URL: z.string().optional(),
+  CACHE_KEY_PREFIX: z.string().default('foldergram:'),
   PYROSCOPE_SERVER_ADDRESS: z.string().optional(),
   PYROSCOPE_APPLICATION_NAME: z.string().optional(),
   PYROSCOPE_FLUSH_INTERVAL_MS: z.coerce.number().int().min(1000).default(60_000),
@@ -226,6 +228,8 @@ export const appConfig = {
   databaseUrl: parsed.DATABASE_URL,
   logSlowQueryMs: parsed.LOG_SLOW_QUERY_MS,
   reelsCandidateLimit: parsed.REELS_CANDIDATE_LIMIT,
+  valkeyUrl: parsed.VALKEY_URL?.trim() || undefined,
+  cacheKeyPrefix: parsed.CACHE_KEY_PREFIX,
   pyroscope: {
     // Without a server address there is nowhere to send the profiles to, so
     // the profiling stays off.

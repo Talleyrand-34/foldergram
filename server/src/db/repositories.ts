@@ -60,6 +60,13 @@ let INSERT_OR_IGNORE: string;
 let INSERT_OR_IGNORE_SUFFIX: string;
 let IS_POSTGRES = false;
 let RANDOM_HASH_ORDER_SQL: string;
+/**
+ * The statement that asks for many rows at once.
+ *
+ * PostgreSQL takes the list as one array, SQLite takes one placeholder per
+ * value — so the fragment builds the statement and its parameters together.
+ */
+let BATCH_LOOKUP_SQL: (column: string, values: unknown[]) => { sql: string; params: unknown[] };
 
 function initDialectFragments(dialect: 'sqlite' | 'postgres'): void {
   IS_POSTGRES = dialect === 'postgres';
@@ -75,6 +82,10 @@ function initDialectFragments(dialect: 'sqlite' | 'postgres'): void {
     INSERT_OR_IGNORE_SUFFIX = '';
     // SQLite integers are 64-bit; no overflow risk
     RANDOM_HASH_ORDER_SQL = 'ABS(((images.id * 1103515245) + (? * 1013904223)) % 2147483647)';
+    BATCH_LOOKUP_SQL = (column, values) => ({
+      sql: `${column} IN (${values.map(() => '?').join(', ')})`,
+      params: values
+    });
   } else {
     BOOL_TRUE = 'true';
     BOOL_FALSE = 'false';
@@ -87,6 +98,10 @@ function initDialectFragments(dialect: 'sqlite' | 'postgres'): void {
     INSERT_OR_IGNORE_SUFFIX = ' ON CONFLICT DO NOTHING';
     // Cast to bigint before multiplication to avoid INT4 overflow in PostgreSQL
     RANDOM_HASH_ORDER_SQL = 'ABS(((images.id::bigint * 1103515245) + (?::bigint * 1013904223)) % 2147483647)';
+    BATCH_LOOKUP_SQL = (column, values) => ({
+      sql: `${column} = ANY(?)`,
+      params: [values]
+    });
   }
 }
 
@@ -934,6 +949,47 @@ export const placeRepository = {
 export const imageRepository = {
   async getByRelativePath(relativePath: string): Promise<ImageRecord | undefined> {
     return getDriver().queryOne<ImageRecord>('SELECT * FROM images WHERE relative_path = ?', [relativePath]);
+  },
+
+  /**
+   * The state of many images at once, by their path.
+   *
+   * The scanner asks for every file it found, and asking one by one turns a
+   * folder of a thousand files into a thousand round trips. The answer comes
+   * back in a handful of statements instead, and only the columns the scanner
+   * actually looks at are read.
+   */
+  async getScanStateByRelativePaths(
+    relativePaths: string[]
+  ): Promise<Map<string, { id: number; folderId: number; isDeleted: boolean }>> {
+    const state = new Map<string, { id: number; folderId: number; isDeleted: boolean }>();
+    if (relativePaths.length === 0) return state;
+
+    const unique = [...new Set(relativePaths)];
+    // The list is sent in batches: a statement with ten thousand
+    // placeholders is slower than ten statements with a thousand.
+    const BATCH_SIZE = 500;
+
+    for (let offset = 0; offset < unique.length; offset += BATCH_SIZE) {
+      const batch = unique.slice(offset, offset + BATCH_SIZE);
+      const { sql, params } = BATCH_LOOKUP_SQL('relative_path', batch);
+      const result = await getDriver().query<{
+        id: number;
+        folder_id: number;
+        is_deleted: number | boolean;
+        relative_path: string;
+      }>(`SELECT id, folder_id, is_deleted, relative_path FROM images WHERE ${sql}`, params);
+
+      for (const row of result.rows) {
+        state.set(row.relative_path, {
+          id: row.id,
+          folderId: row.folder_id,
+          isDeleted: Boolean(row.is_deleted)
+        });
+      }
+    }
+
+    return state;
   },
 
   async getById(id: number): Promise<ImageRecord | undefined> {

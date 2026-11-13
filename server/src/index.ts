@@ -23,6 +23,7 @@ import { createApp } from "./app.js";
 import { collectionRepository, initRepositories } from "./db/repositories.js";
 import { log } from "./services/log-service.js";
 import { authService } from "./services/auth-service.js";
+import { getCacheService } from "./services/cache-service.js";
 import { pluginHost } from "./plugins/host.js";
 import { scannerService } from "./services/scanner-service.js";
 import { watcherService } from "./services/watcher-service.js";
@@ -58,6 +59,16 @@ async function bootstrap(): Promise<void> {
   // The profiling is off unless there is a Pyroscope server to send the
   // profiles to. When it is off, nothing is even loaded.
   startProfiling();
+
+  // The cache is built before anything reads from it. Without a cache server
+  // the cache keeps the answers inside this process, which is what a single
+  // node installation needs anyway.
+  const cache = getCacheService();
+  log.info(
+    cache.backend === "valkey"
+      ? `Cache server ready (${appConfig.valkeyUrl})`
+      : "Cache running inside this process (no VALKEY_URL)"
+  );
 
   await initRepositories();
   await authService.initialize();

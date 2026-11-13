@@ -1465,18 +1465,22 @@ class ScannerService {
     const hasCompleteTakenAtMetadata = (await imageRepository.countMissingTimestampMetadataByFolder(folder.id)) === 0;
     const hasCompletePlaybackStrategyMetadata = (await imageRepository.countMissingPlaybackStrategyByFolder(folder.id)) === 0;
     const countByFolder = await imageRepository.countByFolder(folder.id);
-    const allImagesMatch = await Promise.all(
-      discoveredFiles.map(async (file) => {
-        const existingImage = await imageRepository.getByRelativePath(file.relativePath);
-        return existingImage?.folder_id === folder.id && existingImage?.is_deleted === 0;
-      })
+    // The files are looked up in one go: asking the database for every file
+    // on its own turns a folder of a thousand files into a thousand round
+    // trips, and the answer is the same for all of them.
+    const existingByRelativePath = await imageRepository.getScanStateByRelativePaths(
+      discoveredFiles.map((file) => file.relativePath)
     );
+    const allImagesMatch = discoveredFiles.every((file) => {
+      const existing = existingByRelativePath.get(file.relativePath);
+      return existing !== undefined && existing.folderId === folder.id && !existing.isDeleted;
+    });
     const hasMatchingIndexedFiles =
       discoveredFiles.length > 0 &&
       hasCompleteTakenAtMetadata &&
       hasCompletePlaybackStrategyMetadata &&
       countByFolder === discoveredFiles.length &&
-      allImagesMatch.every(Boolean);
+      allImagesMatch;
 
     if (
       !folderHadErrors &&

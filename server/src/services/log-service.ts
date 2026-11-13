@@ -200,6 +200,9 @@ export const log = {
   info(message: string, meta?: unknown): void {
     write('log', message, meta, 'info');
   },
+  warn(message: string, meta?: unknown): void {
+    write('log', message, meta, 'warning');
+  },
   error(message: string, meta?: unknown): void {
     write('error', message, meta, 'error');
   },

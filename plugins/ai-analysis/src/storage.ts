@@ -26,6 +26,7 @@
 
 import { databaseManager } from "../../../server/dist/db/database.js";
 import type { IDbDriver } from "../../../server/dist/db/driver/types.js";
+import { getCacheService } from "../../../server/dist/services/cache-service.js";
 import { recordAiUsage } from "../../../server/dist/observability/telemetry.js";
 
 export type AiStatus = "pending" | "running" | "ok" | "failed" | "skipped";
@@ -1163,7 +1164,20 @@ export interface StatusSummary {
   oldestPendingAt: string | null;
 }
 
-export async function getStatusSummary(): Promise<StatusSummary> {
+/**
+ * How long the summary of the queue is kept.
+ *
+ * The summary is read after every video the worker finishes and by the
+ * browser while it watches the progress. Neither needs a number that is
+ * exact to the second — and the number costs a scan of the whole video
+ * table. So it is kept for a while and only then computed again.
+ */
+const STATUS_SUMMARY_TTL_MS = 15_000;
+
+/** The key the summary is kept under. */
+const STATUS_SUMMARY_KEY = "ai:status-summary";
+
+async function loadStatusSummary(): Promise<StatusSummary> {
   const rows = (await all(
     `SELECT ai_status, COUNT(*) as n FROM images WHERE media_type = 'video' AND is_deleted = 0 GROUP BY ai_status`,
   )) as Array<{ ai_status: string | null; n: number }>;
@@ -1181,18 +1195,44 @@ export async function getStatusSummary(): Promise<StatusSummary> {
 }
 
 /**
+ * How far the queue has come.
+ *
+ * The answer is kept for a while: the worker asks for it on every tick, and
+ * the browser asks for it while it watches the progress. Both are happy with
+ * a number that is a few seconds old.
+ */
+export async function getStatusSummary(): Promise<StatusSummary> {
+  return getCacheService().getOrLoad(STATUS_SUMMARY_KEY, STATUS_SUMMARY_TTL_MS, loadStatusSummary);
+}
+
+/**
+ * Forgets the summary of the queue.
+ *
+ * Called when the queue changes in a way the summary cannot know about, so
+ * the next reader sees the new numbers at once.
+ */
+export async function invalidateStatusSummary(): Promise<void> {
+  await getCacheService().invalidate(STATUS_SUMMARY_KEY);
+}
+
+/**
  * How many videos are waiting to be analyzed.
  *
  * This is the real backlog: the in-memory queue of the worker is only a
  * fast path for the videos that were just indexed.
+ *
+ * The number is kept for a while, because the worker reads it on every tick
+ * and a backlog that is a few seconds old is still a backlog.
  */
 export async function countPendingAnalyses(): Promise<number> {
-  const row = (await get(
-    `SELECT COUNT(*) as n FROM images
-     WHERE media_type = 'video' AND is_deleted = 0 AND ai_status = 'pending'`,
-  )) as { n: number } | undefined;
+  return getCacheService().getOrLoad('ai:pending-count', 30_000, async () => {
+    const row = (await get(
+      `SELECT COUNT(*) as n FROM images
+       WHERE media_type = 'video' AND is_deleted = 0 AND ai_status = 'pending'`,
+    )) as { n: number } | undefined;
 
-  return Number(row?.n ?? 0);
+    return Number(row?.n ?? 0);
+  });
 }
 
 /**
@@ -1281,21 +1321,88 @@ export async function loadPlanReadings(
   }));
 }
 
-/** Pull the next pending video and lock it as running. Returns null if queue empty. */
-export async function claimNextPending(): Promise<{ imageId: number; folderId: number; absolutePath: string; mtimeMs: number } | null> {
-  const row = (await get(
-    `SELECT id, folder_id, absolute_path, mtime_ms FROM images
-     WHERE media_type = 'video' AND is_deleted = 0 AND ai_status = 'pending'
-     ORDER BY id ASC LIMIT 1`,
-  )) as { id: number; folder_id: number; absolute_path: string; mtime_ms: number } | undefined;
-  if (!row) return null;
-  await run(`UPDATE images SET ai_status = 'running' WHERE id = ?`, [row.id]);
-  return {
-    imageId: row.id,
-    folderId: row.folder_id,
-    absolutePath: row.absolute_path,
-    mtimeMs: row.mtime_ms,
-  };
+/** A video that the worker has claimed. */
+export interface ClaimedVideo {
+  imageId: number;
+  folderId: number;
+  absolutePath: string;
+  mtimeMs: number;
+}
+
+/**
+ * Pull the next pending video and lock it as running. Returns null if queue empty.
+ *
+ * The claim has to be one statement, not two. When the row is first read and
+ * then marked, two workers that ask at the same time read the same row — the
+ * lowest pending id — and both work on it: the analysis is paid for twice,
+ * and the second worker waits for the row lock of the first one.
+ *
+ * So the row is picked and marked in the same statement, and the rows that
+ * another worker is holding are skipped instead of waited for.
+ */
+export async function claimNextPending(): Promise<ClaimedVideo | null> {
+  const drv = await getDriver();
+
+  if (drv.dialect === 'postgres') {
+    const row = (await drv.queryOne<{
+      id: number;
+      folder_id: number;
+      absolute_path: string;
+      mtime_ms: number;
+    }>(
+      `UPDATE images SET ai_status = 'running'
+        WHERE id = (
+          SELECT id FROM images
+           WHERE media_type = 'video' AND is_deleted = 0 AND ai_status = 'pending'
+           ORDER BY id ASC
+           FOR UPDATE SKIP LOCKED
+           LIMIT 1
+        )
+        RETURNING id, folder_id, absolute_path, mtime_ms`
+    )) as { id: number; folder_id: number; absolute_path: string; mtime_ms: number } | undefined;
+
+    if (!row) return null;
+    return {
+      imageId: row.id,
+      folderId: row.folder_id,
+      absolutePath: row.absolute_path,
+      mtimeMs: row.mtime_ms,
+    };
+  }
+
+  // SQLite has no SKIP LOCKED, but it writes one row at a time anyway: the
+  // guard on the update is what keeps two workers from taking the same row.
+  // A worker that loses the race tries the next row instead of reporting an
+  // empty queue.
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const row = (await drv.queryOne<{
+      id: number;
+      folder_id: number;
+      absolute_path: string;
+      mtime_ms: number;
+    }>(
+      `SELECT id, folder_id, absolute_path, mtime_ms FROM images
+        WHERE media_type = 'video' AND is_deleted = 0 AND ai_status = 'pending'
+        ORDER BY id ASC LIMIT 1`
+    )) as { id: number; folder_id: number; absolute_path: string; mtime_ms: number } | undefined;
+
+    if (!row) return null;
+
+    const claimed = await drv.execute(
+      `UPDATE images SET ai_status = 'running' WHERE id = ? AND ai_status = 'pending'`,
+      [row.id]
+    );
+    if (claimed.rowCount === 0) continue;
+
+    return {
+      imageId: row.id,
+      folderId: row.folder_id,
+      absolutePath: row.absolute_path,
+      mtimeMs: row.mtime_ms,
+    };
+  }
+
+  return null;
 }
 
 // ─── driver-specific query helpers ─────────────────────────────────────
@@ -1601,28 +1708,61 @@ export interface PendingSynonym {
   resolvedAt: string | null;
 }
 
+/**
+ * How long the context of the canonicalizer is kept.
+ *
+ * The context is the list of the domains and the languages that are already
+ * known. It is read before every video that goes through the canonicalizer,
+ * and it changes when a new domain is found — which is rare compared to how
+ * often it is read.
+ */
+const CANONICAL_CONTEXT_TTL_MS = 60_000;
+
 /** Existing domains (just names + counts) for the laya prompt context. */
 export async function getExistingDomainsForCanonicalization(
   limit = 500,
 ): Promise<{ name: string; videoCount: number }[]> {
-  const rows = (await all(
-    `SELECT domain AS name, video_count AS video_count
-     FROM ai_domain_nodes
-     ORDER BY video_count DESC, domain ASC
-     LIMIT ?`,
-    [limit],
-  )) as Array<{ name: string; video_count: number }>;
-  return rows.map((r) => ({ name: r.name, videoCount: r.video_count }));
+  return getCacheService().getOrLoad(
+    'ai:canonical:domains',
+    CANONICAL_CONTEXT_TTL_MS,
+    async () => {
+      const rows = (await all(
+        `SELECT domain AS name, video_count AS video_count
+         FROM ai_domain_nodes
+         ORDER BY video_count DESC, domain ASC
+         LIMIT ?`,
+        [limit],
+      )) as Array<{ name: string; video_count: number }>;
+      return rows.map((r) => ({ name: r.name, videoCount: r.video_count }));
+    }
+  );
 }
 
 /** Distinct languages used in analyzed videos. */
 export async function getExistingLanguagesForCanonicalization(): Promise<string[]> {
-  const rows = (await all(
-    `SELECT DISTINCT ai_language AS language
-     FROM images
-     WHERE ai_language IS NOT NULL AND ai_language <> ''`,
-  )) as Array<{ language: string }>;
-  return rows.map((r) => r.language);
+  return getCacheService().getOrLoad(
+    'ai:canonical:languages',
+    CANONICAL_CONTEXT_TTL_MS,
+    async () => {
+      const rows = (await all(
+        `SELECT DISTINCT ai_language AS language
+         FROM images
+         WHERE ai_language IS NOT NULL AND ai_language <> ''`,
+      )) as Array<{ language: string }>;
+      return rows.map((r) => r.language);
+    }
+  );
+}
+
+/**
+ * Forgets the context of the canonicalizer.
+ *
+ * Called when a domain is added or renamed, so the next video sees it.
+ */
+export async function invalidateCanonicalizationContext(): Promise<void> {
+  const cache = getCacheService();
+  await cache.invalidate('ai:canonical:domains');
+  await cache.invalidate('ai:canonical:languages');
 }
 
 /** Insert a new domain that laya classified as novel. */
@@ -1637,6 +1777,9 @@ export async function registerNewDomain(name: string): Promise<void> {
      ON CONFLICT(domain) DO NOTHING`,
     [d],
   );
+  // A new domain changes the list the canonicalizer works with, so the
+  // cached list is dropped: the next video has to see it.
+  await invalidateCanonicalizationContext();
 }
 
 /** Touch an existing domain (laya confirmed it was a match). */
